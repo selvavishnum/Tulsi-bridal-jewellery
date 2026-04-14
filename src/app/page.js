@@ -1,37 +1,48 @@
-import HeroBanner from '@/components/shop/HeroBanner';
-import CategoryGrid from '@/components/shop/CategoryGrid';
-import FeaturedProducts from '@/components/shop/FeaturedProducts';
-import RentalBanner from '@/components/shop/RentalBanner';
-import Testimonials from '@/components/shop/Testimonials';
+/* ─────────────────────────────────────────────────────────────────
+   Homepage — Swastik-inspired catalog layout
+   Sections (top → bottom):
+   1. CatalogHero   — white, crown, brand name
+   2. WelcomeSection — dark velvet, split layout
+   3. OrderingProcess — cream, split layout
+   4. TrendingGrid   — 4-col product grid
+   ────────────────────────────────────────────────────────────── */
+
+import CatalogHero from '@/components/catalog/CatalogHero';
+import WelcomeSection from '@/components/catalog/WelcomeSection';
+import OrderingProcess from '@/components/catalog/OrderingProcess';
+import TrendingGrid from '@/components/catalog/TrendingGrid';
+import Link from 'next/link';
 
 export default function HomePage() {
   return (
-    <>
-      <HeroBanner />
-      <CategoryGrid />
-      <FeaturedProducts />
-      <RentalBanner />
-      <Testimonials />
+    <div className="min-h-screen bg-white">
+      <CatalogHero />
+      <WelcomeSection />
+      <OrderingProcess />
+      <TrendingGrid />
 
-      {/* Trust badges */}
-      <section className="py-10 bg-cream">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-            {[
-              { icon: '🚚', title: 'Free Shipping', desc: 'On orders above ₹2000' },
-              { icon: '🔒', title: 'Secure Payment', desc: 'Razorpay protected' },
-              { icon: '↩️', title: 'Easy Returns', desc: '7-day return policy' },
-              { icon: '🎁', title: 'Gift Wrapping', desc: 'Beautiful packaging' },
-            ].map((b) => (
-              <div key={b.title} className="bg-white rounded-xl p-5 shadow-sm">
-                <div className="text-3xl mb-2">{b.icon}</div>
-                <h3 className="font-semibold text-gray-800 text-sm">{b.title}</h3>
-                <p className="text-xs text-gray-400 mt-1">{b.desc}</p>
-              </div>
-            ))}
-          </div>
+      {/* Quick-enquiry CTA strip */}
+      <div className="bg-velvet-800 py-6 text-center px-4">
+        <p className="text-white text-sm tracking-wider mb-3">
+          Browse our full collection &amp; enquire for rental pricing
+        </p>
+        <div className="flex justify-center gap-3 flex-wrap">
+          <Link
+            href="/catalog"
+            className="px-7 py-2.5 bg-gold-600 text-white text-xs font-bold tracking-catalog uppercase hover:bg-gold-700 transition"
+          >
+            View Catalogue
+          </Link>
+          <a
+            href="https://wa.me/919876543210?text=Hi,%20I%27m%20interested%20in%20your%20bridal%20jewellery%20collection."
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-7 py-2.5 border border-white text-white text-xs font-bold tracking-catalog uppercase hover:bg-white hover:text-velvet-800 transition"
+          >
+            WhatsApp Us
+          </a>
         </div>
-      </section>
-    </>
+      </div>
+    </div>
   );
 }

@@ -33,10 +33,36 @@ module.exports = {
           900: '#741919',
           950: '#800020',
         },
-        cream: '#FFF8F0',
+        /* Velvet dark-brown — the backdrop/display stand color in catalog photos */
+        velvet: {
+          50:  '#f9f0ed',
+          100: '#f0d9d2',
+          200: '#deb4a5',
+          300: '#c48772',
+          400: '#a85f4a',
+          500: '#8b3e2a',
+          600: '#6b2d1e',
+          700: '#4a1e14',   /* main velvet */
+          800: '#3d1a11',   /* dark velvet bg */
+          900: '#2d1209',
+          950: '#1a0b05',
+        },
+        /* Wine / burgundy — product name text color */
+        wine:  '#7a1f3a',
+        /* Catalog cream backgrounds */
+        cream: {
+          DEFAULT: '#FFF8F0',
+          100: '#fdf6ef',
+          200: '#f8f0e4',
+          300: '#f2e8d5',
+        },
       },
       fontFamily: {
         serif: ['Georgia', 'Cambria', '"Times New Roman"', 'Times', 'serif'],
+      },
+      letterSpacing: {
+        catalog: '0.22em',
+        wide2:   '0.35em',
       },
     },
   },

@@ -13,21 +13,23 @@
 
 @layer components {
   .btn-primary {
-    @apply px-6 py-2.5 bg-maroon-950 text-white font-semibold rounded-lg hover:bg-maroon-900 transition;
+    @apply px-6 py-2.5 bg-velvet-800 text-white font-semibold hover:bg-velvet-900 transition;
   }
   .btn-secondary {
-    @apply px-6 py-2.5 bg-gold-600 text-white font-semibold rounded-lg hover:bg-gold-700 transition;
+    @apply px-6 py-2.5 bg-gold-600 text-white font-semibold hover:bg-gold-700 transition;
   }
   .btn-outline {
-    @apply px-6 py-2.5 border-2 border-maroon-950 text-maroon-950 font-semibold rounded-lg hover:bg-maroon-950 hover:text-white transition;
+    @apply px-6 py-2.5 border-2 border-velvet-700 text-velvet-700 font-semibold hover:bg-velvet-700 hover:text-white transition;
   }
   .input-field {
     @apply w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition;
   }
-  .section-title {
-    @apply font-serif text-3xl font-bold text-maroon-950;
+  /* Catalog-style product name heading */
+  .catalog-name {
+    @apply text-sm font-bold tracking-catalog uppercase leading-tight;
+    color: #7a1f3a;
   }
-  .card {
-    @apply bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow;
+  .catalog-code {
+    @apply text-[10px] tracking-[0.2em] text-gray-400 uppercase;
   }
 }
