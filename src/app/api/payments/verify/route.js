@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import connectDB from '@/lib/mongodb';
-import Order from '@/models/Order';
+import { getDB } from '@/lib/firebase';
 
 export async function POST(request) {
   try {
@@ -17,14 +16,15 @@ export async function POST(request) {
       return NextResponse.json({ success: false, message: 'Payment verification failed' }, { status: 400 });
     }
 
-    await connectDB();
-    await Order.findByIdAndUpdate(orderId, {
+    const db = getDB();
+    await db.collection('orders').doc(orderId).update({
       'payment.status': 'paid',
       'payment.razorpayOrderId': razorpayOrderId,
       'payment.razorpayPaymentId': razorpayPaymentId,
       'payment.razorpaySignature': razorpaySignature,
-      'payment.paidAt': new Date(),
+      'payment.paidAt': new Date().toISOString(),
       status: 'confirmed',
+      updatedAt: new Date().toISOString(),
     });
 
     return NextResponse.json({ success: true, message: 'Payment verified successfully' });

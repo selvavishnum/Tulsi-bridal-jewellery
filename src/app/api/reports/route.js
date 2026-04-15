@@ -1,12 +1,8 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Order from '@/models/Order';
-import Rental from '@/models/Rental';
-import Product from '@/models/Product';
-import User from '@/models/User';
+import { getDB, snapshotToArr } from '@/lib/firebase';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { startOfMonth, endOfMonth } from 'date-fns';
 
 export async function GET(request) {
   try {
@@ -14,51 +10,78 @@ export async function GET(request) {
     if (!session || session.user.role !== 'admin') {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }
-    await connectDB();
+    const db = getDB();
 
     const now = new Date();
-    const monthStart = startOfMonth(now);
-    const monthEnd = endOfMonth(now);
-    const lastMonthStart = startOfMonth(subMonths(now, 1));
-    const lastMonthEnd = endOfMonth(subMonths(now, 1));
+    const monthStart = startOfMonth(now).toISOString();
+    const monthEnd = endOfMonth(now).toISOString();
 
-    const [
-      totalOrders, monthOrders, totalRevenue, monthRevenue,
-      totalRentals, monthRentals, totalProducts, totalCustomers,
-      recentOrders, topProducts, monthlyData,
-    ] = await Promise.all([
-      Order.countDocuments({ 'payment.status': 'paid' }),
-      Order.countDocuments({ 'payment.status': 'paid', createdAt: { $gte: monthStart, $lte: monthEnd } }),
-      Order.aggregate([{ $match: { 'payment.status': 'paid' } }, { $group: { _id: null, total: { $sum: '$total' } } }]),
-      Order.aggregate([{ $match: { 'payment.status': 'paid', createdAt: { $gte: monthStart, $lte: monthEnd } } }, { $group: { _id: null, total: { $sum: '$total' } } }]),
-      Rental.countDocuments({ 'payment.status': 'paid' }),
-      Rental.countDocuments({ 'payment.status': 'paid', createdAt: { $gte: monthStart, $lte: monthEnd } }),
-      Product.countDocuments({ isActive: true }),
-      User.countDocuments({ role: 'customer' }),
-      Order.find({ 'payment.status': 'paid' }).sort({ createdAt: -1 }).limit(5).populate('user', 'name email').lean(),
-      Order.aggregate([
-        { $match: { 'payment.status': 'paid' } },
-        { $unwind: '$items' },
-        { $group: { _id: '$items.product', name: { $first: '$items.name' }, totalSold: { $sum: '$items.quantity' }, revenue: { $sum: { $multiply: ['$items.price', '$items.quantity'] } } } },
-        { $sort: { totalSold: -1 } },
-        { $limit: 5 },
-      ]),
-      Order.aggregate([
-        { $match: { 'payment.status': 'paid', createdAt: { $gte: subMonths(now, 6) } } },
-        { $group: { _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } }, orders: { $sum: 1 }, revenue: { $sum: '$total' } } },
-        { $sort: { '_id.year': 1, '_id.month': 1 } },
-      ]),
+    // Fetch all paid orders
+    const ordersSnap = await db.collection('orders').where('payment.status', '==', 'paid').get();
+    const allOrders = snapshotToArr(ordersSnap);
+
+    const monthOrders = allOrders.filter((o) => o.createdAt >= monthStart && o.createdAt <= monthEnd);
+    const totalRevenue = allOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+    const monthRevenue = monthOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+
+    // Rentals
+    const rentalsSnap = await db.collection('rentals').where('payment.status', '==', 'paid').get();
+    const allRentals = snapshotToArr(rentalsSnap);
+    const monthRentals = allRentals.filter((r) => r.createdAt >= monthStart && r.createdAt <= monthEnd);
+
+    // Products and customers count
+    const [productsSnap, customersSnap] = await Promise.all([
+      db.collection('products').where('isActive', '==', true).count().get(),
+      db.collection('users').where('role', '==', 'customer').count().get(),
     ]);
+
+    // Recent orders (last 5)
+    const recentSnap = await db.collection('orders')
+      .where('payment.status', '==', 'paid')
+      .orderBy('createdAt', 'desc')
+      .limit(5)
+      .get();
+    const recentOrders = snapshotToArr(recentSnap);
+
+    // Top products by units sold (computed from order items)
+    const salesMap = {};
+    for (const order of allOrders) {
+      for (const item of (order.items || [])) {
+        if (!salesMap[item.product]) {
+          salesMap[item.product] = { name: item.name, totalSold: 0, revenue: 0 };
+        }
+        salesMap[item.product].totalSold += item.quantity || 0;
+        salesMap[item.product].revenue += (item.price || 0) * (item.quantity || 0);
+      }
+    }
+    const topProducts = Object.entries(salesMap)
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => b.totalSold - a.totalSold)
+      .slice(0, 5);
+
+    // Monthly revenue data (last 6 months)
+    const monthlyMap = {};
+    for (const order of allOrders) {
+      const d = new Date(order.createdAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!monthlyMap[key]) monthlyMap[key] = { month: key, orders: 0, revenue: 0 };
+      monthlyMap[key].orders += 1;
+      monthlyMap[key].revenue += order.total || 0;
+    }
+    const monthlyData = Object.values(monthlyMap).sort((a, b) => a.month.localeCompare(b.month)).slice(-6);
 
     return NextResponse.json({
       success: true,
       data: {
         overview: {
-          totalOrders, monthOrders,
-          totalRevenue: totalRevenue[0]?.total || 0,
-          monthRevenue: monthRevenue[0]?.total || 0,
-          totalRentals, monthRentals,
-          totalProducts, totalCustomers,
+          totalOrders: allOrders.length,
+          monthOrders: monthOrders.length,
+          totalRevenue,
+          monthRevenue,
+          totalRentals: allRentals.length,
+          monthRentals: monthRentals.length,
+          totalProducts: productsSnap.data().count,
+          totalCustomers: customersSnap.data().count,
         },
         recentOrders,
         topProducts,

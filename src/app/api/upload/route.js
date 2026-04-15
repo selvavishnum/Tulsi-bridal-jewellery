@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { uploadImage } from '@/lib/cloudinary';
+import { getBucket } from '@/lib/firebase';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 
@@ -15,9 +15,18 @@ export async function POST(request) {
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    const dataUrl = `data:${file.type};base64,${buffer.toString('base64')}`;
-    const result = await uploadImage(dataUrl, 'tulsi-bridal/products');
-    return NextResponse.json({ success: true, data: result });
+    const ext = file.name?.split('.').pop() || 'jpg';
+    const filename = `products/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+    const bucket = getBucket();
+    const fileRef = bucket.file(filename);
+    await fileRef.save(buffer, { contentType: file.type, public: true });
+
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+    return NextResponse.json({
+      success: true,
+      data: { url: publicUrl, public_id: filename, secure_url: publicUrl },
+    });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }

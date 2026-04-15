@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Rental from '@/models/Rental';
-import Product from '@/models/Product';
+import { getDB, paginate, docToObj } from '@/lib/firebase';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { calculateRentalDays } from '@/lib/utils';
@@ -10,18 +8,19 @@ export async function GET(request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
-    await connectDB();
+    const db = getDB();
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
-    const query = session.user.role === 'admin' ? {} : { user: session.user.id };
     const status = searchParams.get('status');
-    if (status) query.status = status;
-    const [rentals, total] = await Promise.all([
-      Rental.find(query).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate('user', 'name email').lean(),
-      Rental.countDocuments(query),
-    ]);
-    return NextResponse.json({ success: true, data: { rentals, total, pages: Math.ceil(total / limit), page } });
+
+    let q = db.collection('rentals');
+    if (session.user.role !== 'admin') q = q.where('userId', '==', session.user.id);
+    if (status) q = q.where('status', '==', status);
+    q = q.orderBy('createdAt', 'desc');
+
+    const result = await paginate(q, page, limit);
+    return NextResponse.json({ success: true, data: { rentals: result.data, total: result.total, pages: result.pages, page: result.page } });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
@@ -29,29 +28,32 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    await connectDB();
     const session = await getServerSession(authOptions);
+    const db = getDB();
     const body = await request.json();
     const { productId, rentalStartDate, rentalEndDate, customerDetails, payment, guestEmail } = body;
 
-    const product = await Product.findById(productId);
-    if (!product) return NextResponse.json({ success: false, message: 'Product not found' }, { status: 404 });
+    const prodDoc = await db.collection('products').doc(productId).get();
+    if (!prodDoc.exists) return NextResponse.json({ success: false, message: 'Product not found' }, { status: 404 });
+    const product = prodDoc.data();
     if (!product.isAvailableForRent || product.rentalStock < 1) {
       return NextResponse.json({ success: false, message: 'Product not available for rent' }, { status: 400 });
     }
 
     const rentalDays = calculateRentalDays(rentalStartDate, rentalEndDate);
-    const pricePerDay = product.rentalPrice;
+    const pricePerDay = product.rentalPrice || 0;
     const totalRentalCost = pricePerDay * rentalDays;
-    const securityDeposit = Math.round(product.price * 0.3);
+    const securityDeposit = Math.round((product.price || 0) * 0.3);
     const total = totalRentalCost + securityDeposit;
 
-    const rental = await Rental.create({
-      user: session?.user?.id || null,
-      guestEmail,
-      product: productId,
+    const rentalRef = db.collection('rentals').doc();
+    const rentalData = {
+      rentalNumber: `TBJr${Date.now()}`,
+      userId: session?.user?.id || null,
+      guestEmail: guestEmail || null,
+      productId,
       productName: product.name,
-      productImage: product.images?.[0],
+      productImage: product.images?.[0] || null,
       rentalStartDate,
       rentalEndDate,
       rentalDays,
@@ -59,11 +61,13 @@ export async function POST(request) {
       securityDeposit,
       totalRentalCost,
       total,
-      customerDetails,
+      customerDetails: customerDetails || {},
       payment: payment || { method: 'razorpay', status: 'pending' },
-    });
-
-    return NextResponse.json({ success: true, data: rental }, { status: 201 });
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+    await rentalRef.set(rentalData);
+    return NextResponse.json({ success: true, data: { id: rentalRef.id, ...rentalData } }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }

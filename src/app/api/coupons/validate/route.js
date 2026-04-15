@@ -1,26 +1,46 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Coupon from '@/models/Coupon';
+import { getDB } from '@/lib/firebase';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 
 export async function POST(request) {
   try {
-    await connectDB();
     const session = await getServerSession(authOptions);
     const { code, orderAmount } = await request.json();
     if (!code) return NextResponse.json({ success: false, message: 'Coupon code required' }, { status: 400 });
 
-    const coupon = await Coupon.findOne({ code: code.toUpperCase() });
-    if (!coupon) return NextResponse.json({ success: false, message: 'Invalid coupon code' }, { status: 404 });
+    const db = getDB();
+    const snap = await db.collection('coupons').where('code', '==', code.toUpperCase()).limit(1).get();
+    if (snap.empty) return NextResponse.json({ success: false, message: 'Invalid coupon code' }, { status: 404 });
 
-    const validation = coupon.isValid(orderAmount, session?.user?.id);
-    if (!validation.valid) return NextResponse.json({ success: false, message: validation.message }, { status: 400 });
+    const coupon = { id: snap.docs[0].id, ...snap.docs[0].data() };
 
-    const discount = coupon.calculateDiscount(orderAmount);
+    // Validate
+    if (!coupon.isActive) return NextResponse.json({ success: false, message: 'Coupon is inactive' }, { status: 400 });
+    if (coupon.expiresAt && new Date(coupon.expiresAt) < new Date()) {
+      return NextResponse.json({ success: false, message: 'Coupon has expired' }, { status: 400 });
+    }
+    if (coupon.usedCount >= coupon.maxUses) {
+      return NextResponse.json({ success: false, message: 'Coupon usage limit reached' }, { status: 400 });
+    }
+    if (orderAmount < coupon.minOrderAmount) {
+      return NextResponse.json({ success: false, message: `Minimum order amount is ₹${coupon.minOrderAmount}` }, { status: 400 });
+    }
+    if (session?.user?.id && coupon.usedBy?.includes(session.user.id)) {
+      return NextResponse.json({ success: false, message: 'You have already used this coupon' }, { status: 400 });
+    }
+
+    // Calculate discount
+    let discount = 0;
+    if (coupon.type === 'percentage') {
+      discount = Math.round((orderAmount * coupon.value) / 100);
+    } else {
+      discount = Math.min(coupon.value, orderAmount);
+    }
+
     return NextResponse.json({
       success: true,
-      data: { coupon: { _id: coupon._id, code: coupon.code, type: coupon.type, value: coupon.value }, discount },
+      data: { coupon: { id: coupon.id, code: coupon.code, type: coupon.type, value: coupon.value }, discount },
     });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });

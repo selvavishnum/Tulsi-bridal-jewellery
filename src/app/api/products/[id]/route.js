@@ -1,15 +1,14 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Product from '@/models/Product';
+import { getDB, docToObj } from '@/lib/firebase';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 
 export async function GET(request, { params }) {
   try {
-    await connectDB();
-    const product = await Product.findById(params.id).lean();
-    if (!product) return NextResponse.json({ success: false, message: 'Product not found' }, { status: 404 });
-    return NextResponse.json({ success: true, data: product });
+    const db = getDB();
+    const doc = await db.collection('products').doc(params.id).get();
+    if (!doc.exists) return NextResponse.json({ success: false, message: 'Product not found' }, { status: 404 });
+    return NextResponse.json({ success: true, data: docToObj(doc) });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
@@ -21,11 +20,14 @@ export async function PUT(request, { params }) {
     if (!session || session.user.role !== 'admin') {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }
-    await connectDB();
+    const db = getDB();
     const body = await request.json();
-    const product = await Product.findByIdAndUpdate(params.id, body, { new: true, runValidators: true });
-    if (!product) return NextResponse.json({ success: false, message: 'Product not found' }, { status: 404 });
-    return NextResponse.json({ success: true, data: product });
+    const ref = db.collection('products').doc(params.id);
+    const doc = await ref.get();
+    if (!doc.exists) return NextResponse.json({ success: false, message: 'Product not found' }, { status: 404 });
+    await ref.update({ ...body, updatedAt: new Date().toISOString() });
+    const updated = await ref.get();
+    return NextResponse.json({ success: true, data: docToObj(updated) });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
@@ -37,8 +39,8 @@ export async function DELETE(request, { params }) {
     if (!session || session.user.role !== 'admin') {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }
-    await connectDB();
-    await Product.findByIdAndUpdate(params.id, { isActive: false });
+    const db = getDB();
+    await db.collection('products').doc(params.id).update({ isActive: false });
     return NextResponse.json({ success: true, message: 'Product deleted' });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });

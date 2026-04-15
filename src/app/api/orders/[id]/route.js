@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Order from '@/models/Order';
-import Product from '@/models/Product';
+import { getDB, docToObj } from '@/lib/firebase';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 
@@ -9,10 +7,11 @@ export async function GET(request, { params }) {
   try {
     const session = await getServerSession(authOptions);
     if (!session) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
-    await connectDB();
-    const order = await Order.findById(params.id).populate('user', 'name email').lean();
-    if (!order) return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
-    if (session.user.role !== 'admin' && order.user?._id?.toString() !== session.user.id) {
+    const db = getDB();
+    const doc = await db.collection('orders').doc(params.id).get();
+    if (!doc.exists) return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
+    const order = docToObj(doc);
+    if (session.user.role !== 'admin' && order.userId !== session.user.id) {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }
     return NextResponse.json({ success: true, data: order });
@@ -27,26 +26,38 @@ export async function PUT(request, { params }) {
     if (!session || session.user.role !== 'admin') {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }
-    await connectDB();
+    const db = getDB();
     const { status, trackingNumber, notes } = await request.json();
-    const update = {};
+    const ref = db.collection('orders').doc(params.id);
+    const update = { updatedAt: new Date().toISOString() };
+
     if (status) {
       update.status = status;
-      if (status === 'delivered') update.deliveredAt = new Date();
-      if (status === 'cancelled') update.cancelledAt = new Date();
+      if (status === 'delivered') update.deliveredAt = new Date().toISOString();
+      if (status === 'cancelled') update.cancelledAt = new Date().toISOString();
 
       // Deduct stock on confirmation
       if (status === 'confirmed') {
-        const order = await Order.findById(params.id);
-        for (const item of order.items) {
-          await Product.findByIdAndUpdate(item.product, { $inc: { stock: -item.quantity } });
+        const orderDoc = await ref.get();
+        if (orderDoc.exists) {
+          const batch = db.batch();
+          for (const item of (orderDoc.data().items || [])) {
+            const prodRef = db.collection('products').doc(item.product);
+            const prodDoc = await prodRef.get();
+            if (prodDoc.exists) {
+              batch.update(prodRef, { stock: (prodDoc.data().stock || 0) - item.quantity });
+            }
+          }
+          await batch.commit();
         }
       }
     }
     if (trackingNumber) update.trackingNumber = trackingNumber;
     if (notes) update.notes = notes;
-    const order = await Order.findByIdAndUpdate(params.id, update, { new: true });
-    return NextResponse.json({ success: true, data: order });
+
+    await ref.update(update);
+    const updated = await ref.get();
+    return NextResponse.json({ success: true, data: docToObj(updated) });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }

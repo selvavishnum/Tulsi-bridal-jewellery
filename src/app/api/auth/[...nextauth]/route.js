@@ -1,7 +1,7 @@
 import NextAuth from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
+import { getDB, docToObj } from '@/lib/firebase';
+import bcrypt from 'bcryptjs';
 
 export const authOptions = {
   providers: [
@@ -13,12 +13,17 @@ export const authOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
-        await connectDB();
-        const user = await User.findOne({ email: credentials.email.toLowerCase(), isActive: true }).select('+password');
-        if (!user) return null;
-        const isValid = await user.comparePassword(credentials.password);
+        const db = getDB();
+        const snap = await db.collection('users')
+          .where('email', '==', credentials.email.toLowerCase())
+          .where('isActive', '==', true)
+          .limit(1)
+          .get();
+        if (snap.empty) return null;
+        const user = { id: snap.docs[0].id, ...snap.docs[0].data() };
+        const isValid = await bcrypt.compare(credentials.password, user.password);
         if (!isValid) return null;
-        return { id: user._id.toString(), name: user.name, email: user.email, role: user.role };
+        return { id: user.id, name: user.name, email: user.email, role: user.role };
       },
     }),
   ],
