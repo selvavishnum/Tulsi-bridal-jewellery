@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
+    "cloudinary": "^2.9.0",
     "date-fns": "^3.6.0",
     "firebase-admin": "^13.8.0",
     "framer-motion": "^11.2.10",
