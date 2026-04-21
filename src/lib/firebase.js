@@ -22,13 +22,15 @@ function initFirebase() {
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const privateKey = parsePrivateKey(process.env.FIREBASE_PRIVATE_KEY);
 
-  if (!projectId || !clientEmail || !privateKey) {
-    throw new Error('Missing Firebase credentials. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY in Vercel environment variables.');
-  }
+  if (!projectId) throw new Error('FIREBASE_PROJECT_ID is missing. Add it in Vercel → Settings → Environment Variables.');
+  if (!clientEmail) throw new Error('FIREBASE_CLIENT_EMAIL is missing. Add it in Vercel → Settings → Environment Variables.');
+  if (!privateKey) throw new Error('FIREBASE_PRIVATE_KEY is missing. Add it in Vercel → Settings → Environment Variables.');
 
-  return initializeApp({
-    credential: cert({ projectId, clientEmail, privateKey }),
-  });
+  try {
+    return initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
+  } catch (err) {
+    throw new Error(`Firebase init failed: ${err.message}. Check FIREBASE_PRIVATE_KEY — paste the full key including -----BEGIN PRIVATE KEY----- and -----END PRIVATE KEY-----`);
+  }
 }
 
 export function getDB() {
