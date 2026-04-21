@@ -4,45 +4,52 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { getDB } from '@/lib/firebase';
 import bcrypt from 'bcryptjs';
 
+function getAdminEmails() {
+  return (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
+    .split(',').map((e) => e.trim()).filter(Boolean);
+}
+
 async function upsertGoogleUser(db, profile) {
   const snap = await db.collection('users').where('email', '==', profile.email).limit(1).get();
   if (!snap.empty) {
     const doc = snap.docs[0];
+    const existing = doc.data();
     await doc.ref.update({ name: profile.name, googleId: profile.sub, updatedAt: new Date().toISOString() });
-    return { id: doc.id, ...doc.data(), role: doc.data().role || 'customer' };
+    return { id: doc.id, ...existing };
   }
-  // New Google user — create account
   const ref = db.collection('users').doc();
-  const adminEmails = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '').split(',').map((e) => e.trim());
-  const role = adminEmails.includes(profile.email) ? 'admin' : 'customer';
+  const role = getAdminEmails().includes(profile.email) ? 'admin' : 'customer';
   const userData = {
-    name: profile.name,
-    email: profile.email,
-    googleId: profile.sub,
-    avatar: profile.picture,
-    role,
-    isActive: true,
-    createdAt: new Date().toISOString(),
+    name: profile.name, email: profile.email, googleId: profile.sub,
+    avatar: profile.picture, role, isActive: true, createdAt: new Date().toISOString(),
   };
   await ref.set(userData);
   return { id: ref.id, ...userData };
 }
 
-export const authOptions = {
-  providers: [
+/* Only add Google provider when credentials are actually configured */
+const providers = [];
+
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  providers.push(
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    }),
-    CredentialsProvider({
-      id: 'credentials',
-      name: 'Email & Password',
-      credentials: {
-        email: { label: 'Email', type: 'email' },
-        password: { label: 'Password', type: 'password' },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+    })
+  );
+}
+
+providers.push(
+  CredentialsProvider({
+    id: 'credentials',
+    name: 'Email & Password',
+    credentials: {
+      email: { label: 'Email', type: 'email' },
+      password: { label: 'Password', type: 'password' },
+    },
+    async authorize(credentials) {
+      if (!credentials?.email || !credentials?.password) return null;
+      try {
         const db = getDB();
         const snap = await db.collection('users')
           .where('email', '==', credentials.email.toLowerCase())
@@ -50,21 +57,26 @@ export const authOptions = {
           .limit(1).get();
         if (snap.empty) return null;
         const user = { id: snap.docs[0].id, ...snap.docs[0].data() };
-        if (!user.password) return null; // Google-only account
+        if (!user.password) return null;
         const isValid = await bcrypt.compare(credentials.password, user.password);
         if (!isValid) return null;
         return { id: user.id, name: user.name, email: user.email, role: user.role };
-      },
-    }),
-    CredentialsProvider({
-      id: 'otp',
-      name: 'Email OTP',
-      credentials: {
-        email: { label: 'Email', type: 'email' },
-        otp: { label: 'OTP Code', type: 'text' },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.otp) return null;
+      } catch (err) {
+        console.error('Auth error:', err.message);
+        return null;
+      }
+    },
+  }),
+  CredentialsProvider({
+    id: 'otp',
+    name: 'Email OTP',
+    credentials: {
+      email: { label: 'Email', type: 'email' },
+      otp: { label: 'OTP Code', type: 'text' },
+    },
+    async authorize(credentials) {
+      if (!credentials?.email || !credentials?.otp) return null;
+      try {
         const db = getDB();
         const snap = await db.collection('otp_codes')
           .where('email', '==', credentials.email.toLowerCase())
@@ -72,28 +84,39 @@ export const authOptions = {
           .limit(1).get();
         if (snap.empty) return null;
         const otpDoc = snap.docs[0];
-        const { expiresAt, used } = otpDoc.data();
-        if (used || new Date(expiresAt) < new Date()) {
+        const { expiresAt } = otpDoc.data();
+        if (new Date(expiresAt) < new Date()) {
           await otpDoc.ref.delete();
           return null;
         }
         await otpDoc.ref.delete(); // one-time use
-        // Get or create user
-        const userSnap = await db.collection('users').where('email', '==', credentials.email.toLowerCase()).limit(1).get();
+
+        const userSnap = await db.collection('users')
+          .where('email', '==', credentials.email.toLowerCase()).limit(1).get();
         if (!userSnap.empty) {
           const u = { id: userSnap.docs[0].id, ...userSnap.docs[0].data() };
           return { id: u.id, name: u.name, email: u.email, role: u.role };
         }
-        // Auto-create account for OTP login
+        // Auto-create on first OTP login
         const ref = db.collection('users').doc();
-        const adminEmails = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '').split(',').map((e) => e.trim());
-        const role = adminEmails.includes(credentials.email) ? 'admin' : 'customer';
-        const userData = { name: credentials.email.split('@')[0], email: credentials.email.toLowerCase(), role, isActive: true, createdAt: new Date().toISOString() };
+        const role = getAdminEmails().includes(credentials.email.toLowerCase()) ? 'admin' : 'customer';
+        const userData = {
+          name: credentials.email.split('@')[0],
+          email: credentials.email.toLowerCase(),
+          role, isActive: true, createdAt: new Date().toISOString(),
+        };
         await ref.set(userData);
         return { id: ref.id, ...userData };
-      },
-    }),
-  ],
+      } catch (err) {
+        console.error('OTP auth error:', err.message);
+        return null;
+      }
+    },
+  })
+);
+
+export const authOptions = {
+  providers,
   callbacks: {
     async signIn({ user, account, profile }) {
       if (account?.provider === 'google') {
@@ -102,22 +125,15 @@ export const authOptions = {
           const dbUser = await upsertGoogleUser(db, profile);
           user.id = dbUser.id;
           user.role = dbUser.role;
-        } catch { return false; }
+        } catch (err) {
+          console.error('Google signIn error:', err.message);
+          return false;
+        }
       }
       return true;
     },
-    async jwt({ token, user, account }) {
-      if (user) {
-        token.id = user.id;
-        token.role = user.role;
-      }
-      if (account?.provider === 'google' && !token.role) {
-        try {
-          const db = getDB();
-          const snap = await db.collection('users').where('email', '==', token.email).limit(1).get();
-          if (!snap.empty) token.role = snap.docs[0].data().role || 'customer';
-        } catch {}
-      }
+    async jwt({ token, user }) {
+      if (user) { token.id = user.id; token.role = user.role; }
       return token;
     },
     async session({ session, token }) {
