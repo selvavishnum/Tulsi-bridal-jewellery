@@ -51,18 +51,18 @@ providers.push(
       if (!credentials?.email || !credentials?.password) return null;
       try {
         const db = getDB();
+        // Single-field query only — no composite index needed
         const snap = await db.collection('users')
           .where('email', '==', credentials.email.toLowerCase())
-          .where('isActive', '==', true)
           .limit(1).get();
         if (snap.empty) return null;
         const user = { id: snap.docs[0].id, ...snap.docs[0].data() };
-        if (!user.password) return null;
+        if (!user.isActive || !user.password) return null;
         const isValid = await bcrypt.compare(credentials.password, user.password);
         if (!isValid) return null;
-        return { id: user.id, name: user.name, email: user.email, role: user.role };
+        return { id: user.id, name: user.name, email: user.email, role: user.role || 'customer' };
       } catch (err) {
-        console.error('Auth error:', err.message);
+        console.error('Auth credentials error:', err.message);
         return null;
       }
     },
@@ -78,12 +78,14 @@ providers.push(
       if (!credentials?.email || !credentials?.otp) return null;
       try {
         const db = getDB();
+        // Single-field query — check code in code to avoid composite index
         const snap = await db.collection('otp_codes')
           .where('email', '==', credentials.email.toLowerCase())
-          .where('code', '==', credentials.otp.trim())
-          .limit(1).get();
+          .limit(5).get();
         if (snap.empty) return null;
-        const otpDoc = snap.docs[0];
+        // Find matching code among results
+        const otpDoc = snap.docs.find((d) => d.data().code === credentials.otp.trim());
+        if (!otpDoc) return null;
         const { expiresAt } = otpDoc.data();
         if (new Date(expiresAt) < new Date()) {
           await otpDoc.ref.delete();
@@ -141,7 +143,7 @@ export const authOptions = {
       return session;
     },
   },
-  pages: { signIn: '/login', error: '/login' },
+  pages: { signIn: '/login', error: '/auth-error' },
   session: { strategy: 'jwt', maxAge: 30 * 24 * 60 * 60 },
   secret: process.env.NEXTAUTH_SECRET,
 };
