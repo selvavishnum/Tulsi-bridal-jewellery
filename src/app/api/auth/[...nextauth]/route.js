@@ -6,37 +6,39 @@ import bcrypt from 'bcryptjs';
 
 function getAdminEmails() {
   return (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
-    .split(',').map((e) => e.trim()).filter(Boolean);
+    .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+}
+
+/* Always returns correct role — upgrades existing users if email is in ADMIN_EMAILS */
+function resolveRole(email, storedRole) {
+  if (getAdminEmails().includes(email.toLowerCase())) return 'admin';
+  return storedRole || 'customer';
 }
 
 async function upsertGoogleUser(db, profile) {
-  const snap = await db.collection('users').where('email', '==', profile.email).limit(1).get();
+  const snap = await db.collection('users').where('email', '==', profile.email.toLowerCase()).limit(1).get();
+  const role = resolveRole(profile.email, snap.empty ? null : snap.docs[0].data().role);
   if (!snap.empty) {
     const doc = snap.docs[0];
-    const existing = doc.data();
-    await doc.ref.update({ name: profile.name, googleId: profile.sub, updatedAt: new Date().toISOString() });
-    return { id: doc.id, ...existing };
+    await doc.ref.update({ name: profile.name, googleId: profile.sub, role, updatedAt: new Date().toISOString() });
+    return { id: doc.id, ...doc.data(), role };
   }
   const ref = db.collection('users').doc();
-  const role = getAdminEmails().includes(profile.email) ? 'admin' : 'customer';
   const userData = {
-    name: profile.name, email: profile.email, googleId: profile.sub,
+    name: profile.name, email: profile.email.toLowerCase(), googleId: profile.sub,
     avatar: profile.picture, role, isActive: true, createdAt: new Date().toISOString(),
   };
   await ref.set(userData);
   return { id: ref.id, ...userData };
 }
 
-/* Only add Google provider when credentials are actually configured */
 const providers = [];
 
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  providers.push(
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    })
-  );
+  providers.push(GoogleProvider({
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  }));
 }
 
 providers.push(
@@ -51,16 +53,16 @@ providers.push(
       if (!credentials?.email || !credentials?.password) return null;
       try {
         const db = getDB();
-        // Single-field query only — no composite index needed
         const snap = await db.collection('users')
-          .where('email', '==', credentials.email.toLowerCase())
-          .limit(1).get();
+          .where('email', '==', credentials.email.toLowerCase()).limit(1).get();
         if (snap.empty) return null;
         const user = { id: snap.docs[0].id, ...snap.docs[0].data() };
         if (!user.isActive || !user.password) return null;
         const isValid = await bcrypt.compare(credentials.password, user.password);
         if (!isValid) return null;
-        return { id: user.id, name: user.name, email: user.email, role: user.role || 'customer' };
+        const role = resolveRole(user.email, user.role);
+        if (role !== user.role) await snap.docs[0].ref.update({ role });
+        return { id: user.id, name: user.name, email: user.email, role };
       } catch (err) {
         console.error('Auth credentials error:', err.message);
         return null;
@@ -78,30 +80,26 @@ providers.push(
       if (!credentials?.email || !credentials?.otp) return null;
       try {
         const db = getDB();
-        // Single-field query — check code in code to avoid composite index
         const snap = await db.collection('otp_codes')
-          .where('email', '==', credentials.email.toLowerCase())
-          .limit(5).get();
+          .where('email', '==', credentials.email.toLowerCase()).limit(5).get();
         if (snap.empty) return null;
-        // Find matching code among results
         const otpDoc = snap.docs.find((d) => d.data().code === credentials.otp.trim());
         if (!otpDoc) return null;
         const { expiresAt } = otpDoc.data();
-        if (new Date(expiresAt) < new Date()) {
-          await otpDoc.ref.delete();
-          return null;
-        }
-        await otpDoc.ref.delete(); // one-time use
+        if (new Date(expiresAt) < new Date()) { await otpDoc.ref.delete(); return null; }
+        await otpDoc.ref.delete();
 
         const userSnap = await db.collection('users')
           .where('email', '==', credentials.email.toLowerCase()).limit(1).get();
         if (!userSnap.empty) {
           const u = { id: userSnap.docs[0].id, ...userSnap.docs[0].data() };
-          return { id: u.id, name: u.name, email: u.email, role: u.role };
+          const role = resolveRole(u.email, u.role);
+          if (role !== u.role) await userSnap.docs[0].ref.update({ role });
+          return { id: u.id, name: u.name, email: u.email, role };
         }
-        // Auto-create on first OTP login
+        // First OTP login — create user
         const ref = db.collection('users').doc();
-        const role = getAdminEmails().includes(credentials.email.toLowerCase()) ? 'admin' : 'customer';
+        const role = resolveRole(credentials.email, null);
         const userData = {
           name: credentials.email.split('@')[0],
           email: credentials.email.toLowerCase(),
