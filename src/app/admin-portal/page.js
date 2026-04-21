@@ -57,8 +57,12 @@ export default function AdminPortalPage() {
     setLoading('pw');
     try {
       const r = await signIn('credentials', { email, password, redirect: false });
-      if (r?.error) toast.error('Wrong email or password');
-      else toast.success('Checking access…');
+      if (r?.error) {
+        toast.error('Wrong email or password');
+      } else {
+        toast.success('Signed in! Checking admin access…');
+        router.replace('/admin');
+      }
     } finally { setLoading(null); }
   }
 
@@ -71,8 +75,10 @@ export default function AdminPortalPage() {
         body: JSON.stringify({ email }),
       });
       const data = await res.json();
-      if (data.success) { toast.success('OTP sent to your email!'); setOtpStep('verify'); }
-      else toast.error(data.message || 'Failed to send OTP');
+      if (data.success) {
+        toast.success('OTP sent! Check Vercel Logs for the code.');
+        setOtpStep('verify');
+      } else toast.error(data.message || 'Failed to send OTP');
     } catch { toast.error('Network error'); }
     finally { setLoading(null); }
   }
@@ -82,8 +88,14 @@ export default function AdminPortalPage() {
     setLoading('verify');
     try {
       const r = await signIn('otp', { email, otp, redirect: false });
-      if (r?.error) toast.error('Invalid or expired OTP');
-      else toast.success('Checking admin access…');
+      if (r?.error) {
+        toast.error('Invalid or expired OTP. Try again.');
+        setOtp('');
+      } else {
+        toast.success('OTP verified! Opening admin panel…');
+        // Force hard navigate to admin — bypasses any session cache
+        window.location.href = '/admin';
+      }
     } finally { setLoading(null); }
   }
 

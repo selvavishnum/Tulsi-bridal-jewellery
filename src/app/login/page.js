@@ -44,7 +44,7 @@ function PasswordForm({ callbackUrl }) {
       if (mode === 'login') {
         const r = await signIn('credentials', { email: form.email, password: form.password, redirect: false });
         if (r?.error) toast.error('Wrong email or password');
-        else { toast.success('Welcome back!'); router.push(callbackUrl); }
+        else { toast.success('Welcome back!'); window.location.href = callbackUrl || '/'; }
       } else {
         const res = await fetch('/api/auth/register', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -122,8 +122,13 @@ function OTPForm({ callbackUrl }) {
     setLoading(true);
     try {
       const r = await signIn('otp', { email, otp, redirect: false });
-      if (r?.error) toast.error('Invalid or expired OTP. Try again.');
-      else { toast.success('Signed in!'); router.push(callbackUrl); }
+      if (r?.error) {
+        toast.error('Invalid or expired OTP. Try again.');
+        setOtp('');
+      } else {
+        toast.success('Signed in! Redirecting…');
+        window.location.href = callbackUrl || '/';
+      }
     } finally { setLoading(false); }
   }
 
