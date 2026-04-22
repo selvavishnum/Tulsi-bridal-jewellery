@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { signIn, useSession } from 'next-auth/react';
+import { useState } from 'react';
+import { signIn, signOut, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { FiLock, FiMail, FiShield, FiCheckCircle, FiAlertCircle, FiArrowRight } from 'react-icons/fi';
+import { FiLock, FiMail, FiShield, FiAlertCircle, FiArrowRight } from 'react-icons/fi';
 import { GiQueenCrown } from 'react-icons/gi';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -46,20 +46,24 @@ export default function AdminPortalPage() {
   // OTP flow
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
-  const [otpStep, setOtpStep] = useState('email'); // 'email' | 'verify' | 'success'
+  const [otpStep, setOtpStep] = useState('email'); // 'email' | 'verify'
 
   // Password flow
   const [pwEmail, setPwEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // Once session resolves, auto-redirect admins
-  useEffect(() => {
-    if (status === 'authenticated') {
-      if (session.user.role === 'admin') {
-        router.replace('/admin');
-      }
-    }
-  }, [status, session, router]);
+  // Already logged-in admin — go straight to dashboard
+  if (status === 'authenticated' && session?.user?.role === 'admin') {
+    router.replace('/admin');
+    return (
+      <Screen>
+        <div className="flex flex-col items-center gap-3">
+          <LoadingSpinner size="lg" />
+          <p className="text-slate-400 text-sm">Opening admin panel…</p>
+        </div>
+      </Screen>
+    );
+  }
 
   if (status === 'loading') {
     return (
@@ -75,7 +79,8 @@ export default function AdminPortalPage() {
     );
   }
 
-  if (status === 'authenticated' && session.user.role !== 'admin') {
+  // Logged in but not admin — show clear error with sign-out option
+  if (status === 'authenticated' && session?.user?.role !== 'admin') {
     return (
       <Screen>
         <div className="w-full max-w-sm text-center space-y-4">
@@ -86,7 +91,9 @@ export default function AdminPortalPage() {
           <p className="text-slate-400 text-sm">
             <span className="text-white font-medium">{session.user.email}</span> is not listed as an admin.
           </p>
-          <p className="text-slate-500 text-xs">Contact the system administrator to get access.</p>
+          <p className="text-slate-500 text-xs leading-relaxed">
+            Make sure <code className="bg-slate-800 px-1 rounded text-amber-400">ADMIN_EMAILS</code> is set in Vercel with your email address.
+          </p>
           <div className="flex gap-3 justify-center pt-2">
             <button
               onClick={() => router.push('/')}
@@ -95,10 +102,10 @@ export default function AdminPortalPage() {
               Go to Shop
             </button>
             <button
-              onClick={() => signIn()}
+              onClick={() => signOut({ callbackUrl: '/admin-portal' })}
               className="px-4 py-2 text-sm text-amber-400 hover:text-amber-300 border border-amber-700/40 rounded-lg transition"
             >
-              Sign in as different user
+              Sign Out &amp; Retry
             </button>
           </div>
         </div>
@@ -140,8 +147,9 @@ export default function AdminPortalPage() {
         toast.error('Invalid or expired OTP. Try again.');
         setOtp('');
       } else {
-        setOtpStep('success');
-        // useEffect above detects session.user.role === 'admin' and redirects to /admin
+        // signIn() with redirect:false awaits until the session cookie is fully written.
+        // Hard-navigate so /admin loads fresh with the correct session — no useSession timing issues.
+        window.location.replace('/admin');
       }
     } finally {
       setLoading(null);
@@ -156,8 +164,9 @@ export default function AdminPortalPage() {
       const r = await signIn('credentials', { email: pwEmail, password, redirect: false });
       if (r?.error) {
         toast.error('Wrong email or password.');
+      } else {
+        window.location.replace('/admin');
       }
-      // on success, useEffect detects session change and redirects
     } finally {
       setLoading(null);
     }
@@ -228,7 +237,13 @@ export default function AdminPortalPage() {
             )}
 
             {/* ── OTP: Enter code ── */}
-            {tab === 'otp' && otpStep === 'verify' && (
+            {tab === 'otp' && otpStep === 'verify' && loading === 'verify' && (
+              <div className="text-center py-8 space-y-3">
+                <LoadingSpinner size="lg" />
+                <p className="text-slate-400 text-sm">Verifying OTP…</p>
+              </div>
+            )}
+            {tab === 'otp' && otpStep === 'verify' && loading !== 'verify' && (
               <form onSubmit={verifyOTP} className="space-y-4">
                 <div className="text-center space-y-1">
                   <div className="inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-full px-3 py-1">
@@ -254,18 +269,6 @@ export default function AdminPortalPage() {
                   ← Use a different email
                 </button>
               </form>
-            )}
-
-            {/* ── OTP: Success state ── */}
-            {tab === 'otp' && otpStep === 'success' && (
-              <div className="text-center py-6 space-y-3">
-                <div className="w-14 h-14 rounded-full bg-green-500/15 border border-green-500/30 flex items-center justify-center mx-auto">
-                  <FiCheckCircle className="text-green-400 text-3xl" />
-                </div>
-                <p className="text-white font-semibold">Verified!</p>
-                <p className="text-slate-400 text-sm">Opening admin panel…</p>
-                <LoadingSpinner size="sm" />
-              </div>
             )}
 
             {/* ── Password tab ── */}

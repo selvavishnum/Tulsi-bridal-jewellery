@@ -139,8 +139,39 @@ export default function AdminLayout({ children }) {
         </div>
       );
     }
-    if (status === 'unauthenticated') { router.push('/admin-portal'); return null; }
-    if (session?.user?.role !== 'admin') { router.push('/admin-portal'); return null; }
+
+    if (status === 'unauthenticated') {
+      router.replace('/admin-portal');
+      return null;
+    }
+
+    if (session?.user?.role !== 'admin') {
+      // Show a clear error — never silently bounce to homepage
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-[#070b11] px-4">
+          <div className="text-center space-y-4 max-w-sm">
+            <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto">
+              <FiAlertTriangle className="text-red-400 text-3xl" />
+            </div>
+            <h2 className="text-white text-xl font-bold">Access Denied</h2>
+            <p className="text-slate-400 text-sm">
+              <span className="text-white font-medium">{session?.user?.email}</span> is not an admin account.
+            </p>
+            <p className="text-slate-500 text-xs leading-relaxed">
+              Add your email to <code className="bg-slate-800 px-1 rounded text-amber-400">ADMIN_EMAILS</code> in Vercel environment variables, then redeploy.
+            </p>
+            <div className="flex gap-3 justify-center pt-1">
+              <button
+                onClick={() => signOut({ callbackUrl: '/admin-portal' })}
+                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-xl transition flex items-center gap-2"
+              >
+                <FiLogOut className="text-sm" /> Sign Out &amp; Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
   }
 
   const bypassSession = DEV_BYPASS ? { user: { email: 'dev-bypass@test.com', name: 'Dev Admin' } } : null;
