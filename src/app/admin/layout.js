@@ -8,10 +8,14 @@ import {
   FiHome, FiPackage, FiShoppingBag, FiCalendar, FiBarChart2,
   FiTag, FiUsers, FiMenu, FiLogOut, FiTruck, FiArchive,
   FiDollarSign, FiSettings, FiUserCheck, FiTrendingUp, FiX,
-  FiExternalLink, FiChevronRight,
+  FiExternalLink, FiChevronRight, FiAlertTriangle,
 } from 'react-icons/fi';
 import { GiQueenCrown } from 'react-icons/gi';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
+
+/* Set NEXT_PUBLIC_ADMIN_BYPASS=true in Vercel env vars to skip login during testing.
+   Remove or set to false before going live with real customers. */
+const DEV_BYPASS = process.env.NEXT_PUBLIC_ADMIN_BYPASS === 'true';
 
 const NAV = [
   { href: '/admin',            label: 'Dashboard',       icon: FiHome,        exact: true },
@@ -126,30 +130,28 @@ export default function AdminLayout({ children }) {
   // Close mobile sidebar on route change
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
 
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0d1117]">
-        <LoadingSpinner size="lg" />
-      </div>
-    );
+  // Dev bypass: skip all auth checks when NEXT_PUBLIC_ADMIN_BYPASS=true
+  if (!DEV_BYPASS) {
+    if (status === 'loading') {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-[#0d1117]">
+          <LoadingSpinner size="lg" />
+        </div>
+      );
+    }
+    if (status === 'unauthenticated') { router.push('/admin-portal'); return null; }
+    if (session?.user?.role !== 'admin') { router.push('/admin-portal'); return null; }
   }
 
-  if (status === 'unauthenticated') {
-    router.push('/admin-portal');
-    return null;
-  }
-
-  if (session?.user?.role !== 'admin') {
-    router.push('/admin-portal');
-    return null;
-  }
+  const bypassSession = DEV_BYPASS ? { user: { email: 'dev-bypass@test.com', name: 'Dev Admin' } } : null;
+  const activeSession = session || bypassSession;
 
   return (
     <div className="flex h-screen bg-[#f0f2f5] overflow-hidden">
 
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:w-56 lg:w-60 flex-shrink-0 flex-col">
-        <Sidebar session={session} pathname={pathname} />
+        <Sidebar session={activeSession} pathname={pathname} />
       </aside>
 
       {/* Mobile sidebar overlay */}
@@ -160,7 +162,7 @@ export default function AdminLayout({ children }) {
             onClick={() => setSidebarOpen(false)}
           />
           <aside className="relative w-64 h-full z-10 shadow-2xl">
-            <Sidebar session={session} pathname={pathname} onClose={() => setSidebarOpen(false)} />
+            <Sidebar session={activeSession} pathname={pathname} onClose={() => setSidebarOpen(false)} />
           </aside>
         </div>
       )}
@@ -183,11 +185,21 @@ export default function AdminLayout({ children }) {
           <div className="ml-auto">
             <div className="w-7 h-7 rounded-full bg-amber-700/30 border border-amber-600/40 flex items-center justify-center">
               <span className="text-amber-300 text-xs font-bold">
-                {session?.user?.name?.[0]?.toUpperCase() || 'A'}
+                {activeSession?.user?.name?.[0]?.toUpperCase() || 'A'}
               </span>
             </div>
           </div>
         </header>
+
+        {/* Dev bypass warning banner */}
+        {DEV_BYPASS && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white text-xs font-semibold flex-shrink-0">
+            <FiAlertTriangle className="flex-shrink-0" />
+            <span>
+              DEV BYPASS ACTIVE — Authentication is disabled. Remove <code className="bg-orange-600 px-1 rounded">NEXT_PUBLIC_ADMIN_BYPASS=true</code> from Vercel env vars before going live.
+            </span>
+          </div>
+        )}
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
