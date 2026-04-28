@@ -4,9 +4,7 @@ import { getDB, snapshotToArr, docToObj } from '@/lib/firebase';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 
-// Testing mode — hardcoded true. When going live, change to:
-// const DEV_BYPASS = process.env.NEXT_PUBLIC_ADMIN_BYPASS === 'true';
-const DEV_BYPASS = true;
+const DEV_BYPASS = process.env.NEXT_PUBLIC_ADMIN_BYPASS === 'true';
 
 const MOCK_ADMIN_SESSION = {
   user: { id: 'dev-bypass', email: 'dev-bypass@test.com', name: 'Dev Admin', role: 'admin' },

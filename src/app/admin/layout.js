@@ -15,7 +15,7 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
 /* Set NEXT_PUBLIC_ADMIN_BYPASS=true in Vercel env vars to skip login during testing.
    Remove or set to false before going live with real customers. */
-const DEV_BYPASS = true; // Testing mode — set to: process.env.NEXT_PUBLIC_ADMIN_BYPASS === 'true' when going live
+const DEV_BYPASS = process.env.NEXT_PUBLIC_ADMIN_BYPASS === 'true';
 
 const NAV = [
   { href: '/admin',            label: 'Dashboard',       icon: FiHome,        exact: true },
