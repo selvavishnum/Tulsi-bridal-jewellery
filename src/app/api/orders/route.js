@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getDB, paginate } from '@/lib/firebase';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { getEffectiveSession } from '@/lib/adminCollection';
 
 export async function GET(request) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getEffectiveSession();
     if (!session) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+
     const db = getDB();
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
@@ -27,7 +27,7 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getEffectiveSession();
     const db = getDB();
     const body = await request.json();
     const { items, shippingAddress, payment, coupon, couponCode, subtotal, shippingCost, discount, total, guestEmail } = body;

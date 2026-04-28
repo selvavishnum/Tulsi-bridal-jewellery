@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDB, paginate } from '@/lib/firebase';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { requireAdmin } from '@/lib/adminCollection';
 import { slugify } from '@/lib/utils';
 
 export async function GET(request) {
@@ -42,10 +41,9 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session || session.user.role !== 'admin') {
-      return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
-    }
+    const session = await requireAdmin();
+    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+
     const db = getDB();
     const body = await request.json();
     if (!body.slug) body.slug = slugify(body.name);

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDB, docToObj } from '@/lib/firebase';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { requireAdmin } from '@/lib/adminCollection';
 
 export async function GET(request, { params }) {
   try {
@@ -16,10 +15,9 @@ export async function GET(request, { params }) {
 
 export async function PUT(request, { params }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session || session.user.role !== 'admin') {
-      return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
-    }
+    const session = await requireAdmin();
+    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+
     const db = getDB();
     const body = await request.json();
     const ref = db.collection('products').doc(params.id);
@@ -35,10 +33,9 @@ export async function PUT(request, { params }) {
 
 export async function DELETE(request, { params }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session || session.user.role !== 'admin') {
-      return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
-    }
+    const session = await requireAdmin();
+    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+
     const db = getDB();
     await db.collection('products').doc(params.id).update({ isActive: false });
     return NextResponse.json({ success: true, message: 'Product deleted' });

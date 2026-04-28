@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getDB, docToObj } from '@/lib/firebase';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { getEffectiveSession, requireAdmin } from '@/lib/adminCollection';
 
 export async function GET(request, { params }) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getEffectiveSession();
     if (!session) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+
     const db = getDB();
     const doc = await db.collection('orders').doc(params.id).get();
     if (!doc.exists) return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
@@ -22,10 +22,9 @@ export async function GET(request, { params }) {
 
 export async function PUT(request, { params }) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session || session.user.role !== 'admin') {
-      return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
-    }
+    const session = await requireAdmin();
+    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+
     const db = getDB();
     const { status, trackingNumber, notes } = await request.json();
     const ref = db.collection('orders').doc(params.id);

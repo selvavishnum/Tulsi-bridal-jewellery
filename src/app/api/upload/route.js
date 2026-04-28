@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server';
 import { uploadImage } from '@/lib/cloudinary';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { requireAdmin } from '@/lib/adminCollection';
 
 export async function POST(request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session || session.user.role !== 'admin') {
-      return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
-    }
+    const session = await requireAdmin();
+    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+
     const formData = await request.formData();
     const file = formData.get('file');
     if (!file) return NextResponse.json({ success: false, message: 'No file provided' }, { status: 400 });
