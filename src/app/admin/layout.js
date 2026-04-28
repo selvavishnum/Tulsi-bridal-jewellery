@@ -8,7 +8,7 @@ import {
   FiHome, FiPackage, FiShoppingBag, FiCalendar, FiBarChart2,
   FiTag, FiUsers, FiMenu, FiLogOut, FiTruck, FiArchive,
   FiDollarSign, FiSettings, FiUserCheck, FiTrendingUp, FiX,
-  FiExternalLink, FiChevronRight, FiAlertTriangle,
+  FiExternalLink, FiChevronRight, FiAlertTriangle, FiCamera,
 } from 'react-icons/fi';
 import { GiQueenCrown } from 'react-icons/gi';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -30,7 +30,8 @@ const NAV = [
   { href: '/admin/warehouses', label: 'Warehouses',      icon: FiArchive },
   { href: '/admin/employees',  label: 'Employees',       icon: FiUserCheck },
   { href: '/admin/accounting', label: 'Accounting',      icon: FiDollarSign },
-  { href: '/admin/settings',   label: 'Settings',        icon: FiSettings },
+  { href: '/admin/settings',     label: 'Settings',        icon: FiSettings },
+  { href: '/admin/photo-editor', label: 'Photo Editor',    icon: FiCamera },
 ];
 
 const NAV_GROUPS = [

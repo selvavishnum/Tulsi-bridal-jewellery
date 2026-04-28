@@ -9,7 +9,7 @@ import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
-const WA_NUMBER = '919876543210';
+const DEFAULT_WA = '919876543210';
 
 const CATEGORIES = [
   { label: 'Necklaces',   href: '/catalog?category=necklace',    emoji: '📿' },
@@ -121,13 +121,21 @@ function ProductCard({ product }) {
 export default function HomePage() {
   const [products, setProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [siteSettings, setSiteSettings] = useState({});
+
+  const waNumber = (siteSettings.whatsapp || siteSettings.phone || DEFAULT_WA).replace(/\D/g, '');
 
   useEffect(() => {
-    fetch('/api/products?featured=true&limit=8')
+    fetch('/api/products?limit=8')
       .then((r) => r.json())
       .then((d) => { if (d.success) setProducts(d.data.products || []); })
       .catch(() => {})
       .finally(() => setLoadingProducts(false));
+
+    fetch('/api/admin/settings')
+      .then((r) => r.json())
+      .then((d) => { if (d.success && d.data) setSiteSettings(d.data); })
+      .catch(() => {});
   }, []);
 
   return (
@@ -301,7 +309,7 @@ export default function HomePage() {
               Browse Rentals
             </Link>
             <a
-              href={`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent("Hi! I'd like to enquire about bridal jewellery rentals.")}`}
+              href={`https://wa.me/${waNumber}?text=${encodeURIComponent("Hi! I'd like to enquire about bridal jewellery rentals.")}`}
               target="_blank"
               rel="noopener noreferrer"
               className="px-9 py-3.5 border border-white/25 text-white font-bold tracking-[0.18em] uppercase text-xs hover:border-gold-400 hover:text-gold-400 transition-colors"
@@ -371,7 +379,7 @@ export default function HomePage() {
             View Catalogue
           </Link>
           <a
-            href={`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent("Hi! I'm interested in your bridal jewellery collection.")}`}
+            href={`https://wa.me/${waNumber}?text=${encodeURIComponent("Hi! I'm interested in your bridal jewellery collection.")}`}
             target="_blank"
             rel="noopener noreferrer"
             className="px-10 py-3 border border-white/30 text-white text-xs font-bold tracking-[0.2em] uppercase hover:border-white hover:bg-white/10 transition-colors"
@@ -383,7 +391,7 @@ export default function HomePage() {
 
       {/* ── WHATSAPP FLOAT ── */}
       <a
-        href={`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent("Hi! I'm interested in your bridal jewellery.")}`}
+        href={`https://wa.me/${waNumber}?text=${encodeURIComponent("Hi! I'm interested in your bridal jewellery.")}`}
         target="_blank"
         rel="noopener noreferrer"
         className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-green-500 hover:bg-green-400 text-white rounded-full flex items-center justify-center shadow-2xl shadow-green-900/40 transition-transform hover:scale-110"

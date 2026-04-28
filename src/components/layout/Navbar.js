@@ -7,7 +7,7 @@ import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import {
   FiShoppingCart, FiHeart, FiUser, FiMenu, FiX, FiSearch,
-  FiChevronDown, FiLogOut, FiSettings, FiCamera,
+  FiChevronDown, FiLogOut, FiSettings,
 } from 'react-icons/fi';
 
 const catalogCategories = [
@@ -80,14 +80,6 @@ export default function Navbar() {
             <Link href="/catalog?rental=true" className="text-sm text-gray-700 hover:text-wine transition">Rentals</Link>
             <Link href="/about" className="text-sm text-gray-700 hover:text-wine transition">About</Link>
             <Link href="/contact" className="text-sm text-gray-700 hover:text-wine transition">Contact</Link>
-
-            {/* Photo Editor link */}
-            <Link
-              href="/photo-editor"
-              className="flex items-center gap-1 text-xs font-semibold bg-velvet-50 text-velvet-700 border border-velvet-200 px-2.5 py-1.5 rounded-full hover:bg-velvet-700 hover:text-white transition"
-            >
-              <FiCamera className="text-xs" /> Photo Editor
-            </Link>
           </div>
 
           {/* Right icons */}
@@ -163,7 +155,6 @@ export default function Navbar() {
             { label: 'Home', href: '/' },
             { label: 'Full Catalogue', href: '/catalog' },
             { label: 'Rental Jewellery', href: '/catalog?rental=true' },
-            { label: '📸 Photo Editor', href: '/photo-editor' },
             { label: 'About', href: '/about' },
             { label: 'Contact', href: '/contact' },
           ].map((l) => (

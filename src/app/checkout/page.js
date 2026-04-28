@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useCart } from '@/context/CartContext';
@@ -114,10 +114,11 @@ export default function CheckoutPage() {
     }
   }
 
-  if (!items.length) {
-    router.push('/cart');
-    return null;
-  }
+  useEffect(() => {
+    if (!items.length) router.push('/cart');
+  }, [items.length, router]);
+
+  if (!items.length) return null;
 
   return (
     <>
