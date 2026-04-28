@@ -86,8 +86,8 @@ export default function AdminCouponsPage() {
                     <td className="px-4 py-3 font-semibold">{c.type === 'percentage' ? `${c.value}%` : formatPrice(c.value)}</td>
                     <td className="px-4 py-3 text-gray-500">{formatPrice(c.minOrderAmount || 0)}</td>
                     <td className="px-4 py-3 text-gray-500">{c.usedCount}/{c.usageLimit || '∞'}</td>
-                    <td className="px-4 py-3 text-xs text-gray-400">{format(new Date(c.validUntil), 'dd MMM yyyy')}</td>
-                    <td className="px-4 py-3"><Badge variant={c.isActive && new Date(c.validUntil) > new Date() ? 'success' : 'danger'}>{c.isActive && new Date(c.validUntil) > new Date() ? 'Active' : 'Inactive'}</Badge></td>
+                    <td className="px-4 py-3 text-xs text-gray-400">{(c.expiresAt || c.validUntil) ? format(new Date(c.expiresAt || c.validUntil), 'dd MMM yyyy') : '—'}</td>
+                    <td className="px-4 py-3"><Badge variant={c.isActive && (!c.expiresAt || new Date(c.expiresAt) > new Date()) ? 'success' : 'danger'}>{c.isActive && (!c.expiresAt || new Date(c.expiresAt) > new Date()) ? 'Active' : 'Inactive'}</Badge></td>
                     <td className="px-4 py-3">
                       <button onClick={() => deleteCoupon(c._id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"><FiTrash2 /></button>
                     </td>

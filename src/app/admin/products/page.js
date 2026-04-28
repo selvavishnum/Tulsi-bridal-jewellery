@@ -51,12 +51,17 @@ export default function AdminProductsPage() {
   async function fetchProducts() {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: '200' });
-      if (search) params.set('search', search);
-      if (catFilter) params.set('category', catFilter);
-      const res = await fetch(`/api/products?${params}`);
+      const res = await fetch('/api/admin/products');
       const data = await res.json();
-      if (data.success) setProducts(data.data.products);
+      if (data.success) {
+        let list = data.data.products;
+        if (catFilter) list = list.filter((p) => p.category === catFilter);
+        if (search) {
+          const q = search.toLowerCase();
+          list = list.filter((p) => p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q));
+        }
+        setProducts(list);
+      }
     } finally { setLoading(false); }
   }
 

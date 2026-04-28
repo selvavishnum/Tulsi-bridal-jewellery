@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FiSettings, FiSave, FiPhone, FiMapPin, FiInstagram, FiLink } from 'react-icons/fi';
 import { FaWhatsapp } from 'react-icons/fa';
 import toast from 'react-hot-toast';
@@ -63,6 +63,13 @@ export default function SettingsPage() {
     emailNotify: '',
   });
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/admin/settings')
+      .then((r) => r.json())
+      .then((d) => { if (d.success && d.data) setSettings((prev) => ({ ...prev, ...d.data })); })
+      .catch(() => {});
+  }, []);
 
   function update(key, value) { setSettings((prev) => ({ ...prev, [key]: value })); }
 

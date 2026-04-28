@@ -40,10 +40,10 @@ export default function AdminDashboard() {
     { label: 'Customers', value: overview.totalCustomers, sub: 'Registered users', icon: FiUsers, color: 'bg-maroon-500' },
   ];
 
-  const chartData = monthlyData.map((m) => ({
-    month: `${m._id.year}-${String(m._id.month).padStart(2, '0')}`,
-    orders: m.orders,
-    revenue: m.revenue,
+  const chartData = (monthlyData || []).map((m) => ({
+    month: m.month || '',
+    orders: m.orders || 0,
+    revenue: m.revenue || 0,
   }));
 
   return (

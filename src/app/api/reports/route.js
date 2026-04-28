@@ -9,41 +9,39 @@ export async function GET(request) {
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const db = getDB();
-
     const now = new Date();
     const monthStart = startOfMonth(now).toISOString();
     const monthEnd = endOfMonth(now).toISOString();
 
-    // Fetch all paid orders
-    const ordersSnap = await db.collection('orders').where('payment.status', '==', 'paid').get();
+    // Fetch all orders (no composite index needed — single orderBy)
+    const ordersSnap = await db.collection('orders').orderBy('createdAt', 'desc').get();
     const allOrders = snapshotToArr(ordersSnap);
-
+    const paidOrders = allOrders.filter((o) => o.payment?.status === 'paid');
     const monthOrders = allOrders.filter((o) => o.createdAt >= monthStart && o.createdAt <= monthEnd);
-    const totalRevenue = allOrders.reduce((sum, o) => sum + (o.total || 0), 0);
-    const monthRevenue = monthOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+    const monthPaidOrders = paidOrders.filter((o) => o.createdAt >= monthStart && o.createdAt <= monthEnd);
 
-    // Rentals
-    const rentalsSnap = await db.collection('rentals').where('payment.status', '==', 'paid').get();
+    const totalRevenue = paidOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+    const monthRevenue = monthPaidOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+
+    // Fetch all rentals
+    const rentalsSnap = await db.collection('rentals').orderBy('createdAt', 'desc').get();
     const allRentals = snapshotToArr(rentalsSnap);
     const monthRentals = allRentals.filter((r) => r.createdAt >= monthStart && r.createdAt <= monthEnd);
 
-    // Products and customers count
-    const [productsSnap, customersSnap] = await Promise.all([
-      db.collection('products').where('isActive', '==', true).count().get(),
-      db.collection('users').where('role', '==', 'customer').count().get(),
+    // Products and customers count (simple collection fetch, no composite index)
+    const [productsSnap, usersSnap] = await Promise.all([
+      db.collection('products').get(),
+      db.collection('users').get(),
     ]);
+    const totalProducts = snapshotToArr(productsSnap).filter((p) => p.isActive !== false).length;
+    const totalCustomers = snapshotToArr(usersSnap).filter((u) => u.role === 'customer').length;
 
-    // Recent orders (last 5)
-    const recentSnap = await db.collection('orders')
-      .where('payment.status', '==', 'paid')
-      .orderBy('createdAt', 'desc')
-      .limit(5)
-      .get();
-    const recentOrders = snapshotToArr(recentSnap);
+    // Recent paid orders (last 5)
+    const recentOrders = paidOrders.slice(0, 5);
 
-    // Top products by units sold (computed from order items)
+    // Top products by units sold
     const salesMap = {};
-    for (const order of allOrders) {
+    for (const order of paidOrders) {
       for (const item of (order.items || [])) {
         if (!salesMap[item.product]) {
           salesMap[item.product] = { name: item.name, totalSold: 0, revenue: 0 };
@@ -66,7 +64,9 @@ export async function GET(request) {
       monthlyMap[key].orders += 1;
       monthlyMap[key].revenue += order.total || 0;
     }
-    const monthlyData = Object.values(monthlyMap).sort((a, b) => a.month.localeCompare(b.month)).slice(-6);
+    const monthlyData = Object.values(monthlyMap)
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .slice(-6);
 
     return NextResponse.json({
       success: true,
@@ -78,8 +78,8 @@ export async function GET(request) {
           monthRevenue,
           totalRentals: allRentals.length,
           monthRentals: monthRentals.length,
-          totalProducts: productsSnap.data().count,
-          totalCustomers: customersSnap.data().count,
+          totalProducts,
+          totalCustomers,
         },
         recentOrders,
         topProducts,

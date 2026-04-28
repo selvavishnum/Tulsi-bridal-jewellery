@@ -7,6 +7,10 @@ export async function POST(request) {
     const session = await requireAdmin();
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
+    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+      return NextResponse.json({ success: false, message: 'Cloudinary not configured — add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET to Vercel environment variables.' }, { status: 503 });
+    }
+
     const formData = await request.formData();
     const file = formData.get('file');
     if (!file) return NextResponse.json({ success: false, message: 'No file provided' }, { status: 400 });
