@@ -36,8 +36,9 @@ export async function POST(request) {
       return NextResponse.json({ success: false, message: 'Items and shipping address are required' }, { status: 400 });
     }
 
-    // Verify stock
+    // Verify stock (skip if product ID is missing)
     for (const item of items) {
+      if (!item.product) continue;
       const prodDoc = await db.collection('products').doc(item.product).get();
       if (!prodDoc.exists || prodDoc.data().stock < item.quantity) {
         return NextResponse.json({ success: false, message: `Insufficient stock for ${item.name}` }, { status: 400 });

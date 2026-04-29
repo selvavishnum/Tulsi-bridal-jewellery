@@ -36,7 +36,7 @@ export default function CheckoutPage() {
     try {
       // Create order
       const orderItems = items.map((i) => ({
-        product: i._id,
+        product: i._id || i.id,
         name: i.name,
         image: i.images?.[0],
         price: i.discountPrice || i.price,
@@ -58,7 +58,7 @@ export default function CheckoutPage() {
       });
       const orderData = await orderRes.json();
       if (!orderData.success) throw new Error(orderData.message);
-      const orderId = orderData.data._id;
+      const orderId = orderData.data.id || orderData.data._id;
 
       if (paymentMethod === 'cod') {
         dispatch({ type: 'CLEAR_CART' });
