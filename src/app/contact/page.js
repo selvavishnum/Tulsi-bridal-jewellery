@@ -1,21 +1,40 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FiPhone, FiMail, FiMapPin, FiClock } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 export default function ContactPage() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', subject: '', message: '' });
   const [loading, setLoading] = useState(false);
+  const [s, setS] = useState({});
+
+  useEffect(() => {
+    fetch('/api/admin/settings')
+      .then((r) => r.json())
+      .then((d) => { if (d.success && d.data) setS(d.data); })
+      .catch(() => {});
+  }, []);
+
+  const phone   = s.phone   || '+91 98765 43210';
+  const email   = s.email   || 'hello@tulsibridal.com';
+  const address = s.address || '123 Jewellery Lane, Bridal Market, Mumbai';
 
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true);
     await new Promise((r) => setTimeout(r, 1000));
-    toast.success('Message sent! We&apos;ll get back to you within 24 hours.');
+    toast.success("Message sent! We'll get back to you within 24 hours.");
     setForm({ name: '', email: '', phone: '', subject: '', message: '' });
     setLoading(false);
   }
+
+  const contactItems = [
+    { icon: FiPhone,  title: 'Phone',    content: phone,   sub: 'Mon–Sat, 10am–7pm' },
+    { icon: FiMail,   title: 'Email',    content: email,   sub: 'We reply within 24 hours' },
+    { icon: FiMapPin, title: 'Visit Us', content: address, sub: '' },
+    { icon: FiClock,  title: 'Hours',    content: 'Monday – Saturday: 10am – 7pm', sub: 'Sunday: 11am – 5pm' },
+  ];
 
   return (
     <div className="min-h-screen">
@@ -28,22 +47,18 @@ export default function ContactPage() {
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid md:grid-cols-2 gap-8">
+
           {/* Info */}
           <div>
             <h2 className="font-serif text-2xl font-bold text-maroon-950 mb-6">Contact Information</h2>
             <div className="space-y-4 mb-8">
-              {[
-                { icon: FiPhone, title: 'Phone', content: '+91 98765 43210', sub: 'Mon–Sat, 10am–7pm' },
-                { icon: FiMail, title: 'Email', content: 'hello@tulsibridal.com', sub: 'We reply within 24 hours' },
-                { icon: FiMapPin, title: 'Visit Us', content: '123 Jewellery Lane, Bridal Market', sub: 'Mumbai, Maharashtra 400001' },
-                { icon: FiClock, title: 'Hours', content: 'Monday – Saturday: 10am – 7pm', sub: 'Sunday: 11am – 5pm' },
-              ].map(({ icon: Icon, title, content, sub }) => (
+              {contactItems.map(({ icon: Icon, title, content, sub }) => (
                 <div key={title} className="flex items-start gap-4 p-4 bg-white rounded-xl shadow-sm">
                   <div className="p-2.5 bg-gold-100 text-gold-700 rounded-lg flex-shrink-0"><Icon /></div>
                   <div>
                     <p className="font-semibold text-gray-800 text-sm">{title}</p>
                     <p className="text-gray-700 text-sm">{content}</p>
-                    <p className="text-gray-400 text-xs">{sub}</p>
+                    {sub && <p className="text-gray-400 text-xs">{sub}</p>}
                   </div>
                 </div>
               ))}

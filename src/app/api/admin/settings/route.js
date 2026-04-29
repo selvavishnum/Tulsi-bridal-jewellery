@@ -4,8 +4,7 @@ import { requireAdmin } from '@/lib/adminCollection';
 
 export async function GET() {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    // Public — anyone can read site settings (phone, address, email shown on website)
     const db = getDB();
     const doc = await db.collection('settings').doc('site').get();
     return NextResponse.json({ success: true, data: doc.exists ? docToObj(doc) : {} });

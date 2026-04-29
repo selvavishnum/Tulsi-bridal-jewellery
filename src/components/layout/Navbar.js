@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { useCart } from '@/context/CartContext';
@@ -28,6 +28,14 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [sitePhone, setSitePhone] = useState('+91 98765 43210');
+
+  useEffect(() => {
+    fetch('/api/admin/settings')
+      .then((r) => r.json())
+      .then((d) => { if (d.success && d.data?.phone) setSitePhone(d.data.phone); })
+      .catch(() => {});
+  }, []);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -40,7 +48,7 @@ export default function Navbar() {
     <header className="bg-white shadow-sm sticky top-0 z-50">
       {/* Top marquee */}
       <div className="bg-velvet-800 text-white text-center py-1.5 text-xs tracking-wide">
-        Free delivery on orders above ₹2000 &nbsp;|&nbsp; Call: +91 98765 43210
+        Free delivery on orders above ₹2000 &nbsp;|&nbsp; Call: {sitePhone}
       </div>
 
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
