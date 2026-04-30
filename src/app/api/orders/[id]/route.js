@@ -22,12 +22,28 @@ export async function GET(request, { params }) {
 
 export async function PUT(request, { params }) {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const session = await getEffectiveSession();
+    if (!session) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
 
     const db = getDB();
     const { status, trackingNumber, notes } = await request.json();
     const ref = db.collection('orders').doc(params.id);
+
+    // Non-admin users can only cancel their own orders if still pending/confirmed
+    if (session.user.role !== 'admin') {
+      if (status !== 'cancelled') {
+        return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+      }
+      const orderDoc = await ref.get();
+      if (!orderDoc.exists) return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
+      const order = orderDoc.data();
+      const isOwner = order.userId === session.user.id || order.guestEmail === session.user.email;
+      if (!isOwner) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+      if (!['pending', 'confirmed'].includes(order.status)) {
+        return NextResponse.json({ success: false, message: `Order cannot be cancelled — it is already ${order.status}` }, { status: 400 });
+      }
+    }
+
     const update = { updatedAt: new Date().toISOString() };
 
     if (status) {

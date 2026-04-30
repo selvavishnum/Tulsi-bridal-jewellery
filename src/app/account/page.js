@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   FiUser, FiShoppingBag, FiLogOut, FiMail, FiPackage,
-  FiChevronDown, FiChevronUp, FiCheckCircle, FiTruck, FiBox, FiClock, FiXCircle,
+  FiChevronDown, FiChevronUp, FiCheckCircle, FiTruck, FiBox, FiClock, FiXCircle, FiAlertTriangle,
 } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 import { formatPrice } from '@/lib/utils';
 import { format } from 'date-fns';
 import Badge from '@/components/ui/Badge';
@@ -90,6 +91,8 @@ export default function AccountPage() {
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [tab, setTab]                 = useState('orders');
   const [expandedId, setExpandedId]   = useState(null);
+  const [cancelling, setCancelling]   = useState(null);
+  const [confirmCancel, setConfirmCancel] = useState(null);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace('/login');
@@ -114,6 +117,29 @@ export default function AccountPage() {
 
   function toggleOrder(id) {
     setExpandedId((prev) => (prev === id ? null : id));
+  }
+
+  async function cancelOrder(oid) {
+    setCancelling(oid);
+    try {
+      const res = await fetch(`/api/orders/${oid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelled' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Order cancelled successfully');
+        setOrders((prev) => prev.map((o) => (o.id === oid || o._id === oid) ? { ...o, status: 'cancelled' } : o));
+      } else {
+        toast.error(data.message || 'Could not cancel order');
+      }
+    } catch {
+      toast.error('Something went wrong');
+    } finally {
+      setCancelling(null);
+      setConfirmCancel(null);
+    }
   }
 
   return (
@@ -285,6 +311,42 @@ export default function AccountPage() {
                           </p>
                         </div>
                       </div>
+
+                      {/* Cancel button — only for pending/confirmed */}
+                      {['pending', 'confirmed'].includes(o.status) && (
+                        <div className="px-5 py-4 border-t border-gray-100">
+                          {confirmCancel === oid ? (
+                            <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+                              <p className="text-sm font-semibold text-red-700 flex items-center gap-2 mb-1">
+                                <FiAlertTriangle /> Cancel this order?
+                              </p>
+                              <p className="text-xs text-red-500 mb-3">This action cannot be undone. Your order will be cancelled.</p>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => cancelOrder(oid)}
+                                  disabled={cancelling === oid}
+                                  className="flex-1 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 disabled:opacity-60 transition"
+                                >
+                                  {cancelling === oid ? 'Cancelling…' : 'Yes, Cancel Order'}
+                                </button>
+                                <button
+                                  onClick={() => setConfirmCancel(null)}
+                                  className="flex-1 py-2 border border-gray-200 text-gray-600 text-sm font-semibold rounded-lg hover:bg-gray-50 transition"
+                                >
+                                  Keep Order
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmCancel(oid)}
+                              className="w-full py-2.5 border border-red-200 text-red-600 text-sm font-semibold rounded-xl hover:bg-red-50 transition flex items-center justify-center gap-2"
+                            >
+                              <FiXCircle /> Cancel Order
+                            </button>
+                          )}
+                        </div>
+                      )}
 
                       {/* Help link */}
                       <div className="px-5 py-3 border-t border-gray-100 bg-gold-50/50 flex items-center justify-between">
