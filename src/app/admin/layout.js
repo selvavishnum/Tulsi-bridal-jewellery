@@ -8,7 +8,7 @@ import {
   FiHome, FiPackage, FiShoppingBag, FiCalendar, FiBarChart2,
   FiTag, FiUsers, FiMenu, FiLogOut, FiTruck, FiArchive,
   FiDollarSign, FiSettings, FiUserCheck, FiTrendingUp, FiX,
-  FiExternalLink, FiChevronRight, FiAlertTriangle, FiCamera,
+  FiExternalLink, FiChevronRight, FiAlertTriangle, FiCamera, FiMessageSquare,
 } from 'react-icons/fi';
 import { GiQueenCrown } from 'react-icons/gi';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -20,6 +20,7 @@ const DEV_BYPASS = process.env.NEXT_PUBLIC_ADMIN_BYPASS === 'true';
 const NAV = [
   { href: '/admin',            label: 'Dashboard',       icon: FiHome,        exact: true },
   { href: '/admin/orders',     label: 'Orders',          icon: FiShoppingBag },
+  { href: '/admin/messages',   label: 'Messages',        icon: FiMessageSquare, badge: true },
   { href: '/admin/products',   label: 'Products',        icon: FiPackage },
   { href: '/admin/rentals',    label: 'Rentals',         icon: FiCalendar },
   { href: '/admin/customers',  label: 'Customers',       icon: FiUsers },
@@ -35,12 +36,12 @@ const NAV = [
 ];
 
 const NAV_GROUPS = [
-  { label: 'Operations',  items: NAV.slice(0, 6) },
-  { label: 'Analytics',   items: NAV.slice(6, 8) },
-  { label: 'Management',  items: NAV.slice(8) },
+  { label: 'Operations',  items: NAV.slice(0, 7) },
+  { label: 'Analytics',   items: NAV.slice(7, 9) },
+  { label: 'Management',  items: NAV.slice(9) },
 ];
 
-function NavItem({ href, label, icon: Icon, exact, pathname, onClick }) {
+function NavItem({ href, label, icon: Icon, exact, pathname, onClick, unread }) {
   const active = exact ? pathname === href : pathname.startsWith(href);
   return (
     <Link
@@ -57,12 +58,17 @@ function NavItem({ href, label, icon: Icon, exact, pathname, onClick }) {
       )}
       <Icon className={`text-base flex-shrink-0 transition ${active ? 'text-amber-400' : 'text-slate-500 group-hover:text-slate-300'}`} />
       <span className="truncate">{label}</span>
-      {active && <FiChevronRight className="ml-auto text-amber-400/60 text-xs flex-shrink-0" />}
+      {unread > 0 && (
+        <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 flex-shrink-0">
+          {unread}
+        </span>
+      )}
+      {active && !unread && <FiChevronRight className="ml-auto text-amber-400/60 text-xs flex-shrink-0" />}
     </Link>
   );
 }
 
-function Sidebar({ session, pathname, onClose }) {
+function Sidebar({ session, pathname, onClose, unreadMessages }) {
   return (
     <div className="flex flex-col h-full bg-[#0d1117] border-r border-white/[0.06]">
 
@@ -93,7 +99,8 @@ function Sidebar({ session, pathname, onClose }) {
             </p>
             <div className="space-y-0.5">
               {group.items.map((item) => (
-                <NavItem key={item.href} {...item} pathname={pathname} onClick={onClose} />
+                <NavItem key={item.href} {...item} pathname={pathname} onClick={onClose}
+                  unread={item.badge ? unreadMessages : 0} />
               ))}
             </div>
           </div>
@@ -127,9 +134,22 @@ export default function AdminLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
   // Close mobile sidebar on route change
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
+
+  // Poll unread message count every 60s
+  useEffect(() => {
+    function fetchUnread() {
+      fetch('/api/contact').then((r) => r.json()).then((d) => {
+        if (d.success) setUnreadMessages(d.data.filter((m) => !m.read).length);
+      }).catch(() => {});
+    }
+    fetchUnread();
+    const t = setInterval(fetchUnread, 60000);
+    return () => clearInterval(t);
+  }, []);
 
   // Dev bypass: skip all auth checks when NEXT_PUBLIC_ADMIN_BYPASS=true
   if (!DEV_BYPASS) {
@@ -183,7 +203,7 @@ export default function AdminLayout({ children }) {
 
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:w-56 lg:w-60 flex-shrink-0 flex-col">
-        <Sidebar session={activeSession} pathname={pathname} />
+        <Sidebar session={activeSession} pathname={pathname} unreadMessages={unreadMessages} />
       </aside>
 
       {/* Mobile sidebar overlay */}
@@ -194,7 +214,7 @@ export default function AdminLayout({ children }) {
             onClick={() => setSidebarOpen(false)}
           />
           <aside className="relative w-64 h-full z-10 shadow-2xl">
-            <Sidebar session={activeSession} pathname={pathname} onClose={() => setSidebarOpen(false)} />
+            <Sidebar session={activeSession} pathname={pathname} onClose={() => setSidebarOpen(false)} unreadMessages={unreadMessages} />
           </aside>
         </div>
       )}
