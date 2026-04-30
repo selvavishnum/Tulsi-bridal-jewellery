@@ -13,19 +13,22 @@ export async function GET(request) {
     const limit = parseInt(searchParams.get('limit') || '10');
     const status = searchParams.get('status');
 
-    // Admin: paginated query as before
+    // Admin: fetch all, filter in JS to avoid composite index requirement
     if (session.user.role === 'admin') {
-      let q = db.collection('orders').orderBy('createdAt', 'desc');
-      if (status) q = q.where('status', '==', status);
-      const result = await paginate(q, page, limit);
-      return NextResponse.json({ success: true, data: { orders: result.data, total: result.total, pages: result.pages, page: result.page } });
+      const snap = await db.collection('orders').orderBy('createdAt', 'desc').get();
+      let orders = snap.docs.map((d) => ({ id: d.id, _id: d.id, ...d.data() }));
+      if (status) orders = orders.filter((o) => o.status === status);
+      const total = orders.length;
+      const pages = Math.ceil(total / limit);
+      const start = (page - 1) * limit;
+      return NextResponse.json({ success: true, data: { orders: orders.slice(start, start + limit), total, pages, page } });
     }
 
     // Regular user: fetch orders by userId AND by guestEmail matching their email, then merge
     const [byUserId, byEmail] = await Promise.all([
-      db.collection('orders').where('userId', '==', session.user.id).orderBy('createdAt', 'desc').get(),
+      db.collection('orders').where('userId', '==', session.user.id).get(),
       session.user.email
-        ? db.collection('orders').where('guestEmail', '==', session.user.email).orderBy('createdAt', 'desc').get()
+        ? db.collection('orders').where('guestEmail', '==', session.user.email).get()
         : Promise.resolve({ docs: [] }),
     ]);
 
