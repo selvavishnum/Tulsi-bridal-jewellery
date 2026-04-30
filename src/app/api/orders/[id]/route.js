@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server';
 import { getDB, docToObj } from '@/lib/firebase';
 import { getEffectiveSession, requireAdmin } from '@/lib/adminCollection';
 
-export async function GET(request, { params }) {
+export async function GET(request, context) {
   try {
+    const { id } = await context.params;
     const session = await getEffectiveSession();
     if (!session) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
 
     const db = getDB();
-    const doc = await db.collection('orders').doc(params.id).get();
+    const doc = await db.collection('orders').doc(id).get();
     if (!doc.exists) return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
     const order = docToObj(doc);
     if (session.user.role !== 'admin' && order.userId !== session.user.id) {
@@ -20,14 +21,15 @@ export async function GET(request, { params }) {
   }
 }
 
-export async function PUT(request, { params }) {
+export async function PUT(request, context) {
   try {
+    const { id } = await context.params;
     const session = await getEffectiveSession();
     if (!session) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
 
     const db = getDB();
     const { status, trackingNumber, notes } = await request.json();
-    const ref = db.collection('orders').doc(params.id);
+    const ref = db.collection('orders').doc(id);
 
     // Non-admin users can only cancel their own orders if still pending/confirmed
     if (session.user.role !== 'admin') {

@@ -1,21 +1,23 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin, updateDoc, deleteDoc } from '@/lib/adminCollection';
 
-export async function PUT(request, { params }) {
+export async function PUT(request, context) {
   try {
+    const { id } = await context.params;
     const session = await requireAdmin();
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const body = await request.json();
-    const doc = await updateDoc('suppliers', params.id, body);
+    const doc = await updateDoc('suppliers', id, body);
     return NextResponse.json({ success: true, data: doc });
   } catch (e) { return NextResponse.json({ success: false, message: e.message }, { status: 500 }); }
 }
 
-export async function DELETE(request, { params }) {
+export async function DELETE(request, context) {
   try {
+    const { id } = await context.params;
     const session = await requireAdmin();
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
-    await deleteDoc('suppliers', params.id);
+    await deleteDoc('suppliers', id);
     return NextResponse.json({ success: true, message: 'Deleted' });
   } catch (e) { return NextResponse.json({ success: false, message: e.message }, { status: 500 }); }
 }
