@@ -39,7 +39,7 @@ export default function AdminOrdersPage() {
     try {
       const res = await fetch(`/api/orders?limit=200${statusFilter ? `&status=${statusFilter}` : ''}`);
       const data = await res.json();
-      if (data.success) setOrders(data.data.orders);
+      if (data.success) setOrders(data.data.orders.map((o) => ({ ...o, _id: o._id || o.id })));
     } finally { setLoading(false); }
   }
 

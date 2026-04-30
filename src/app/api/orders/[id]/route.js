@@ -41,6 +41,7 @@ export async function PUT(request, { params }) {
         if (orderDoc.exists) {
           const batch = db.batch();
           for (const item of (orderDoc.data().items || [])) {
+            if (!item.product) continue;
             const prodRef = db.collection('products').doc(item.product);
             const prodDoc = await prodRef.get();
             if (prodDoc.exists) {
