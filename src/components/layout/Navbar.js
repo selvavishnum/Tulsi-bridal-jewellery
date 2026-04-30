@@ -88,6 +88,7 @@ export default function Navbar() {
             <Link href="/catalog?rental=true" className="text-sm text-gray-700 hover:text-wine transition">Rentals</Link>
             <Link href="/about" className="text-sm text-gray-700 hover:text-wine transition">About</Link>
             <Link href="/contact" className="text-sm text-gray-700 hover:text-wine transition">Contact</Link>
+            <Link href="/track-order" className="text-sm text-gray-700 hover:text-wine transition">Track Order</Link>
           </div>
 
           {/* Right icons */}
@@ -165,6 +166,7 @@ export default function Navbar() {
             { label: 'Rental Jewellery', href: '/catalog?rental=true' },
             { label: 'About', href: '/about' },
             { label: 'Contact', href: '/contact' },
+            { label: 'Track Order', href: '/track-order' },
           ].map((l) => (
             <Link key={l.href} href={l.href} onClick={() => setMenuOpen(false)} className="block py-2 text-gray-700 border-b text-sm">{l.label}</Link>
           ))}

@@ -59,10 +59,11 @@ export default function CheckoutPage() {
       const orderData = await orderRes.json();
       if (!orderData.success) throw new Error(orderData.message);
       const orderId = orderData.data.id || orderData.data._id;
+      const orderNumber = orderData.data.orderNumber;
 
       if (paymentMethod === 'cod') {
         dispatch({ type: 'CLEAR_CART' });
-        router.push(`/order-success?orderId=${orderId}`);
+        router.push(`/order-success?orderNumber=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(form.email)}`);
         return;
       }
 
@@ -98,7 +99,7 @@ export default function CheckoutPage() {
           const verifyData = await verifyRes.json();
           if (verifyData.success) {
             dispatch({ type: 'CLEAR_CART' });
-            router.push(`/order-success?orderId=${orderId}`);
+            router.push(`/order-success?orderNumber=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(form.email)}`);
           } else {
             toast.error('Payment verification failed');
           }
