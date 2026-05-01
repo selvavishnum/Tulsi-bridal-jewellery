@@ -31,10 +31,9 @@ export default function ShopContent() {
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({ page: page.toString(), limit: '12', sort: sortField, order: sortOrder });
+    const params = new URLSearchParams({ page: page.toString(), limit: '12', sort: sortField, order: sortOrder, rental: 'false' });
     if (category) params.set('category', category);
     if (search) params.set('search', search);
-    if (rental) params.set('rental', rental);
     try {
       const res = await fetch(`/api/products?${params}`);
       const data = await res.json();
@@ -57,7 +56,7 @@ export default function ShopContent() {
       <div className="bg-maroon-950 text-white py-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="font-serif text-3xl font-bold mb-1">
-            {rental ? 'Rental Jewellery' : category ? category.replace('-', ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : search ? `Search: "${search}"` : 'All Jewellery'}
+            {category ? category.replace('-', ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : search ? `Search: "${search}"` : 'Buy Jewellery'}
           </h1>
           <p className="text-gray-300 text-sm">{total} pieces found</p>
         </div>

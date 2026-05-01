@@ -21,7 +21,8 @@ export async function GET(request) {
     // Filter in JS (avoids Firestore composite index requirement)
     if (category) products = products.filter((p) => p.category === category);
     if (featured === 'true') products = products.filter((p) => p.featured === true);
-    if (rental === 'true') products = products.filter((p) => p.isAvailableForRent === true);
+    if (rental === 'true')  products = products.filter((p) => p.isAvailableForRent === true);
+    if (rental === 'false') products = products.filter((p) => !p.isAvailableForRent);
     if (search) {
       const term = search.toLowerCase();
       products = products.filter(

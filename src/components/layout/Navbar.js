@@ -85,7 +85,8 @@ export default function Navbar() {
               </div>
             </div>
 
-            <Link href="/catalog?rental=true" className="text-sm text-gray-700 hover:text-wine transition">Rentals</Link>
+            <Link href="/shop" className="text-sm text-gray-700 hover:text-wine transition">Buy</Link>
+            <Link href="/rentals" className="text-sm text-gray-700 hover:text-wine transition font-semibold text-gold-700">Rentals</Link>
             <Link href="/about" className="text-sm text-gray-700 hover:text-wine transition">About</Link>
             <Link href="/contact" className="text-sm text-gray-700 hover:text-wine transition">Contact</Link>
             <Link href="/track-order" className="text-sm text-gray-700 hover:text-wine transition">Track Order</Link>
@@ -162,8 +163,8 @@ export default function Navbar() {
           </form>
           {[
             { label: 'Home', href: '/' },
-            { label: 'Full Catalogue', href: '/catalog' },
-            { label: 'Rental Jewellery', href: '/catalog?rental=true' },
+            { label: 'Buy Jewellery', href: '/shop' },
+            { label: 'Rent Jewellery', href: '/rentals' },
             { label: 'About', href: '/about' },
             { label: 'Contact', href: '/contact' },
             { label: 'Track Order', href: '/track-order' },

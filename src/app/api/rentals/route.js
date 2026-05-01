@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDB, paginate, docToObj } from '@/lib/firebase';
+import { getDB, snapshotToArr } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
 import { calculateRentalDays } from '@/lib/utils';
 
@@ -10,17 +10,19 @@ export async function GET(request) {
 
     const db = getDB();
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const limit = parseInt(searchParams.get('limit') || '50');
     const status = searchParams.get('status');
 
-    let q = db.collection('rentals');
-    if (session.user.role !== 'admin') q = q.where('userId', '==', session.user.id);
-    if (status) q = q.where('status', '==', status);
-    q = q.orderBy('createdAt', 'desc');
+    let snap;
+    if (session.user.role === 'admin') {
+      snap = await db.collection('rentals').orderBy('createdAt', 'desc').get();
+    } else {
+      snap = await db.collection('rentals').where('userId', '==', session.user.id).get();
+    }
+    let rentals = snapshotToArr(snap).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    if (status) rentals = rentals.filter((r) => r.status === status);
 
-    const result = await paginate(q, page, limit);
-    return NextResponse.json({ success: true, data: { rentals: result.data, total: result.total, pages: result.pages, page: result.page } });
+    return NextResponse.json({ success: true, data: { rentals: rentals.slice(0, limit), total: rentals.length } });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
@@ -31,7 +33,7 @@ export async function POST(request) {
     const session = await getEffectiveSession();
     const db = getDB();
     const body = await request.json();
-    const { productId, rentalStartDate, rentalEndDate, customerDetails, payment, guestEmail } = body;
+    const { productId, rentalStartDate, rentalEndDate, customerDetails, payment, guestEmail, delivery, returnMethod, total: clientTotal } = body;
 
     const prodDoc = await db.collection('products').doc(productId).get();
     if (!prodDoc.exists) return NextResponse.json({ success: false, message: 'Product not found' }, { status: 404 });
@@ -44,13 +46,17 @@ export async function POST(request) {
     const pricePerDay = product.rentalPrice || 0;
     const totalRentalCost = pricePerDay * rentalDays;
     const securityDeposit = Math.round((product.price || 0) * 0.3);
-    const total = totalRentalCost + securityDeposit;
+    const deliveryCharge = delivery?.charge || 0;
+    const returnCharge = returnMethod?.charge || 0;
+    const total = totalRentalCost + securityDeposit + deliveryCharge + returnCharge;
+
+    const resolvedEmail = guestEmail || session?.user?.email || customerDetails?.email || null;
 
     const rentalRef = db.collection('rentals').doc();
     const rentalData = {
       rentalNumber: `TBJr${Date.now()}`,
       userId: session?.user?.id || null,
-      guestEmail: guestEmail || null,
+      guestEmail: resolvedEmail,
       productId,
       productName: product.name,
       productImage: product.images?.[0] || null,
@@ -60,11 +66,18 @@ export async function POST(request) {
       pricePerDay,
       securityDeposit,
       totalRentalCost,
+      delivery: delivery || { method: 'self', charge: 0 },
+      returnMethod: returnMethod || { method: 'self', charge: 0 },
+      deliveryCharge,
+      returnCharge,
       total,
       customerDetails: customerDetails || {},
-      payment: payment || { method: 'razorpay', status: 'pending' },
+      payment: payment || { method: 'cod', status: 'pending' },
       status: 'pending',
+      deliveryStatus: 'not_dispatched',
+      returnStatus: 'not_scheduled',
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
     await rentalRef.set(rentalData);
     return NextResponse.json({ success: true, data: { id: rentalRef.id, ...rentalData } }, { status: 201 });
