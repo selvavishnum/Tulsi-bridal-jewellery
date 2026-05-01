@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import {
   FiShoppingCart, FiHeart, FiUser, FiMenu, FiX, FiSearch,
-  FiChevronDown, FiLogOut, FiSettings,
+  FiChevronDown, FiLogOut, FiSettings, FiPhone,
 } from 'react-icons/fi';
 
 const catalogCategories = [
@@ -18,7 +18,14 @@ const catalogCategories = [
   { name: 'Rings', href: '/catalog?category=ring' },
   { name: 'Maang Tikka', href: '/catalog?category=maang-tikka' },
   { name: 'Bridal Sets', href: '/catalog?category=set' },
-  { name: 'Rentals Only', href: '/catalog?rental=true' },
+];
+
+const NAV_LINKS = [
+  { label: 'Home', href: '/' },
+  { label: 'Buy', href: '/shop' },
+  { label: 'Rentals', href: '/rentals', highlight: true },
+  { label: 'About', href: '/about' },
+  { label: 'Contact', href: '/contact' },
 ];
 
 export default function Navbar() {
@@ -26,9 +33,14 @@ export default function Navbar() {
   const { itemCount } = useCart();
   const { items: wishlistItems } = useWishlist();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const [sitePhone, setSitePhone] = useState('+91 98765 43210');
+  const searchRef = useRef(null);
+  const userMenuRef = useRef(null);
 
   useEffect(() => {
     fetch('/api/admin/settings')
@@ -36,6 +48,24 @@ export default function Navbar() {
       .then((d) => { if (d.success && d.data?.phone) setSitePhone(d.data.phone); })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) setUserMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    if (searchOpen && searchRef.current) searchRef.current.focus();
+  }, [searchOpen]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -45,133 +75,221 @@ export default function Navbar() {
   };
 
   return (
-    <header className="bg-white shadow-sm sticky top-0 z-50">
-      {/* Top marquee */}
-      <div className="bg-velvet-800 text-white text-center py-1.5 text-xs tracking-wide">
-        Free delivery on orders above ₹2000 &nbsp;|&nbsp; Call: {sitePhone}
+    <header className={`sticky top-0 z-50 transition-all duration-300 ${scrolled ? 'bg-white shadow-md' : 'bg-white/95 backdrop-blur-sm shadow-sm'}`}>
+      {/* Top announcement bar */}
+      <div className="bg-wine-800 text-white py-2">
+        <div className="section-container flex items-center justify-between">
+          <p className="text-xs tracking-wider text-wine-100 hidden sm:block">
+            ✦ Handcrafted Bridal Jewellery — Made with Love ✦
+          </p>
+          <p className="text-xs tracking-wide text-center sm:text-right w-full sm:w-auto">
+            Free delivery above ₹2000 &nbsp;·&nbsp;
+            <a href={`tel:${sitePhone.replace(/\s/g, '')}`} className="inline-flex items-center gap-1 font-medium hover:text-gold-300 transition-colors">
+              <FiPhone className="text-[10px]" /> {sitePhone}
+            </a>
+          </p>
+        </div>
       </div>
 
-      <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-14">
+      {/* Main nav */}
+      <nav className="section-container">
+        <div className="flex items-center justify-between h-16">
 
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-1.5 group">
-            <svg width="26" height="22" viewBox="0 0 52 44" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M26 2L32 16L44 8L38 24H14L8 8L20 16L26 2Z" fill="#b87333" stroke="#9a5c28" strokeWidth="1"/>
-              <rect x="10" y="26" width="32" height="6" rx="1" fill="#b87333"/>
-              <rect x="12" y="34" width="28" height="5" rx="1" fill="#9a5c28"/>
-            </svg>
+          <Link href="/" className="flex items-center gap-2.5 group flex-shrink-0">
+            <div className="w-9 h-9 flex items-center justify-center">
+              <svg width="36" height="30" viewBox="0 0 52 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M26 2L32 16L44 8L38 24H14L8 8L20 16L26 2Z" fill="#c9973a" stroke="#b87d2a" strokeWidth="1.5"/>
+                <rect x="10" y="26" width="32" height="6" rx="1" fill="#c9973a"/>
+                <rect x="12" y="34" width="28" height="5" rx="1" fill="#b87d2a"/>
+              </svg>
+            </div>
             <div>
-              <p className="font-serif text-base font-bold tracking-wider text-gray-900 leading-none">TULSI</p>
-              <p className="text-[9px] tracking-[0.22em] text-gold-600 uppercase leading-none">Bridal Jewellery</p>
+              <p className="font-serif text-lg font-bold tracking-[0.12em] text-stone-900 leading-none group-hover:text-wine-700 transition-colors">TULSI</p>
+              <p className="text-[8px] tracking-[0.28em] text-gold-600 uppercase leading-none font-medium mt-0.5">Bridal Jewellery</p>
             </div>
           </Link>
 
-          {/* Desktop nav */}
-          <div className="hidden md:flex items-center gap-5">
-            <Link href="/" className="text-sm text-gray-700 hover:text-wine transition">Home</Link>
+          {/* Desktop nav links */}
+          <nav className="hidden lg:flex items-center gap-7">
+            <Link href="/" className="nav-link">Home</Link>
 
             {/* Catalogue dropdown */}
-            <div className="relative group">
-              <button className="flex items-center gap-1 text-sm text-gray-700 hover:text-wine transition">
-                Catalogue <FiChevronDown className="text-xs" />
+            <div
+              className="relative"
+              onMouseEnter={() => setCatalogOpen(true)}
+              onMouseLeave={() => setCatalogOpen(false)}
+            >
+              <button className="nav-link flex items-center gap-1">
+                Catalogue <FiChevronDown className={`text-xs transition-transform duration-200 ${catalogOpen ? 'rotate-180' : ''}`} />
               </button>
-              <div className="absolute top-full left-0 bg-white shadow-lg py-2 w-44 hidden group-hover:block z-50 border-t-2 border-wine">
+              <div className={`absolute top-full left-1/2 -translate-x-1/2 mt-3 bg-white shadow-luxury-lg border border-stone-100 py-3 w-52 z-50 rounded-xl transition-all duration-200 origin-top ${catalogOpen ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
+                <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-l border-t border-stone-100 rotate-45" />
                 {catalogCategories.map((c) => (
-                  <Link key={c.name} href={c.href} className="block px-4 py-2 text-sm text-gray-700 hover:bg-cream-100 hover:text-wine">
+                  <Link
+                    key={c.name}
+                    href={c.href}
+                    className="block px-5 py-2.5 text-sm text-stone-700 hover:text-wine-700 hover:bg-ivory-100 transition-colors font-medium"
+                  >
                     {c.name}
                   </Link>
                 ))}
               </div>
             </div>
 
-            <Link href="/shop" className="text-sm text-gray-700 hover:text-wine transition">Buy</Link>
-            <Link href="/rentals" className="text-sm text-gray-700 hover:text-wine transition font-semibold text-gold-700">Rentals</Link>
-            <Link href="/about" className="text-sm text-gray-700 hover:text-wine transition">About</Link>
-            <Link href="/contact" className="text-sm text-gray-700 hover:text-wine transition">Contact</Link>
-            <Link href="/track-order" className="text-sm text-gray-700 hover:text-wine transition">Track Order</Link>
-          </div>
+            {NAV_LINKS.slice(1).map((link) => (
+              link.highlight ? (
+                <Link key={link.href} href={link.href} className="text-sm font-semibold text-gold-600 hover:text-gold-700 transition-colors">
+                  {link.label}
+                </Link>
+              ) : (
+                <Link key={link.href} href={link.href} className="nav-link">{link.label}</Link>
+              )
+            ))}
+            <Link href="/track-order" className="nav-link">Track Order</Link>
+          </nav>
 
-          {/* Right icons */}
-          <div className="flex items-center gap-2">
-            {/* Search */}
-            <form onSubmit={handleSearch} className="hidden md:flex items-center bg-gray-100 rounded-full px-3 py-1.5 gap-2">
-              <FiSearch className="text-gray-400 text-sm" />
-              <input
-                type="text" value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search…"
-                className="bg-transparent text-sm w-28 outline-none text-gray-700 placeholder-gray-400"
-              />
-            </form>
+          {/* Right actions */}
+          <div className="flex items-center gap-1">
+            {/* Search toggle */}
+            <button
+              onClick={() => setSearchOpen(!searchOpen)}
+              className="p-2.5 text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200"
+              aria-label="Search"
+            >
+              {searchOpen ? <FiX className="text-lg" /> : <FiSearch className="text-lg" />}
+            </button>
 
-            <Link href="/cart" className="relative p-2 text-gray-700 hover:text-wine transition">
-              <FiShoppingCart className="text-xl" />
-              {itemCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-wine text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{itemCount}</span>
-              )}
-            </Link>
-
-            <Link href="/wishlist" className="relative p-2 text-gray-700 hover:text-wine transition hidden sm:block">
-              <FiHeart className="text-xl" />
+            {/* Wishlist */}
+            <Link href="/wishlist" className="relative p-2.5 text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200 hidden sm:flex">
+              <FiHeart className="text-lg" />
               {wishlistItems.length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-gold-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{wishlistItems.length}</span>
+                <span className="absolute top-1.5 right-1.5 bg-wine-700 text-white text-[9px] rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">
+                  {wishlistItems.length}
+                </span>
               )}
             </Link>
 
+            {/* Cart */}
+            <Link href="/cart" className="relative p-2.5 text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200">
+              <FiShoppingCart className="text-lg" />
+              {itemCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 bg-wine-700 text-white text-[9px] rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">
+                  {itemCount}
+                </span>
+              )}
+            </Link>
+
+            {/* User */}
             {session ? (
-              <div className="relative">
-                <button onClick={() => setUserMenuOpen(!userMenuOpen)} className="flex items-center gap-1.5 p-2 text-gray-700 hover:text-wine transition">
-                  <FiUser className="text-xl" />
+              <div className="relative" ref={userMenuRef}>
+                <button
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className="p-2.5 text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200"
+                >
+                  <FiUser className="text-lg" />
                 </button>
                 {userMenuOpen && (
-                  <div className="absolute right-0 top-full bg-white shadow-lg py-2 w-44 z-50 border-t-2 border-wine">
-                    <Link href="/account" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-cream-100">
-                      <FiUser /> My Account
+                  <div className="absolute right-0 top-full mt-2 bg-white shadow-luxury-lg border border-stone-100 py-2 w-48 z-50 rounded-xl">
+                    <div className="px-4 py-2 border-b border-stone-100 mb-1">
+                      <p className="text-xs text-stone-500 truncate">{session.user.email}</p>
+                    </div>
+                    <Link href="/account" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-stone-700 hover:text-wine-700 hover:bg-ivory-100 transition-colors font-medium">
+                      <FiUser className="text-base" /> My Account
                     </Link>
                     {session.user.role === 'admin' && (
-                      <Link href="/admin" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-cream-100">
-                        <FiSettings /> Admin Panel
+                      <Link href="/admin" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-stone-700 hover:text-wine-700 hover:bg-ivory-100 transition-colors font-medium">
+                        <FiSettings className="text-base" /> Admin Panel
                       </Link>
                     )}
-                    <hr className="my-1" />
-                    <button onClick={() => signOut()} className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50">
-                      <FiLogOut /> Sign Out
-                    </button>
+                    <div className="border-t border-stone-100 mt-1 pt-1">
+                      <button onClick={() => signOut()} className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors font-medium">
+                        <FiLogOut className="text-base" /> Sign Out
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
             ) : (
-              <Link href="/login" className="hidden md:flex items-center gap-1 text-sm text-gray-700 hover:text-wine transition p-2">
-                <FiUser className="text-xl" />
+              <Link href="/login" className="hidden md:flex items-center gap-2 ml-1 px-4 py-2 text-sm font-semibold text-white bg-wine-700 hover:bg-wine-800 transition-colors rounded-xl">
+                Sign In
               </Link>
             )}
 
-            <button className="md:hidden p-2 text-gray-700" onClick={() => setMenuOpen(!menuOpen)}>
+            {/* Mobile menu button */}
+            <button
+              className="lg:hidden p-2.5 text-stone-600 hover:text-wine-700 transition-colors ml-1"
+              onClick={() => setMenuOpen(!menuOpen)}
+              aria-label="Menu"
+            >
               {menuOpen ? <FiX className="text-xl" /> : <FiMenu className="text-xl" />}
             </button>
           </div>
         </div>
+
+        {/* Expandable search bar */}
+        {searchOpen && (
+          <div className="py-3 border-t border-stone-100">
+            <form onSubmit={handleSearch} className="flex items-center bg-ivory-100 border border-stone-200 rounded-xl px-4 py-2.5 gap-3">
+              <FiSearch className="text-stone-400 text-base flex-shrink-0" />
+              <input
+                ref={searchRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search jewellery, bridal sets, rentals…"
+                className="bg-transparent text-sm flex-1 outline-none text-stone-700 placeholder-stone-400 font-medium"
+              />
+              {searchQuery && (
+                <button type="button" onClick={() => setSearchQuery('')} className="text-stone-400 hover:text-stone-600 transition-colors">
+                  <FiX className="text-sm" />
+                </button>
+              )}
+              <button type="submit" className="text-xs font-semibold text-wine-700 hover:text-wine-800 transition-colors flex-shrink-0">
+                Search
+              </button>
+            </form>
+          </div>
+        )}
       </nav>
 
       {/* Mobile menu */}
       {menuOpen && (
-        <div className="md:hidden bg-white border-t px-4 py-4 space-y-2">
-          <form onSubmit={handleSearch} className="flex items-center bg-gray-100 rounded-full px-3 py-2 gap-2 mb-3">
-            <FiSearch className="text-gray-400" />
-            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search catalogue…" className="bg-transparent text-sm flex-1 outline-none" />
-          </form>
-          {[
-            { label: 'Home', href: '/' },
-            { label: 'Buy Jewellery', href: '/shop' },
-            { label: 'Rent Jewellery', href: '/rentals' },
-            { label: 'About', href: '/about' },
-            { label: 'Contact', href: '/contact' },
-            { label: 'Track Order', href: '/track-order' },
-          ].map((l) => (
-            <Link key={l.href} href={l.href} onClick={() => setMenuOpen(false)} className="block py-2 text-gray-700 border-b text-sm">{l.label}</Link>
-          ))}
-          {!session && <Link href="/login" className="block py-2 font-semibold text-wine text-sm">Login / Register</Link>}
+        <div className="lg:hidden bg-white border-t border-stone-100">
+          <div className="section-container py-5 space-y-1">
+            {[
+              { label: 'Home', href: '/' },
+              { label: 'Buy Jewellery', href: '/shop' },
+              { label: 'Rent Jewellery', href: '/rentals' },
+              { label: 'Browse Catalogue', href: '/catalog' },
+              { label: 'About Us', href: '/about' },
+              { label: 'Contact', href: '/contact' },
+              { label: 'Track Order', href: '/track-order' },
+            ].map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center py-3 text-stone-700 border-b border-stone-100 text-sm font-medium hover:text-wine-700 transition-colors"
+              >
+                {l.label}
+              </Link>
+            ))}
+            <div className="pt-3 flex gap-3">
+              {!session ? (
+                <Link href="/login" onClick={() => setMenuOpen(false)} className="flex-1 text-center py-3 bg-wine-700 text-white text-sm font-semibold rounded-xl hover:bg-wine-800 transition-colors">
+                  Sign In / Register
+                </Link>
+              ) : (
+                <button onClick={() => signOut()} className="flex-1 text-center py-3 border border-stone-200 text-stone-600 text-sm font-semibold rounded-xl hover:bg-stone-50 transition-colors">
+                  Sign Out
+                </button>
+              )}
+              <Link href="/wishlist" onClick={() => setMenuOpen(false)} className="px-5 py-3 border border-stone-200 text-stone-600 rounded-xl hover:bg-stone-50 transition-colors">
+                <FiHeart className="text-lg" />
+              </Link>
+            </div>
+          </div>
         </div>
       )}
     </header>
