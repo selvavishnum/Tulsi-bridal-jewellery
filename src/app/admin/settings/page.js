@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { FiSettings, FiSave, FiPhone, FiMapPin, FiInstagram, FiLink } from 'react-icons/fi';
-import { FaWhatsapp } from 'react-icons/fa';
+import { FiSettings, FiSave, FiPlus, FiTrash2, FiImage } from 'react-icons/fi';
+import Image from 'next/image';
 import toast from 'react-hot-toast';
 
 const SECTIONS = [
@@ -43,6 +43,94 @@ const SECTIONS = [
   },
 ];
 
+const BLANK_SLIDE = {
+  id: '',
+  imageUrl: '',
+  tag: '',
+  title: '',
+  subtitle: '',
+  ctaText: 'Shop Collection',
+  ctaLink: '/shop',
+  cta2Text: 'Book Rental',
+  cta2Link: '/rentals',
+};
+
+/* ── Hero Slide Editor row ── */
+function SlideRow({ slide, index, onChange, onDelete }) {
+  return (
+    <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 space-y-3">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Slide {index + 1}</span>
+        <button type="button" onClick={onDelete} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition">
+          <FiTrash2 className="text-sm" />
+        </button>
+      </div>
+
+      {/* Image preview */}
+      {slide.imageUrl && (
+        <div className="relative h-32 rounded-lg overflow-hidden bg-gray-200 mb-1">
+          <Image src={slide.imageUrl} alt="slide preview" fill className="object-cover object-top" />
+        </div>
+      )}
+
+      <div className="grid md:grid-cols-2 gap-3">
+        <div className="md:col-span-2">
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Image URL <span className="text-gray-400">(model photo — full width)</span></label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <FiImage className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+              <input
+                type="url"
+                value={slide.imageUrl}
+                onChange={(e) => onChange('imageUrl', e.target.value)}
+                placeholder="https://… paste image link here"
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400"
+              />
+            </div>
+          </div>
+          <p className="text-[10px] text-gray-400 mt-1">Use Google Drive, Cloudinary, or any public image URL. Recommended size: 1600×900px</p>
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Tag / Badge text</label>
+          <input value={slide.tag} onChange={(e) => onChange('tag', e.target.value)} placeholder="e.g. New Bridal Collection"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Main Title</label>
+          <input value={slide.title} onChange={(e) => onChange('title', e.target.value)} placeholder="You Are The Occasion"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400" />
+        </div>
+        <div className="md:col-span-2">
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Subtitle / description</label>
+          <input value={slide.subtitle} onChange={(e) => onChange('subtitle', e.target.value)} placeholder="Jewellery Crafted for Brides"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Button 1 Text</label>
+          <input value={slide.ctaText} onChange={(e) => onChange('ctaText', e.target.value)} placeholder="Shop Collection"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Button 1 Link</label>
+          <input value={slide.ctaLink} onChange={(e) => onChange('ctaLink', e.target.value)} placeholder="/shop"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Button 2 Text <span className="text-gray-400">(optional)</span></label>
+          <input value={slide.cta2Text} onChange={(e) => onChange('cta2Text', e.target.value)} placeholder="Book Rental"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400" />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Button 2 Link <span className="text-gray-400">(optional)</span></label>
+          <input value={slide.cta2Link} onChange={(e) => onChange('cta2Link', e.target.value)} placeholder="/rentals"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState({
     businessName: 'Tulsi Bridal Jewellery',
@@ -62,16 +150,34 @@ export default function SettingsPage() {
     whatsappNotify: '',
     emailNotify: '',
   });
+  const [heroSlides, setHeroSlides] = useState([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetch('/api/admin/settings')
       .then((r) => r.json())
-      .then((d) => { if (d.success && d.data) setSettings((prev) => ({ ...prev, ...d.data })); })
+      .then((d) => {
+        if (d.success && d.data) {
+          setSettings((prev) => ({ ...prev, ...d.data }));
+          if (Array.isArray(d.data.heroSlides)) setHeroSlides(d.data.heroSlides);
+        }
+      })
       .catch(() => {});
   }, []);
 
   function update(key, value) { setSettings((prev) => ({ ...prev, [key]: value })); }
+
+  function addSlide() {
+    setHeroSlides((prev) => [...prev, { ...BLANK_SLIDE, id: Date.now().toString() }]);
+  }
+
+  function updateSlide(index, field, value) {
+    setHeroSlides((prev) => prev.map((s, i) => i === index ? { ...s, [field]: value } : s));
+  }
+
+  function deleteSlide(index) {
+    setHeroSlides((prev) => prev.filter((_, i) => i !== index));
+  }
 
   async function save(e) {
     e.preventDefault();
@@ -80,7 +186,7 @@ export default function SettingsPage() {
       const res = await fetch('/api/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
+        body: JSON.stringify({ ...settings, heroSlides }),
       });
       const data = await res.json();
       if (data.success) toast.success('Settings saved!');
@@ -94,11 +200,53 @@ export default function SettingsPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><FiSettings /> Admin Settings</h1>
-          <p className="text-gray-500 text-sm mt-0.5">Configure your business details</p>
+          <p className="text-gray-500 text-sm mt-0.5">Configure your business details and homepage</p>
         </div>
       </div>
 
       <form onSubmit={save} className="space-y-5">
+        {/* ── Hero Banner Slides ── */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
+            <div>
+              <h2 className="font-bold text-gray-800">Homepage Hero Banners</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Full-screen model images shown on the homepage slider</p>
+            </div>
+            <button type="button" onClick={addSlide}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-maroon-950 text-white text-xs font-semibold rounded-lg hover:bg-maroon-900 transition">
+              <FiPlus /> Add Slide
+            </button>
+          </div>
+
+          {heroSlides.length === 0 ? (
+            <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+              <FiImage className="text-3xl mx-auto mb-2 opacity-40" />
+              <p className="text-sm font-medium">No hero slides yet</p>
+              <p className="text-xs mt-1">Click "Add Slide" to add your first model banner image</p>
+              <button type="button" onClick={addSlide} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-gold-600 text-white text-xs font-semibold rounded-lg hover:bg-gold-700 transition">
+                <FiPlus /> Add First Slide
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {heroSlides.map((slide, i) => (
+                <SlideRow
+                  key={slide.id || i}
+                  slide={slide}
+                  index={i}
+                  onChange={(field, value) => updateSlide(i, field, value)}
+                  onDelete={() => deleteSlide(i)}
+                />
+              ))}
+              <button type="button" onClick={addSlide}
+                className="w-full py-3 border-2 border-dashed border-gray-200 text-sm text-gray-500 hover:border-gold-400 hover:text-gold-600 rounded-xl flex items-center justify-center gap-2 transition">
+                <FiPlus /> Add Another Slide
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Other Settings ── */}
         {SECTIONS.map((section) => (
           <div key={section.title} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
             <h2 className="font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100">{section.title}</h2>

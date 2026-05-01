@@ -40,7 +40,7 @@ export default function ProductCard({ product }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <Link href={`/product/${id}`} className="block relative aspect-square overflow-hidden bg-ivory-200">
+      <Link href={`/product/${id}`} className="block relative aspect-square overflow-hidden bg-white border border-stone-100 rounded-t-2xl">
         {product.images?.[0] ? (
           <Image
             src={hovered && product.images[1] ? product.images[1] : product.images[0]}
