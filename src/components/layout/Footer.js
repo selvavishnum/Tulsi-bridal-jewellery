@@ -2,8 +2,26 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { GiQueenCrown } from 'react-icons/gi';
-import { FiInstagram, FiFacebook, FiYoutube, FiPhone, FiMail, FiMapPin } from 'react-icons/fi';
+import { FiInstagram, FiFacebook, FiYoutube, FiPhone, FiMail, FiMapPin, FiArrowRight } from 'react-icons/fi';
+
+const QUICK_LINKS = [
+  { name: 'Home', href: '/' },
+  { name: 'Buy Jewellery', href: '/shop' },
+  { name: 'Rent Jewellery', href: '/rentals' },
+  { name: 'Browse Catalogue', href: '/catalog' },
+  { name: 'About Us', href: '/about' },
+  { name: 'Contact', href: '/contact' },
+  { name: 'My Account', href: '/account' },
+];
+
+const CATEGORIES = [
+  { name: 'Necklaces', href: '/catalog?category=necklace' },
+  { name: 'Earrings', href: '/catalog?category=earrings' },
+  { name: 'Bangles', href: '/catalog?category=bangles' },
+  { name: 'Rings', href: '/catalog?category=ring' },
+  { name: 'Maang Tikka', href: '/catalog?category=maang-tikka' },
+  { name: 'Bridal Sets', href: '/catalog?category=set' },
+];
 
 export default function Footer() {
   const [s, setS] = useState({});
@@ -21,97 +39,136 @@ export default function Footer() {
   const phoneRaw = phone.replace(/\D/g, '');
 
   return (
-    <footer className="bg-maroon-950 text-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+    <footer className="bg-velvet-900 text-white">
+      {/* Top ornament */}
+      <div className="border-t-2 border-gold-600/50">
+        <div className="section-container pt-14 pb-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-8">
 
-          {/* Brand */}
-          <div>
-            <div className="flex items-center gap-2 mb-4">
-              <GiQueenCrown className="text-gold-400 text-3xl" />
-              <div>
-                <p className="font-serif text-lg font-bold leading-tight">{s.businessName || 'Tulsi'}</p>
-                <p className="text-xs text-gold-400 tracking-widest uppercase leading-tight">Bridal Jewellery</p>
+            {/* Brand column */}
+            <div className="lg:col-span-1">
+              {/* Logo */}
+              <Link href="/" className="flex items-center gap-3 mb-5 group">
+                <svg width="36" height="30" viewBox="0 0 52 44" fill="none">
+                  <path d="M26 2L32 16L44 8L38 24H14L8 8L20 16L26 2Z" fill="#c9973a" stroke="#b87d2a" strokeWidth="1.5"/>
+                  <rect x="10" y="26" width="32" height="6" rx="1" fill="#c9973a"/>
+                  <rect x="12" y="34" width="28" height="5" rx="1" fill="#b87d2a"/>
+                </svg>
+                <div>
+                  <p className="font-serif text-lg font-bold tracking-[0.12em] text-white leading-none group-hover:text-gold-400 transition-colors">
+                    {s.businessName || 'TULSI'}
+                  </p>
+                  <p className="text-[8px] tracking-[0.28em] text-gold-500 uppercase leading-none mt-0.5">Bridal Jewellery</p>
+                </div>
+              </Link>
+
+              <p className="text-sm text-stone-300 leading-relaxed mb-6">
+                {s.tagline || 'Exquisite bridal jewellery crafted with love. Making your special day shine brighter.'}
+              </p>
+
+              {/* Social links */}
+              <div className="flex gap-2.5">
+                {[
+                  { href: s.instagram, icon: FiInstagram, label: 'Instagram' },
+                  { href: s.facebook,  icon: FiFacebook,  label: 'Facebook' },
+                  { href: s.youtube,   icon: FiYoutube,   label: 'YouTube' },
+                ].map(({ href, icon: Icon, label }) => (
+                  <a
+                    key={label}
+                    href={href || '#'}
+                    target={href ? '_blank' : undefined}
+                    rel="noopener noreferrer"
+                    aria-label={label}
+                    className="w-9 h-9 rounded-xl bg-white/8 border border-white/10 flex items-center justify-center text-stone-400 hover:bg-gold-600 hover:text-white hover:border-gold-600 transition-all duration-200"
+                  >
+                    <Icon className="text-sm" />
+                  </a>
+                ))}
               </div>
             </div>
-            <p className="text-sm text-gray-300 leading-relaxed mb-4">
-              {s.tagline || 'Exquisite bridal jewellery crafted with love. Making your special day shine brighter.'}
-            </p>
-            <div className="flex gap-3">
-              {s.instagram && <a href={s.instagram} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/10 rounded-full hover:bg-gold-600 transition"><FiInstagram /></a>}
-              {s.facebook  && <a href={s.facebook}  target="_blank" rel="noopener noreferrer" className="p-2 bg-white/10 rounded-full hover:bg-gold-600 transition"><FiFacebook /></a>}
-              {s.youtube   && <a href={s.youtube}   target="_blank" rel="noopener noreferrer" className="p-2 bg-white/10 rounded-full hover:bg-gold-600 transition"><FiYoutube /></a>}
-              {!s.instagram && !s.facebook && !s.youtube && (
-                <>
-                  <a href="#" className="p-2 bg-white/10 rounded-full hover:bg-gold-600 transition"><FiInstagram /></a>
-                  <a href="#" className="p-2 bg-white/10 rounded-full hover:bg-gold-600 transition"><FiFacebook /></a>
-                  <a href="#" className="p-2 bg-white/10 rounded-full hover:bg-gold-600 transition"><FiYoutube /></a>
-                </>
-              )}
+
+            {/* Quick links */}
+            <div>
+              <h3 className="text-xs font-semibold text-gold-500 uppercase tracking-widest mb-5">Quick Links</h3>
+              <ul className="space-y-2.5">
+                {QUICK_LINKS.map((l) => (
+                  <li key={l.name}>
+                    <Link href={l.href} className="text-sm text-stone-300 hover:text-gold-400 transition-colors flex items-center gap-1.5 group">
+                      <FiArrowRight className="text-xs text-gold-600/0 group-hover:text-gold-600/100 -translate-x-1 group-hover:translate-x-0 transition-all duration-200" />
+                      {l.name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
 
-          {/* Quick Links */}
-          <div>
-            <h3 className="font-semibold text-gold-400 mb-4 uppercase tracking-wider text-sm">Quick Links</h3>
-            <ul className="space-y-2 text-sm text-gray-300">
-              {[
-                { name: 'Home', href: '/' },
-                { name: 'Shop All', href: '/catalog' },
-                { name: 'Rental Jewellery', href: '/catalog?rental=true' },
-                { name: 'About Us', href: '/about' },
-                { name: 'Contact', href: '/contact' },
-                { name: 'My Account', href: '/account' },
-              ].map((l) => (
-                <li key={l.name}>
-                  <Link href={l.href} className="hover:text-gold-400 transition">{l.name}</Link>
+            {/* Categories */}
+            <div>
+              <h3 className="text-xs font-semibold text-gold-500 uppercase tracking-widest mb-5">Categories</h3>
+              <ul className="space-y-2.5">
+                {CATEGORIES.map((c) => (
+                  <li key={c.name}>
+                    <Link href={c.href} className="text-sm text-stone-300 hover:text-gold-400 transition-colors flex items-center gap-1.5 group">
+                      <FiArrowRight className="text-xs text-gold-600/0 group-hover:text-gold-600/100 -translate-x-1 group-hover:translate-x-0 transition-all duration-200" />
+                      {c.name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Contact */}
+            <div>
+              <h3 className="text-xs font-semibold text-gold-500 uppercase tracking-widest mb-5">Get in Touch</h3>
+              <ul className="space-y-4">
+                <li className="flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-white/8 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <FiMapPin className="text-gold-500 text-xs" />
+                  </div>
+                  <span className="text-sm text-stone-300 leading-relaxed">{address}</span>
                 </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Categories */}
-          <div>
-            <h3 className="font-semibold text-gold-400 mb-4 uppercase tracking-wider text-sm">Categories</h3>
-            <ul className="space-y-2 text-sm text-gray-300">
-              {['Necklaces', 'Earrings', 'Bangles', 'Rings', 'Maang Tikka', 'Bridal Sets'].map((cat) => (
-                <li key={cat}>
-                  <Link href={`/catalog?category=${cat.toLowerCase().replace(' ', '-')}`} className="hover:text-gold-400 transition">
-                    {cat}
-                  </Link>
+                <li className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-white/8 flex items-center justify-center flex-shrink-0">
+                    <FiPhone className="text-gold-500 text-xs" />
+                  </div>
+                  <a href={`tel:+${phoneRaw}`} className="text-sm text-stone-300 hover:text-gold-400 transition-colors">{phone}</a>
                 </li>
-              ))}
-            </ul>
-          </div>
+                <li className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-white/8 flex items-center justify-center flex-shrink-0">
+                    <FiMail className="text-gold-500 text-xs" />
+                  </div>
+                  <a href={`mailto:${email}`} className="text-sm text-stone-300 hover:text-gold-400 transition-colors">{email}</a>
+                </li>
+              </ul>
 
-          {/* Contact */}
-          <div>
-            <h3 className="font-semibold text-gold-400 mb-4 uppercase tracking-wider text-sm">Contact Us</h3>
-            <ul className="space-y-3 text-sm text-gray-300">
-              <li className="flex items-start gap-2">
-                <FiMapPin className="mt-0.5 text-gold-400 flex-shrink-0" />
-                <span>{address}</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <FiPhone className="text-gold-400 flex-shrink-0" />
-                <a href={`tel:+${phoneRaw}`} className="hover:text-gold-400 transition">{phone}</a>
-              </li>
-              <li className="flex items-center gap-2">
-                <FiMail className="text-gold-400 flex-shrink-0" />
-                <a href={`mailto:${email}`} className="hover:text-gold-400 transition">{email}</a>
-              </li>
-            </ul>
+              {/* Store hours */}
+              <div className="mt-6 p-4 rounded-xl bg-white/5 border border-white/10">
+                <p className="text-xs font-semibold text-gold-500 uppercase tracking-wider mb-2">Store Hours</p>
+                <p className="text-xs text-stone-400 leading-relaxed">Mon – Sat: 10 AM – 8 PM<br />Sunday: 11 AM – 6 PM</p>
+              </div>
+            </div>
+
           </div>
         </div>
-      </div>
 
-      <div className="border-t border-white/10 py-4">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs text-gray-400">
-          <p>© {new Date().getFullYear()} {s.businessName || 'Tulsi Bridal Jewellery'}. All rights reserved.</p>
-          <div className="flex gap-4">
-            <Link href="/privacy" className="hover:text-gold-400 transition">Privacy Policy</Link>
-            <Link href="/terms" className="hover:text-gold-400 transition">Terms of Service</Link>
-            <Link href="/refunds" className="hover:text-gold-400 transition">Refunds</Link>
+        {/* Gold divider */}
+        <div className="h-px mx-8 bg-gradient-to-r from-transparent via-gold-600/30 to-transparent" />
+
+        {/* Bottom bar */}
+        <div className="section-container py-5 flex flex-col sm:flex-row justify-between items-center gap-3">
+          <p className="text-xs text-stone-500">
+            © {new Date().getFullYear()} {s.businessName || 'Tulsi Bridal Jewellery'}. All rights reserved.
+          </p>
+          <div className="flex gap-5">
+            {[
+              { name: 'Privacy Policy', href: '/privacy' },
+              { name: 'Terms of Service', href: '/terms' },
+              { name: 'Refunds', href: '/refunds' },
+            ].map((l) => (
+              <Link key={l.name} href={l.href} className="text-xs text-stone-500 hover:text-gold-400 transition-colors">
+                {l.name}
+              </Link>
+            ))}
           </div>
         </div>
       </div>
