@@ -22,7 +22,8 @@ const catalogCategories = [
 
 const NAV_LINKS = [
   { label: 'Home', href: '/' },
-  { label: 'Buy', href: '/shop' },
+  { label: 'Shop', href: '/shop' },
+  { label: 'Catalogue', href: '/catalog' },
   { label: 'Rentals', href: '/rentals', highlight: true },
   { label: 'About', href: '/about' },
   { label: 'Contact', href: '/contact' },
@@ -111,20 +112,22 @@ export default function Navbar() {
           </Link>
 
           {/* Desktop nav links */}
-          <nav className="hidden lg:flex items-center gap-7">
+          <nav className="hidden lg:flex items-center gap-6">
             <Link href="/" className="nav-link">Home</Link>
 
-            {/* Catalogue dropdown */}
+            {/* Shop dropdown */}
             <div
               className="relative"
               onMouseEnter={() => setCatalogOpen(true)}
               onMouseLeave={() => setCatalogOpen(false)}
             >
-              <button className="nav-link flex items-center gap-1">
-                Catalogue <FiChevronDown className={`text-xs transition-transform duration-200 ${catalogOpen ? 'rotate-180' : ''}`} />
+              <button className="nav-link flex items-center gap-1 font-semibold text-wine-700">
+                Shop <FiChevronDown className={`text-xs transition-transform duration-200 ${catalogOpen ? 'rotate-180' : ''}`} />
               </button>
               <div className={`absolute top-full left-1/2 -translate-x-1/2 mt-3 bg-white shadow-luxury-lg border border-stone-100 py-3 w-52 z-50 rounded-xl transition-all duration-200 origin-top ${catalogOpen ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'}`}>
                 <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-l border-t border-stone-100 rotate-45" />
+                <Link href="/shop" className="block px-5 py-2.5 text-sm text-wine-700 font-semibold hover:bg-ivory-100 transition-colors">All Jewellery</Link>
+                <div className="h-px bg-stone-100 my-1" />
                 {catalogCategories.map((c) => (
                   <Link
                     key={c.name}
@@ -137,15 +140,9 @@ export default function Navbar() {
               </div>
             </div>
 
-            {NAV_LINKS.slice(1).map((link) => (
-              link.highlight ? (
-                <Link key={link.href} href={link.href} className="text-sm font-semibold text-gold-600 hover:text-gold-700 transition-colors">
-                  {link.label}
-                </Link>
-              ) : (
-                <Link key={link.href} href={link.href} className="nav-link">{link.label}</Link>
-              )
-            ))}
+            <Link href="/rentals" className="text-sm font-semibold text-gold-600 hover:text-gold-700 transition-colors">Rentals</Link>
+            <Link href="/about" className="nav-link">About</Link>
+            <Link href="/contact" className="nav-link">Contact</Link>
             <Link href="/track-order" className="nav-link">Track Order</Link>
           </nav>
 
