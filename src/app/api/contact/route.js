@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
+import { sendContactNotification } from '@/lib/email';
 
 export async function POST(request) {
   try {
@@ -10,10 +11,12 @@ export async function POST(request) {
     }
     const db = getDB();
     const ref = db.collection('contact_messages').doc();
-    await ref.set({
-      name, email, phone: phone || '', subject: subject || '',
-      message, read: false, createdAt: new Date().toISOString(),
-    });
+    const msgData = { name, email, phone: phone || '', subject: subject || '', message, read: false, createdAt: new Date().toISOString() };
+    await ref.set(msgData);
+
+    /* Notify admin + staff by email */
+    sendContactNotification(msgData).catch(() => {});
+
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });

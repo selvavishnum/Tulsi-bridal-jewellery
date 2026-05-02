@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
+import { sendReviewNotification } from '@/lib/email';
 
 export async function GET(request, context) {
   try {
@@ -64,6 +65,9 @@ export async function POST(request, context) {
       createdAt: new Date().toISOString(),
     };
     await ref.set(review);
+
+    /* Notify admin about new review */
+    sendReviewNotification(review).catch(() => {});
 
     /* Update product aggregate ratings */
     const allSnap = await db.collection('reviews').where('productId', '==', id).get();

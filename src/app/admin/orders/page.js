@@ -1,14 +1,12 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { FiSearch, FiX, FiChevronDown, FiChevronUp, FiPhone } from 'react-icons/fi';
+import { FiSearch, FiX, FiChevronDown, FiChevronUp, FiPhone, FiTruck, FiPackage, FiExternalLink } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
 import Badge from '@/components/ui/Badge';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-
-const WA_NUMBER = '919876543210';
 
 const STATUS_BADGE = {
   pending: 'warning', confirmed: 'success', processing: 'gold',
@@ -25,14 +23,162 @@ const STATUS_FLOW = {
   cancelled:  { next: null,         color: 'bg-red-500' },
 };
 
+const COURIERS = [
+  'Shiprocket', 'BlueDart', 'Delhivery', 'DTDC', 'Ecom Express',
+  'FedEx', 'India Post', 'XpressBees', 'Shadowfax', 'Other',
+];
+
+/* ── Shipment / Tracking Modal ── */
+function ShipmentModal({ order, onClose, onShipped }) {
+  const [mode, setMode] = useState('manual'); // 'manual' | 'shiprocket'
+  const [trackingNumber, setTrackingNumber] = useState(order.trackingNumber || '');
+  const [courierName, setCourierName] = useState(order.courierName || '');
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!trackingNumber.trim()) return toast.error('Enter tracking number');
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/shipments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: order._id,
+          manualTracking: true,
+          trackingNumber: trackingNumber.trim(),
+          courierName,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Tracking saved & order marked Shipped');
+        onShipped();
+        onClose();
+      } else {
+        toast.error(data.message || 'Failed');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createShiprocket() {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/shipments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: order._id, manualTracking: false }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Shiprocket shipment created! AWB: ${data.data?.awb || '—'}`);
+        onShipped();
+        onClose();
+      } else {
+        toast.error(data.message || 'Failed');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="font-bold text-gray-800 flex items-center gap-2"><FiTruck /> Ship Order</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Order #{order.orderNumber}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition"><FiX /></button>
+        </div>
+
+        {/* Mode tabs */}
+        <div className="flex gap-2 mb-5 p-1 bg-gray-100 rounded-xl">
+          <button onClick={() => setMode('manual')} className={`flex-1 py-2 text-xs font-semibold rounded-lg transition ${mode === 'manual' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}>
+            Manual Entry
+          </button>
+          <button onClick={() => setMode('shiprocket')} className={`flex-1 py-2 text-xs font-semibold rounded-lg transition ${mode === 'shiprocket' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500'}`}>
+            Shiprocket API
+          </button>
+        </div>
+
+        {mode === 'manual' ? (
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Courier Partner</label>
+              <select value={courierName} onChange={(e) => setCourierName(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-gold-400">
+                <option value="">Select courier…</option>
+                {COURIERS.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Tracking Number *</label>
+              <input
+                value={trackingNumber}
+                onChange={(e) => setTrackingNumber(e.target.value)}
+                placeholder="e.g. 1234567890"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-gold-400 font-mono"
+              />
+              <p className="text-xs text-gray-400 mt-1">Order will be auto-marked as "Shipped" and customer will be notified by email.</p>
+            </div>
+            <button onClick={save} disabled={saving}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition disabled:opacity-60 flex items-center justify-center gap-2">
+              <FiTruck /> {saving ? 'Saving…' : 'Save Tracking & Mark Shipped'}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+              <p className="text-sm text-blue-800 font-semibold mb-1">Auto-create via Shiprocket</p>
+              <p className="text-xs text-blue-600 leading-relaxed">
+                This will create the order in Shiprocket, assign a courier automatically,
+                and store the AWB tracking number. Requires <code className="bg-blue-100 px-1 rounded">SHIPROCKET_EMAIL</code> and{' '}
+                <code className="bg-blue-100 px-1 rounded">SHIPROCKET_PASSWORD</code> in your .env.local file.
+              </p>
+            </div>
+            <button onClick={createShiprocket} disabled={saving}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition disabled:opacity-60 flex items-center justify-center gap-2">
+              <FiPackage /> {saving ? 'Creating…' : 'Create Shiprocket Shipment'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Tracking Info row ── */
+function TrackingInfo({ order }) {
+  if (!order.trackingNumber) return null;
+  const shiprocketUrl = `https://shiprocket.co/tracking/${order.trackingNumber}`;
+  return (
+    <div className="flex items-center gap-2 mt-1.5">
+      <FiTruck className="text-indigo-500 text-xs flex-shrink-0" />
+      <span className="text-xs text-gray-500 font-mono">{order.trackingNumber}</span>
+      {order.courierName && <span className="text-xs text-gray-400">({order.courierName})</span>}
+      <a href={shiprocketUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline flex items-center gap-0.5">
+        Track <FiExternalLink className="text-[10px]" />
+      </a>
+    </div>
+  );
+}
+
 export default function AdminOrdersPage() {
-  const [orders, setOrders]         = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [statusFilter, setStatus]   = useState('');
-  const [search, setSearch]         = useState('');
-  const [selected, setSelected]     = useState(null);  // for status modal
-  const [expanded, setExpanded]     = useState(null);  // for detail row
-  const [updating, setUpdating]     = useState(null);
+  const [orders, setOrders]           = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [statusFilter, setStatus]     = useState('');
+  const [search, setSearch]           = useState('');
+  const [selected, setSelected]       = useState(null);
+  const [expanded, setExpanded]       = useState(null);
+  const [updating, setUpdating]       = useState(null);
+  const [shipModal, setShipModal]     = useState(null);
 
   async function fetchOrders() {
     setLoading(true);
@@ -59,6 +205,10 @@ export default function AdminOrdersPage() {
   async function quickNext(order) {
     const nextStatus = STATUS_FLOW[order.status]?.next;
     if (!nextStatus) return;
+    if (nextStatus === 'shipped') {
+      setShipModal(order);
+      return;
+    }
     setUpdating(order._id);
     const res = await fetch(`/api/orders/${order._id}`, {
       method: 'PUT',
@@ -66,12 +216,16 @@ export default function AdminOrdersPage() {
       body: JSON.stringify({ status: nextStatus }),
     });
     const data = await res.json();
-    if (data.success) { toast.success(`Order moved to ${nextStatus}`); fetchOrders(); }
+    if (data.success) { toast.success(`Order → ${nextStatus}`); fetchOrders(); }
     else toast.error(data.message);
     setUpdating(null);
   }
 
   async function updateStatus(orderId, status) {
+    if (status === 'shipped') {
+      const order = orders.find((o) => o._id === orderId);
+      if (order) { setShipModal(order); setSelected(null); return; }
+    }
     const res = await fetch(`/api/orders/${orderId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -92,7 +246,6 @@ export default function AdminOrdersPage() {
   return (
     <div className="space-y-5">
 
-      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Orders</h1>
@@ -100,12 +253,11 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
-      {/* Stats row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'Total Orders', value: stats.total, color: 'bg-blue-50 text-blue-700' },
-          { label: 'Pending',      value: stats.pending, color: 'bg-yellow-50 text-yellow-700' },
-          { label: 'Delivered',    value: stats.delivered, color: 'bg-green-50 text-green-700' },
+          { label: 'Total Orders', value: stats.total,            color: 'bg-blue-50 text-blue-700' },
+          { label: 'Pending',      value: stats.pending,          color: 'bg-yellow-50 text-yellow-700' },
+          { label: 'Delivered',    value: stats.delivered,        color: 'bg-green-50 text-green-700' },
           { label: 'Revenue',      value: formatPrice(stats.revenue), color: 'bg-maroon-50 text-maroon-700' },
         ].map((s) => (
           <div key={s.label} className={`rounded-xl px-4 py-3 ${s.color}`}>
@@ -115,42 +267,21 @@ export default function AdminOrdersPage() {
         ))}
       </div>
 
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by order #, customer name, email or phone…"
-            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400 bg-white"
-          />
-          {search && (
-            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              <FiX className="text-sm" />
-            </button>
-          )}
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by order #, customer, email or phone…"
+            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400 bg-white" />
+          {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><FiX className="text-sm" /></button>}
         </div>
         <div className="flex gap-1.5 flex-wrap">
-          <button
-            onClick={() => setStatus('')}
-            className={`px-3 py-2 rounded-lg text-xs font-semibold transition ${!statusFilter ? 'bg-maroon-950 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
-          >
-            All
-          </button>
+          <button onClick={() => setStatus('')} className={`px-3 py-2 rounded-lg text-xs font-semibold transition ${!statusFilter ? 'bg-maroon-950 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>All</button>
           {STATUSES.map((s) => (
-            <button
-              key={s}
-              onClick={() => setStatus(s)}
-              className={`px-3 py-2 rounded-lg text-xs font-semibold capitalize transition ${statusFilter === s ? 'bg-maroon-950 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
-            >
-              {s}
-            </button>
+            <button key={s} onClick={() => setStatus(s)} className={`px-3 py-2 rounded-lg text-xs font-semibold capitalize transition ${statusFilter === s ? 'bg-maroon-950 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>{s}</button>
           ))}
         </div>
       </div>
 
-      {/* Table */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         {loading ? (
           <div className="flex justify-center py-16"><LoadingSpinner size="lg" /></div>
@@ -172,75 +303,56 @@ export default function AdminOrdersPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
-                      {search ? 'No orders match your search.' : 'No orders found.'}
-                    </td>
-                  </tr>
+                  <tr><td colSpan={9} className="px-4 py-12 text-center text-gray-400">{search ? 'No orders match your search.' : 'No orders found.'}</td></tr>
                 ) : filtered.map((o) => (
                   <>
-                    <tr
-                      key={o._id}
-                      className={`hover:bg-gray-50/70 transition ${expanded === o._id ? 'bg-gold-50/30' : ''}`}
-                    >
-                      {/* Expand toggle */}
+                    <tr key={o._id} className={`hover:bg-gray-50/70 transition ${expanded === o._id ? 'bg-gold-50/30' : ''}`}>
                       <td className="pl-4">
-                        <button
-                          onClick={() => setExpanded(expanded === o._id ? null : o._id)}
-                          className="text-gray-400 hover:text-gray-700 transition p-1"
-                        >
+                        <button onClick={() => setExpanded(expanded === o._id ? null : o._id)} className="text-gray-400 hover:text-gray-700 transition p-1">
                           {expanded === o._id ? <FiChevronUp className="text-sm" /> : <FiChevronDown className="text-sm" />}
                         </button>
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-gray-600 font-semibold">#{o.orderNumber}</td>
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-800 text-sm">{o.user?.name || o.guestEmail || '—'}</p>
-                        {o.shippingAddress?.phone && (
-                          <p className="text-xs text-gray-400 mt-0.5">{o.shippingAddress.phone}</p>
-                        )}
+                        <p className="font-mono text-xs text-gray-600 font-semibold">#{o.orderNumber}</p>
+                        <TrackingInfo order={o} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-gray-800 text-sm">{o.shippingAddress?.name || o.guestEmail || '—'}</p>
+                        {o.shippingAddress?.phone && <p className="text-xs text-gray-400 mt-0.5">{o.shippingAddress.phone}</p>}
+                        {o.guestEmail && <p className="text-xs text-gray-400 mt-0.5">{o.guestEmail}</p>}
                       </td>
                       <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{o.items?.length || 0} item{(o.items?.length || 0) !== 1 ? 's' : ''}</td>
                       <td className="px-4 py-3 font-bold text-gray-800">{formatPrice(o.total)}</td>
                       <td className="px-4 py-3 hidden sm:table-cell">
-                        <Badge variant={o.payment?.status === 'paid' ? 'success' : 'warning'}>
-                          {o.payment?.status || 'pending'}
-                        </Badge>
+                        <Badge variant={o.payment?.status === 'paid' ? 'success' : 'warning'}>{o.payment?.status || 'pending'}</Badge>
                       </td>
+                      <td className="px-4 py-3"><Badge variant={STATUS_BADGE[o.status] || 'default'}>{o.status}</Badge></td>
+                      <td className="px-4 py-3 text-gray-400 text-xs hidden lg:table-cell">{o.createdAt ? format(new Date(o.createdAt), 'dd MMM yyyy') : '—'}</td>
                       <td className="px-4 py-3">
-                        <Badge variant={STATUS_BADGE[o.status] || 'default'}>{o.status}</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-gray-400 text-xs hidden lg:table-cell">
-                        {o.createdAt ? format(new Date(o.createdAt), 'dd MMM yyyy') : '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          {/* Quick next status */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           {STATUS_FLOW[o.status]?.next && (
-                            <button
-                              onClick={() => quickNext(o)}
-                              disabled={updating === o._id}
-                              className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-md transition disabled:opacity-50 capitalize whitespace-nowrap"
-                            >
+                            <button onClick={() => quickNext(o)} disabled={updating === o._id}
+                              className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-md transition disabled:opacity-50 capitalize whitespace-nowrap flex items-center gap-1">
+                              {STATUS_FLOW[o.status].next === 'shipped' && <FiTruck className="text-[10px]" />}
                               {updating === o._id ? '…' : `→ ${STATUS_FLOW[o.status].next}`}
                             </button>
                           )}
-                          {/* Custom status */}
-                          <button
-                            onClick={() => setSelected(o)}
-                            className="text-xs text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-md transition"
-                          >
+                          {o.status === 'shipped' && !o.trackingNumber && (
+                            <button onClick={() => setShipModal(o)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-md transition flex items-center gap-1 whitespace-nowrap">
+                              <FiTruck className="text-[10px]" /> Add Tracking
+                            </button>
+                          )}
+                          <button onClick={() => setSelected(o)} className="text-xs text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-md transition">
                             Edit
                           </button>
                         </div>
                       </td>
                     </tr>
 
-                    {/* Expanded detail row */}
                     {expanded === o._id && (
                       <tr key={`${o._id}-detail`}>
                         <td colSpan={9} className="bg-amber-50/40 px-6 py-4 border-b border-amber-100">
                           <div className="grid md:grid-cols-3 gap-5">
-                            {/* Items */}
                             <div>
                               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Items Ordered</p>
                               <div className="space-y-1.5">
@@ -256,8 +368,6 @@ export default function AdminOrdersPage() {
                                 </div>
                               </div>
                             </div>
-
-                            {/* Shipping */}
                             <div>
                               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Shipping Address</p>
                               {o.shippingAddress ? (
@@ -270,26 +380,25 @@ export default function AdminOrdersPage() {
                                 </div>
                               ) : <p className="text-sm text-gray-400">No address on record</p>}
                             </div>
-
-                            {/* Actions */}
                             <div>
                               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Quick Actions</p>
                               <div className="space-y-2">
+                                <button onClick={() => setShipModal(o)}
+                                  className="flex items-center gap-2 w-full px-3 py-2 bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-semibold rounded-lg transition">
+                                  <FiTruck /> {o.trackingNumber ? 'Update Tracking' : 'Add Tracking / Ship'}
+                                </button>
                                 {o.shippingAddress?.phone && (
-                                  <a
-                                    href={`https://wa.me/91${o.shippingAddress.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${o.shippingAddress.name}! Your Tulsi Bridal order #${o.orderNumber} is now ${o.status}. Thank you for shopping with us!`)}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-2 w-full px-3 py-2 bg-green-500 hover:bg-green-400 text-white text-xs font-semibold rounded-lg transition"
-                                  >
+                                  <a href={`https://wa.me/91${o.shippingAddress.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${o.shippingAddress.name}! Your Tulsi Bridal order #${o.orderNumber} status: ${o.status}. Thank you!`)}`}
+                                    target="_blank" rel="noopener noreferrer"
+                                    className="flex items-center gap-2 w-full px-3 py-2 bg-green-500 hover:bg-green-400 text-white text-xs font-semibold rounded-lg transition">
                                     <FiPhone className="text-xs" /> WhatsApp Customer
                                   </a>
                                 )}
-                                <div className="text-xs text-gray-500">
-                                  <span className="font-medium">Payment:</span> {o.payment?.method} — {o.payment?.status}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  <span className="font-medium">Order ID:</span> <span className="font-mono">{o._id}</span>
+                                <div className="text-xs text-gray-500 space-y-1">
+                                  <p><span className="font-medium">Payment:</span> {o.payment?.method} — {o.payment?.status}</p>
+                                  {o.trackingNumber && <p><span className="font-medium">Tracking:</span> <span className="font-mono">{o.trackingNumber}</span></p>}
+                                  {o.courierName && <p><span className="font-medium">Courier:</span> {o.courierName}</p>}
+                                  <p><span className="font-medium">Order ID:</span> <span className="font-mono text-[10px]">{o._id}</span></p>
                                 </div>
                               </div>
                             </div>
@@ -305,42 +414,36 @@ export default function AdminOrdersPage() {
         )}
       </div>
 
-      {/* Status update modal */}
+      {/* Status modal */}
       {selected && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-5">
               <h3 className="font-bold text-gray-800">Update Order #{selected.orderNumber}</h3>
-              <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-600 transition">
-                <FiX />
-              </button>
+              <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-600 transition"><FiX /></button>
             </div>
             <div className="space-y-2">
               {STATUSES.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => updateStatus(selected._id, s)}
-                  className={`w-full py-2.5 rounded-xl text-sm font-semibold capitalize transition flex items-center justify-between px-4 ${
-                    selected.status === s
-                      ? 'bg-maroon-950 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-maroon-50 hover:text-maroon-950'
-                  }`}
-                >
-                  <span>{s}</span>
+                <button key={s} onClick={() => updateStatus(selected._id, s)}
+                  className={`w-full py-2.5 rounded-xl text-sm font-semibold capitalize transition flex items-center justify-between px-4 ${selected.status === s ? 'bg-maroon-950 text-white' : 'bg-gray-100 text-gray-700 hover:bg-maroon-50 hover:text-maroon-950'}`}>
+                  <span className="flex items-center gap-2">{s === 'shipped' && <FiTruck className="text-sm" />}{s}</span>
                   {selected.status === s && <span className="text-xs opacity-60">Current</span>}
                 </button>
               ))}
             </div>
-            <button
-              onClick={() => setSelected(null)}
-              className="w-full mt-3 py-2.5 border border-gray-200 text-gray-500 text-sm rounded-xl hover:bg-gray-50 transition"
-            >
-              Cancel
-            </button>
+            <button onClick={() => setSelected(null)} className="w-full mt-3 py-2.5 border border-gray-200 text-gray-500 text-sm rounded-xl hover:bg-gray-50 transition">Cancel</button>
           </div>
         </div>
       )}
 
+      {/* Shipment / Tracking modal */}
+      {shipModal && (
+        <ShipmentModal
+          order={shipModal}
+          onClose={() => setShipModal(null)}
+          onShipped={fetchOrders}
+        />
+      )}
     </div>
   );
 }
