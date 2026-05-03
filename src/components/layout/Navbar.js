@@ -39,7 +39,7 @@ export default function Navbar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [sitePhone, setSitePhone] = useState('+91 98765 43210');
+  const [sitePhone, setSitePhone] = useState('+91 76958 68787');
   const searchRef = useRef(null);
   const userMenuRef = useRef(null);
 

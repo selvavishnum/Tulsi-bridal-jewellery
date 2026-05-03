@@ -153,7 +153,7 @@ export default function PrivacyPage() {
             <div className="mt-3 space-y-1 text-sm">
               <p className="text-stone-700 font-medium">Tulsi Bridal Jewellery</p>
               <p className="text-stone-500">Email: <a href="mailto:hello@tulsibridal.com" className="text-wine-700 hover:underline">hello@tulsibridal.com</a></p>
-              <p className="text-stone-500">Phone: <a href="tel:+919876543210" className="text-wine-700 hover:underline">+91 98765 43210</a></p>
+              <p className="text-stone-500">Phone: <a href="tel:+917695868787" className="text-wine-700 hover:underline">+91 76958 68787</a></p>
             </div>
           </section>
 

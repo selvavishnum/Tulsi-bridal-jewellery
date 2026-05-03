@@ -6,8 +6,8 @@
  * Env vars required:
  *   ULTRAMSG_INSTANCE_ID   — e.g. instance12345
  *   ULTRAMSG_TOKEN         — your API token
- *   ADMIN_WHATSAPP         — e.g. +919876543210  (admin number)
- *   STAFF_WHATSAPP         — comma-separated, e.g. +919876543210,+918765432109
+ *   ADMIN_WHATSAPP         — e.g. +917695868787  (admin number)
+ *   STAFF_WHATSAPP         — comma-separated, e.g. +917695868787,+918765432109
  */
 
 const INSTANCE = process.env.ULTRAMSG_INSTANCE_ID;

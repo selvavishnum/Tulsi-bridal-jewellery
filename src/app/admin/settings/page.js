@@ -10,7 +10,7 @@ const SECTIONS = [
     fields: [
       { key: 'businessName', label: 'Business Name', placeholder: 'Tulsi Bridal Jewellery' },
       { key: 'tagline', label: 'Tagline', placeholder: 'Premium Bridal Jewellery Rentals' },
-      { key: 'phone', label: 'Phone / WhatsApp', placeholder: '+91 98765 43210' },
+      { key: 'phone', label: 'Phone / WhatsApp', placeholder: '+91 76958 68787' },
       { key: 'email', label: 'Contact Email', placeholder: 'info@tulsibridal.com' },
       { key: 'address', label: 'Address', placeholder: 'Your city, State' },
       { key: 'gstin', label: 'GSTIN (optional)', placeholder: '22ABCDE1234F1Z5' },
@@ -21,7 +21,7 @@ const SECTIONS = [
     fields: [
       { key: 'instagram', label: 'Instagram URL', placeholder: 'https://instagram.com/yourpage' },
       { key: 'facebook', label: 'Facebook URL', placeholder: 'https://facebook.com/yourpage' },
-      { key: 'whatsapp', label: 'WhatsApp Number', placeholder: '919876543210' },
+      { key: 'whatsapp', label: 'WhatsApp Number', placeholder: '917695868787' },
       { key: 'youtube', label: 'YouTube URL', placeholder: 'https://youtube.com/...' },
     ],
   },
@@ -37,7 +37,7 @@ const SECTIONS = [
   {
     title: 'Notifications',
     fields: [
-      { key: 'whatsappNotify', label: 'WhatsApp for new orders', placeholder: '+91 98765 43210' },
+      { key: 'whatsappNotify', label: 'WhatsApp for new orders', placeholder: '+91 76958 68787' },
       { key: 'emailNotify', label: 'Email for notifications', placeholder: 'admin@tulsibridal.com' },
     ],
   },
@@ -135,7 +135,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState({
     businessName: 'Tulsi Bridal Jewellery',
     tagline: 'Premium Bridal Jewellery Rentals',
-    phone: '+91 98765 43210',
+    phone: '+91 76958 68787',
     email: '',
     address: '',
     gstin: '',

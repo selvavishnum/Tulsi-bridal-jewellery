@@ -12,7 +12,7 @@ import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
-const DEFAULT_WA = '919876543210';
+const DEFAULT_WA = '917695868787';
 
 /* Default slides shown when admin hasn't configured hero banners */
 const DEFAULT_SLIDES = [

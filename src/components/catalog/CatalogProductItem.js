@@ -135,7 +135,7 @@ export default function CatalogProductItem({ product, showPrice = false }) {
         <div className="flex gap-2 mt-3">
           {/* WhatsApp enquiry */}
           <a
-            href={`https://wa.me/919876543210?text=${whatsappMsg}`}
+            href={`https://wa.me/917695868787?text=${whatsappMsg}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-green-600 text-white text-xs font-semibold tracking-wide hover:bg-green-700 transition rounded"

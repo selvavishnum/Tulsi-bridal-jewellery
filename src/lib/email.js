@@ -145,7 +145,7 @@ export async function sendOrderConfirmation(order) {
 
     ${ctaBtn('Track Your Order →', trackUrl)}
 
-    <p style="margin:28px 0 0;font-size:13px;color:#a8a29e;">Questions? Reply to this email or WhatsApp us at +91 98765 43210.</p>
+    <p style="margin:28px 0 0;font-size:13px;color:#a8a29e;">Questions? Reply to this email or WhatsApp us at +91 76958 68787.</p>
   `);
 
   try {
@@ -265,7 +265,7 @@ export async function sendStatusUpdateEmail(order, newStatus) {
     </table>
 
     ${newStatus !== 'cancelled' ? ctaBtn('Track Your Order →', trackUrl) : ''}
-    <p style="margin:24px 0 0;font-size:13px;color:#a8a29e;">Questions? Reply to this email or WhatsApp us at +91 98765 43210.</p>
+    <p style="margin:24px 0 0;font-size:13px;color:#a8a29e;">Questions? Reply to this email or WhatsApp us at +91 76958 68787.</p>
   `);
 
   try {
