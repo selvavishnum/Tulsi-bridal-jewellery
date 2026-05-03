@@ -195,3 +195,57 @@ View reviews: ${process.env.NEXT_PUBLIC_SITE_URL || ''}/admin`;
 
   return notifyAdminAndStaff(body);
 }
+
+/**
+ * Admin alert: new rental booking
+ */
+export async function sendRentalWhatsAppToAdmin(rental) {
+  const cd = rental.customerDetails || {};
+  const body =
+`📅 *New Rental Booking — Tulsi Bridal*
+
+🔖 Booking: *${rental.rentalNumber}*
+💍 Product: ${rental.productName}
+👤 Customer: ${cd.name || '—'}
+📱 Phone: ${cd.phone || '—'}
+
+📆 Rental Dates:
+  Start: ${rental.rentalStartDate}
+  End:   ${rental.rentalEndDate}
+  Days:  ${rental.rentalDays}
+
+🚚 Delivery: ${rental.delivery?.method || 'self'}
+💰 Total: *₹${rental.total || 0}*
+💳 Payment: ${rental.payment?.method || '—'} — ${rental.payment?.status || '—'}
+
+View in admin: ${process.env.NEXT_PUBLIC_SITE_URL || ''}/admin/rentals`;
+
+  return notifyAdminAndStaff(body);
+}
+
+/**
+ * Customer: rental booking confirmed
+ */
+export async function sendRentalWhatsAppToCustomer(rental) {
+  const cd    = rental.customerDetails || {};
+  const phone = cd.phone;
+  if (!phone) return { success: false, message: 'No customer phone' };
+
+  const body =
+`✨ *Rental Confirmed — Tulsi Bridal Jewellery*
+
+Namaste ${cd.name || 'Customer'}! 🙏
+
+🔖 Booking No: *${rental.rentalNumber}*
+💍 Jewellery: ${rental.productName}
+📆 Rental: ${rental.rentalStartDate} → ${rental.rentalEndDate} (${rental.rentalDays} days)
+🚚 Delivery: ${rental.delivery?.method || 'self'}
+💰 Total: *₹${rental.total || 0}*
+
+✅ Security deposit ₹${rental.securityDeposit || 0} refunded after safe return.
+We'll contact you before the rental date.
+*Tulsi Bridal Jewellery* 💍`;
+
+  return sendMessage(phone, body);
+}
+

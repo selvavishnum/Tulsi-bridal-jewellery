@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
 import { calculateRentalDays } from '@/lib/utils';
+import { sendRentalConfirmation, sendRentalNotificationToAdmin } from '@/lib/email';
+import { sendRentalWhatsAppToAdmin, sendRentalWhatsAppToCustomer } from '@/lib/whatsapp';
 
 export async function GET(request) {
   try {
@@ -80,7 +82,18 @@ export async function POST(request) {
       updatedAt: new Date().toISOString(),
     };
     await rentalRef.set(rentalData);
-    return NextResponse.json({ success: true, data: { id: rentalRef.id, ...rentalData } }, { status: 201 });
+
+    const fullRental = { id: rentalRef.id, ...rentalData };
+
+    /* Send email + WhatsApp notifications */
+    await Promise.all([
+      sendRentalConfirmation(fullRental).catch((e) => console.error('[Email] Rental confirmation failed:', e.message)),
+      sendRentalNotificationToAdmin(fullRental).catch((e) => console.error('[Email] Rental admin notification failed:', e.message)),
+      sendRentalWhatsAppToAdmin(fullRental).catch((e) => console.error('[WhatsApp] Rental admin alert failed:', e.message)),
+      sendRentalWhatsAppToCustomer(fullRental).catch((e) => console.error('[WhatsApp] Rental customer alert failed:', e.message)),
+    ]);
+
+    return NextResponse.json({ success: true, data: fullRental }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
