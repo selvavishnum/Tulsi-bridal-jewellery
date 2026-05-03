@@ -6,6 +6,7 @@ import Image from 'next/image';
 import {
   FiHeart, FiShoppingCart, FiShield, FiRefreshCw,
   FiLock, FiStar, FiCalendar, FiArrowRight, FiChevronLeft, FiChevronRight,
+  FiInstagram, FiExternalLink,
 } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
@@ -58,10 +59,10 @@ const TRUST = [
   { icon: FiLock,      title: 'Secure Payment',       desc: 'Razorpay encrypted checkout' },
 ];
 
-const TESTIMONIALS = [
-  { name: 'Priya Sharma', event: 'Wedding 2024', text: 'Absolutely stunning bridal set! Everyone at the wedding was in awe. Premium quality and worth every rupee.' },
-  { name: 'Anita Reddy',  event: 'Engagement 2024', text: 'Rented the kundan necklace set for my engagement. Exceptional quality and the rental process was so easy.' },
-  { name: 'Kavitha Nair', event: 'Reception 2025', text: 'The most beautiful collection I\'ve seen. Fast delivery, perfect packaging, and gorgeous in photos.' },
+const DEFAULT_TESTIMONIALS = [
+  { name: 'Priya Sharma', location: 'Chennai', rating: 5, review: 'Absolutely beautiful jewellery! The quality is amazing and the delivery was super fast. Wore it for my wedding and got so many compliments!', photo: '' },
+  { name: 'Deepa Krishnan', location: 'Coimbatore', rating: 5, review: "Rented the bridal set for my sister's wedding. The pieces were stunning and everyone loved them. Will definitely come back!", photo: '' },
+  { name: 'Anitha Rajan', location: 'Madurai', rating: 5, review: "Best quality imitation jewellery I've seen. The stone work is so detailed. Great value for money!", photo: '' },
 ];
 
 /* ── Hero Slider ── */
@@ -265,6 +266,8 @@ export default function HomePage() {
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [siteSettings, setSiteSettings] = useState({});
   const [heroSlides, setHeroSlides] = useState([]);
+  const [testimonials, setTestimonials] = useState(DEFAULT_TESTIMONIALS);
+  const [instagramFeed, setInstagramFeed] = useState([]);
 
   const waNumber = (siteSettings.whatsapp || siteSettings.phone || DEFAULT_WA).replace(/\D/g, '');
 
@@ -281,6 +284,8 @@ export default function HomePage() {
         if (d.success && d.data) {
           setSiteSettings(d.data);
           if (Array.isArray(d.data.heroSlides)) setHeroSlides(d.data.heroSlides);
+          if (Array.isArray(d.data.testimonials) && d.data.testimonials.length > 0) setTestimonials(d.data.testimonials);
+          if (Array.isArray(d.data.instagramFeed)) setInstagramFeed(d.data.instagramFeed);
         }
       })
       .catch(() => {});
@@ -417,33 +422,116 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── TESTIMONIALS ── */}
+      {/* ── HAPPY CUSTOMERS ── */}
       <section className="py-16 bg-stone-50">
         <div className="section-container">
           <div className="text-center mb-10">
-            <p className="text-xs font-bold tracking-[0.35em] uppercase text-wine-700 mb-3">What Brides Say</p>
-            <h2 className="font-serif text-3xl font-bold text-stone-800">Customer Stories</h2>
+            <p className="text-xs font-bold tracking-[0.35em] uppercase text-wine-700 mb-3">What Our Brides Say</p>
+            <h2 className="font-serif text-3xl font-bold text-stone-800">Happy Customers</h2>
           </div>
-          <div className="grid md:grid-cols-3 gap-5">
-            {TESTIMONIALS.map((t) => (
-              <div key={t.name} className="bg-white rounded-2xl p-6 shadow-card border border-stone-100">
+          {/* Mobile: horizontal scroll; Desktop: 3-column grid */}
+          <div className="flex gap-5 overflow-x-auto pb-3 md:overflow-visible md:grid md:grid-cols-3 md:pb-0 snap-x snap-mandatory md:snap-none scrollbar-hide">
+            {testimonials.map((t, i) => (
+              <div key={i} className="bg-white rounded-2xl p-6 shadow-card border border-stone-100 flex-shrink-0 w-[80vw] max-w-xs md:w-auto md:max-w-none snap-start">
+                {/* Star rating */}
                 <div className="flex gap-0.5 mb-4">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <FiStar key={i} className="text-gold-400 text-sm fill-current" />
+                  {Array.from({ length: 5 }).map((_, si) => (
+                    <FiStar
+                      key={si}
+                      className={`text-sm ${si < (t.rating || 5) ? 'text-gold-400 fill-current' : 'text-stone-200 fill-current'}`}
+                    />
                   ))}
                 </div>
-                <p className="font-serif text-stone-500 text-base leading-relaxed mb-5 italic">"{t.text}"</p>
+                {/* Review text */}
+                <p className="font-serif text-stone-500 text-base leading-relaxed mb-5 italic">"{t.review || t.text}"</p>
+                {/* Customer info */}
                 <div className="flex items-center gap-3 pt-4 border-t border-stone-100">
-                  <div className="w-10 h-10 rounded-full bg-wine-100 flex items-center justify-center flex-shrink-0">
-                    <span className="text-wine-700 font-serif font-bold text-base">{t.name[0]}</span>
-                  </div>
+                  {t.photo ? (
+                    <div className="relative w-11 h-11 rounded-full overflow-hidden flex-shrink-0 border-2 border-gold-200">
+                      <Image src={t.photo} alt={t.name} fill className="object-cover" />
+                    </div>
+                  ) : (
+                    <div className="w-11 h-11 rounded-full bg-wine-100 flex items-center justify-center flex-shrink-0 border-2 border-gold-200">
+                      <span className="text-wine-700 font-serif font-bold text-base">{(t.name || 'C')[0].toUpperCase()}</span>
+                    </div>
+                  )}
                   <div>
                     <p className="font-semibold text-stone-800 text-sm">{t.name}</p>
-                    <p className="text-gold-600 text-xs font-medium">{t.event}</p>
+                    {t.location && <p className="text-gold-600 text-xs font-medium">{t.location}</p>}
                   </div>
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── INSTAGRAM FEED ── */}
+      <section className="py-16 bg-white border-t border-stone-100">
+        <div className="section-container">
+          <div className="text-center mb-10">
+            <p className="text-xs font-bold tracking-[0.35em] uppercase text-wine-700 mb-3">
+              {siteSettings.instagram ? `@${siteSettings.instagram.replace(/^https?:\/\/(www\.)?instagram\.com\/?/, '').replace(/\/$/, '')}` : '@tulsibridal'}
+            </p>
+            <h2 className="font-serif text-3xl font-bold text-stone-800">Follow Us on Instagram</h2>
+          </div>
+
+          {instagramFeed.length > 0 ? (
+            <div className="grid grid-cols-3 gap-2 md:gap-3 mb-8">
+              {instagramFeed.slice(0, 6).map((post, i) => (
+                <a
+                  key={i}
+                  href={post.postUrl || siteSettings.instagram || 'https://instagram.com/tulsibridal'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group relative aspect-square overflow-hidden rounded-xl bg-stone-100 block"
+                >
+                  {post.imageUrl && (
+                    <Image
+                      src={post.imageUrl}
+                      alt={post.caption || 'Instagram post'}
+                      fill
+                      className="object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                  )}
+                  {/* Hover overlay */}
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all duration-300 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                    {post.caption && (
+                      <p className="text-white text-xs text-center px-3 leading-relaxed line-clamp-3">{post.caption}</p>
+                    )}
+                    <span className="inline-flex items-center gap-1 text-white text-xs font-semibold border border-white/60 px-3 py-1 rounded-full">
+                      <FiExternalLink className="text-xs" /> View Post
+                    </span>
+                  </div>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16 border-2 border-dashed border-stone-200 rounded-2xl mb-8">
+              <FiInstagram className="text-5xl text-stone-300 mb-4" />
+              <p className="text-stone-500 font-medium mb-1">Follow us on Instagram</p>
+              <a
+                href={siteSettings.instagram || 'https://instagram.com/tulsibridal'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-wine-700 font-semibold text-sm hover:underline"
+              >
+                @tulsibridal
+              </a>
+            </div>
+          )}
+
+          {/* Follow button */}
+          <div className="text-center">
+            <a
+              href={siteSettings.instagram || 'https://instagram.com/tulsibridal'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2.5 px-8 py-3.5 bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 text-white font-semibold text-sm tracking-luxury uppercase rounded-full hover:shadow-lg hover:scale-105 transition-all duration-300"
+            >
+              <FiInstagram className="text-base" />
+              Follow @{siteSettings.instagram ? siteSettings.instagram.replace(/^https?:\/\/(www\.)?instagram\.com\/?/, '').replace(/\/$/, '') : 'tulsibridal'} on Instagram
+            </a>
           </div>
         </div>
       </section>

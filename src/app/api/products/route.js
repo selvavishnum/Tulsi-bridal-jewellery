@@ -13,6 +13,12 @@ export async function GET(request) {
     const featured = searchParams.get('featured');
     const rental = searchParams.get('rental');
     const search = searchParams.get('search');
+    const color = searchParams.get('color');
+    const priceMin = searchParams.get('priceMin');
+    const priceMax = searchParams.get('priceMax');
+    const isNew = searchParams.get('isNew');
+    const sortField = searchParams.get('sort') || 'createdAt';
+    const sortDir = searchParams.get('order') || 'desc';
 
     // Simple query — no composite index needed
     const snap = await db.collection('products').orderBy('createdAt', 'desc').get();
@@ -23,12 +29,27 @@ export async function GET(request) {
     if (featured === 'true') products = products.filter((p) => p.featured === true);
     if (rental === 'true')  products = products.filter((p) => p.isAvailableForRent === true);
     if (rental === 'false') products = products.filter((p) => !p.isAvailableForRent);
+    if (color) products = products.filter((p) => p.color?.toLowerCase() === color.toLowerCase());
+    if (priceMin) products = products.filter((p) => (p.discountPrice || p.price || 0) >= Number(priceMin));
+    if (priceMax) products = products.filter((p) => (p.discountPrice || p.price || 0) <= Number(priceMax));
+    if (isNew === 'true') products = products.filter((p) => p.isNew === true);
     if (search) {
       const term = search.toLowerCase();
       products = products.filter(
         (p) => p.name?.toLowerCase().includes(term) || p.sku?.toLowerCase().includes(term)
       );
     }
+
+    // Sort
+    products.sort((a, b) => {
+      const av = sortField.includes('.') ? sortField.split('.').reduce((o, k) => o?.[k], a) : a[sortField];
+      const bv = sortField.includes('.') ? sortField.split('.').reduce((o, k) => o?.[k], b) : b[sortField];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+      return sortDir === 'desc' ? -cmp : cmp;
+    });
 
     const total = products.length;
     const pages = Math.ceil(total / limit);
@@ -70,6 +91,11 @@ export async function POST(request) {
       weight: body.weight || '',
       material: body.material || '',
       occasion: body.occasion || '',
+      metalType: body.metalType || '',
+      stoneType: body.stoneType || '',
+      color: body.color || '',
+      usageInstructions: body.usageInstructions || '',
+      isNew: body.isNew || false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
