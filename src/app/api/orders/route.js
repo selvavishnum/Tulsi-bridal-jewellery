@@ -77,12 +77,19 @@ export async function POST(request) {
     const orderNumber = `TBJ${Date.now()}`;
     const resolvedEmail = guestEmail || session?.user?.email || shippingAddress?.email || null;
 
+    /* Normalize address fields: checkout sends fullName, emails expect name */
+    const normalizedAddress = {
+      ...shippingAddress,
+      name:  shippingAddress.fullName || shippingAddress.name || '',
+      email: shippingAddress.email || resolvedEmail || '',
+    };
+
     const orderData = {
       orderNumber,
       userId: session?.user?.id || null,
       guestEmail: resolvedEmail,
       items,
-      shippingAddress,
+      shippingAddress: normalizedAddress,
       payment: payment || { method: 'razorpay', status: 'pending' },
       coupon: coupon || null,
       couponCode: couponCode || null,
@@ -100,11 +107,11 @@ export async function POST(request) {
 
     /* Fire & forget — email + WhatsApp notifications */
     Promise.all([
-      sendOrderConfirmation(fullOrder),
-      sendOrderNotificationToAdmin(fullOrder),
-      sendOrderWhatsAppToAdmin(fullOrder),
-      sendOrderWhatsAppToCustomer(fullOrder),
-    ]).catch(() => {});
+      sendOrderConfirmation(fullOrder).catch((e) => console.error('[Email] Customer confirmation failed:', e.message)),
+      sendOrderNotificationToAdmin(fullOrder).catch((e) => console.error('[Email] Admin notification failed:', e.message)),
+      sendOrderWhatsAppToAdmin(fullOrder).catch((e) => console.error('[WhatsApp] Admin alert failed:', e.message)),
+      sendOrderWhatsAppToCustomer(fullOrder).catch((e) => console.error('[WhatsApp] Customer alert failed:', e.message)),
+    ]);
 
     return NextResponse.json({ success: true, data: fullOrder }, { status: 201 });
   } catch (error) {
