@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
 import { sendOrderConfirmation, sendOrderNotificationToAdmin } from '@/lib/email';
+import { sendOrderWhatsAppToAdmin, sendOrderWhatsAppToCustomer } from '@/lib/whatsapp';
 
 export async function GET(request) {
   try {
@@ -97,10 +98,12 @@ export async function POST(request) {
 
     const fullOrder = { id: orderRef.id, _id: orderRef.id, ...orderData };
 
-    /* Fire & forget email notifications (don't block response) */
+    /* Fire & forget — email + WhatsApp notifications */
     Promise.all([
       sendOrderConfirmation(fullOrder),
       sendOrderNotificationToAdmin(fullOrder),
+      sendOrderWhatsAppToAdmin(fullOrder),
+      sendOrderWhatsAppToCustomer(fullOrder),
     ]).catch(() => {});
 
     return NextResponse.json({ success: true, data: fullOrder }, { status: 201 });

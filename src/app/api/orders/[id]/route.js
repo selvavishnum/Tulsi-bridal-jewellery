@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDB, docToObj } from '@/lib/firebase';
 import { getEffectiveSession, requireAdmin } from '@/lib/adminCollection';
 import { sendStatusUpdateEmail } from '@/lib/email';
+import { sendStatusWhatsApp } from '@/lib/whatsapp';
 
 export async function GET(request, context) {
   try {
@@ -81,9 +82,10 @@ export async function PUT(request, context) {
     const updated = await ref.get();
     const updatedOrder = docToObj(updated);
 
-    /* Send status update email to customer */
+    /* Send status update — email + WhatsApp */
     if (status && status !== currentOrder.status) {
       sendStatusUpdateEmail(updatedOrder, status).catch(() => {});
+      sendStatusWhatsApp(updatedOrder, status).catch(() => {});
     }
 
     return NextResponse.json({ success: true, data: updatedOrder });

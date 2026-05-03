@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
 import { sendContactNotification } from '@/lib/email';
+import { sendContactWhatsApp } from '@/lib/whatsapp';
 
 export async function POST(request) {
   try {
@@ -14,8 +15,9 @@ export async function POST(request) {
     const msgData = { name, email, phone: phone || '', subject: subject || '', message, read: false, createdAt: new Date().toISOString() };
     await ref.set(msgData);
 
-    /* Notify admin + staff by email */
+    /* Notify admin + staff — email + WhatsApp */
     sendContactNotification(msgData).catch(() => {});
+    sendContactWhatsApp(msgData).catch(() => {});
 
     return NextResponse.json({ success: true });
   } catch (error) {
