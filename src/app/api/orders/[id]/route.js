@@ -84,8 +84,10 @@ export async function PUT(request, context) {
 
     /* Send status update — email + WhatsApp */
     if (status && status !== currentOrder.status) {
-      sendStatusUpdateEmail(updatedOrder, status).catch(() => {});
-      sendStatusWhatsApp(updatedOrder, status).catch(() => {});
+      await Promise.all([
+        sendStatusUpdateEmail(updatedOrder, status).catch((e) => console.error('[Email] Status update failed:', e.message)),
+        sendStatusWhatsApp(updatedOrder, status).catch((e) => console.error('[WhatsApp] Status update failed:', e.message)),
+      ]);
     }
 
     return NextResponse.json({ success: true, data: updatedOrder });

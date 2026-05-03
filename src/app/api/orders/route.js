@@ -105,8 +105,8 @@ export async function POST(request) {
 
     const fullOrder = { id: orderRef.id, _id: orderRef.id, ...orderData };
 
-    /* Fire & forget — email + WhatsApp notifications */
-    Promise.all([
+    /* Send emails + WhatsApp — await so they complete before response */
+    await Promise.all([
       sendOrderConfirmation(fullOrder).catch((e) => console.error('[Email] Customer confirmation failed:', e.message)),
       sendOrderNotificationToAdmin(fullOrder).catch((e) => console.error('[Email] Admin notification failed:', e.message)),
       sendOrderWhatsAppToAdmin(fullOrder).catch((e) => console.error('[WhatsApp] Admin alert failed:', e.message)),
