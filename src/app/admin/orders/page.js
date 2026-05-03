@@ -170,6 +170,53 @@ function TrackingInfo({ order }) {
   );
 }
 
+/* ── Resend Email Buttons ── */
+function ResendEmailButtons({ orderId }) {
+  const [state, setState] = useState({}); // { admin: 'loading'|'ok'|'err', customer: ... }
+
+  async function resend(type) {
+    setState((s) => ({ ...s, [type]: 'loading' }));
+    try {
+      const res  = await fetch('/api/admin/resend-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, type }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setState((s) => ({ ...s, [type]: 'ok' }));
+        toast.success(data.message);
+      } else {
+        setState((s) => ({ ...s, [type]: 'err' }));
+        toast.error(data.message || 'Email failed');
+      }
+    } catch (e) {
+      setState((s) => ({ ...s, [type]: 'err' }));
+      toast.error(e.message);
+    }
+  }
+
+  const btnClass = (t) =>
+    `flex items-center gap-1.5 w-full px-3 py-2 text-xs font-semibold rounded-lg transition ${
+      state[t] === 'ok'      ? 'bg-green-100 text-green-700 border border-green-200' :
+      state[t] === 'err'     ? 'bg-red-100 text-red-700 border border-red-200' :
+      state[t] === 'loading' ? 'bg-gray-100 text-gray-400 cursor-wait' :
+      t === 'admin'          ? 'bg-wine-50 text-wine-700 border border-wine-200 hover:bg-wine-100' :
+                               'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
+    }`;
+
+  return (
+    <>
+      <button onClick={() => resend('admin')} disabled={state.admin === 'loading'} className={btnClass('admin')}>
+        📧 {state.admin === 'ok' ? 'Admin mail sent ✓' : state.admin === 'err' ? 'Failed — check console' : 'Resend Admin Email'}
+      </button>
+      <button onClick={() => resend('customer')} disabled={state.customer === 'loading'} className={btnClass('customer')}>
+        📧 {state.customer === 'ok' ? 'Customer mail sent ✓' : state.customer === 'err' ? 'Failed — check console' : 'Resend Customer Email'}
+      </button>
+    </>
+  );
+}
+
 export default function AdminOrdersPage() {
   const [orders, setOrders]           = useState([]);
   const [loading, setLoading]         = useState(true);
@@ -394,6 +441,7 @@ export default function AdminOrdersPage() {
                                     <FiPhone className="text-xs" /> WhatsApp Customer
                                   </a>
                                 )}
+                                <ResendEmailButtons orderId={o._id} />
                                 <div className="text-xs text-gray-500 space-y-1">
                                   <p><span className="font-medium">Payment:</span> {o.payment?.method} — {o.payment?.status}</p>
                                   {o.trackingNumber && <p><span className="font-medium">Tracking:</span> <span className="font-mono">{o.trackingNumber}</span></p>}

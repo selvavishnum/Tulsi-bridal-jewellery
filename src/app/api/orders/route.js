@@ -107,11 +107,11 @@ export async function POST(request) {
 
     /* Fire & forget — email + WhatsApp notifications */
     Promise.all([
-      sendOrderConfirmation(fullOrder),
-      sendOrderNotificationToAdmin(fullOrder),
-      sendOrderWhatsAppToAdmin(fullOrder),
-      sendOrderWhatsAppToCustomer(fullOrder),
-    ]).catch(() => {});
+      sendOrderConfirmation(fullOrder).catch((e) => console.error('[Email] Customer confirmation failed:', e.message)),
+      sendOrderNotificationToAdmin(fullOrder).catch((e) => console.error('[Email] Admin notification failed:', e.message)),
+      sendOrderWhatsAppToAdmin(fullOrder).catch((e) => console.error('[WhatsApp] Admin alert failed:', e.message)),
+      sendOrderWhatsAppToCustomer(fullOrder).catch((e) => console.error('[WhatsApp] Customer alert failed:', e.message)),
+    ]);
 
     return NextResponse.json({ success: true, data: fullOrder }, { status: 201 });
   } catch (error) {
