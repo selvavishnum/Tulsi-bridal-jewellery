@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getDB, docToObj } from '@/lib/firebase';
 import { getEffectiveSession, requireAdmin } from '@/lib/adminCollection';
+import { sendStatusUpdateEmail } from '@/lib/email';
+import { sendStatusWhatsApp } from '@/lib/whatsapp';
 
 export async function GET(request, context) {
   try {
@@ -28,10 +30,11 @@ export async function PUT(request, context) {
     if (!session) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
 
     const db = getDB();
-    const { status, trackingNumber, notes } = await request.json();
+    const body = await request.json();
+    const { status, trackingNumber, courierName, notes } = body;
     const ref = db.collection('orders').doc(id);
 
-    // Non-admin users can only cancel their own orders if still pending/confirmed
+    /* Non-admin: can only cancel own pending/confirmed orders */
     if (session.user.role !== 'admin') {
       if (status !== 'cancelled') {
         return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
@@ -46,6 +49,10 @@ export async function PUT(request, context) {
       }
     }
 
+    /* Fetch current order before update (needed for email) */
+    const currentDoc = await ref.get();
+    const currentOrder = currentDoc.exists ? currentDoc.data() : {};
+
     const update = { updatedAt: new Date().toISOString() };
 
     if (status) {
@@ -53,29 +60,35 @@ export async function PUT(request, context) {
       if (status === 'delivered') update.deliveredAt = new Date().toISOString();
       if (status === 'cancelled') update.cancelledAt = new Date().toISOString();
 
-      // Deduct stock on confirmation
-      if (status === 'confirmed') {
-        const orderDoc = await ref.get();
-        if (orderDoc.exists) {
-          const batch = db.batch();
-          for (const item of (orderDoc.data().items || [])) {
-            if (!item.product) continue;
-            const prodRef = db.collection('products').doc(item.product);
-            const prodDoc = await prodRef.get();
-            if (prodDoc.exists) {
-              batch.update(prodRef, { stock: (prodDoc.data().stock || 0) - item.quantity });
-            }
+      /* Deduct stock on confirmation */
+      if (status === 'confirmed' && currentDoc.exists) {
+        const batch = db.batch();
+        for (const item of (currentDoc.data().items || [])) {
+          if (!item.product) continue;
+          const prodRef = db.collection('products').doc(item.product);
+          const prodDoc = await prodRef.get();
+          if (prodDoc.exists) {
+            batch.update(prodRef, { stock: (prodDoc.data().stock || 0) - item.quantity });
           }
-          await batch.commit();
         }
+        await batch.commit();
       }
     }
-    if (trackingNumber) update.trackingNumber = trackingNumber;
-    if (notes) update.notes = notes;
+    if (trackingNumber !== undefined) update.trackingNumber = trackingNumber;
+    if (courierName !== undefined) update.courierName = courierName;
+    if (notes !== undefined) update.notes = notes;
 
     await ref.update(update);
     const updated = await ref.get();
-    return NextResponse.json({ success: true, data: docToObj(updated) });
+    const updatedOrder = docToObj(updated);
+
+    /* Send status update — email + WhatsApp */
+    if (status && status !== currentOrder.status) {
+      sendStatusUpdateEmail(updatedOrder, status).catch(() => {});
+      sendStatusWhatsApp(updatedOrder, status).catch(() => {});
+    }
+
+    return NextResponse.json({ success: true, data: updatedOrder });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }

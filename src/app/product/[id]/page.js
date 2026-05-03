@@ -16,7 +16,7 @@ import { formatPrice, getDiscountPercentage, calculateRentalDays } from '@/lib/u
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
 
-const WA_NUMBER = '919876543210';
+const WA_NUMBER = '917695868787';
 
 const TRUST_ITEMS = [
   { icon: FiShield,      label: 'Certified Authentic' },

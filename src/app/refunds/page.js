@@ -67,7 +67,7 @@ export default function RefundsPage() {
               <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">2. How to Initiate a Return</h2>
               <ol className="space-y-3">
                 {[
-                  { step: '1', text: 'Contact us within 7 days of delivery via WhatsApp (+91 98765 43210) or email (hello@tulsibridal.com).' },
+                  { step: '1', text: 'Contact us within 7 days of delivery via WhatsApp (+91 76958 68787) or email (hello@tulsibridal.com).' },
                   { step: '2', text: 'Share your order number, reason for return, and clear photographs of the item and packaging.' },
                   { step: '3', text: 'Our team reviews your request within 24 hours and confirms eligibility.' },
                   { step: '4', text: 'We arrange a free return pickup from your address (or provide prepaid return label).' },
@@ -148,7 +148,7 @@ export default function RefundsPage() {
                 Our customer support team is available Monday–Saturday, 10 AM – 7 PM.
               </p>
               <div className="flex flex-wrap gap-3">
-                <a href="https://wa.me/919876543210" target="_blank" rel="noopener noreferrer"
+                <a href="https://wa.me/917695868787" target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-green-500 text-white text-sm font-semibold rounded-xl hover:bg-green-400 transition">
                   WhatsApp Us
                 </a>

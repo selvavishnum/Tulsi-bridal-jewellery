@@ -142,7 +142,7 @@ export default function TermsPage() {
               Questions about these terms? Reach us at{' '}
               <a href="mailto:hello@tulsibridal.com" className="text-wine-700 hover:underline font-medium">hello@tulsibridal.com</a>
               {' '}or call{' '}
-              <a href="tel:+919876543210" className="text-wine-700 hover:underline font-medium">+91 98765 43210</a>.
+              <a href="tel:+917695868787" className="text-wine-700 hover:underline font-medium">+91 76958 68787</a>.
             </p>
           </section>
 

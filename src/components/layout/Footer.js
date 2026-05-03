@@ -33,7 +33,7 @@ export default function Footer() {
       .catch(() => {});
   }, []);
 
-  const phone   = s.phone   || '+91 98765 43210';
+  const phone   = s.phone   || '+91 76958 68787';
   const email   = s.email   || 'hello@tulsibridal.com';
   const address = s.address || '123 Jewellery Lane, Mumbai';
   const phoneRaw = phone.replace(/\D/g, '');

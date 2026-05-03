@@ -10,7 +10,7 @@ const SECTIONS = [
     fields: [
       { key: 'businessName', label: 'Business Name', placeholder: 'Tulsi Bridal Jewellery' },
       { key: 'tagline', label: 'Tagline', placeholder: 'Premium Bridal Jewellery Rentals' },
-      { key: 'phone', label: 'Phone / WhatsApp', placeholder: '+91 98765 43210' },
+      { key: 'phone', label: 'Phone / WhatsApp', placeholder: '+91 76958 68787' },
       { key: 'email', label: 'Contact Email', placeholder: 'info@tulsibridal.com' },
       { key: 'address', label: 'Address', placeholder: 'Your city, State' },
       { key: 'gstin', label: 'GSTIN (optional)', placeholder: '22ABCDE1234F1Z5' },
@@ -21,7 +21,7 @@ const SECTIONS = [
     fields: [
       { key: 'instagram', label: 'Instagram URL', placeholder: 'https://instagram.com/yourpage' },
       { key: 'facebook', label: 'Facebook URL', placeholder: 'https://facebook.com/yourpage' },
-      { key: 'whatsapp', label: 'WhatsApp Number', placeholder: '919876543210' },
+      { key: 'whatsapp', label: 'WhatsApp Number', placeholder: '917695868787' },
       { key: 'youtube', label: 'YouTube URL', placeholder: 'https://youtube.com/...' },
     ],
   },
@@ -37,7 +37,7 @@ const SECTIONS = [
   {
     title: 'Notifications',
     fields: [
-      { key: 'whatsappNotify', label: 'WhatsApp for new orders', placeholder: '+91 98765 43210' },
+      { key: 'whatsappNotify', label: 'WhatsApp for new orders', placeholder: '+91 76958 68787' },
       { key: 'emailNotify', label: 'Email for notifications', placeholder: 'admin@tulsibridal.com' },
     ],
   },
@@ -131,11 +131,73 @@ function SlideRow({ slide, index, onChange, onDelete }) {
   );
 }
 
+function TestEmailPanel() {
+  const [testEmail, setTestEmail] = useState('');
+  const [status, setStatus]       = useState(null); // null | 'loading' | {ok, msg}
+
+  async function runTest() {
+    setStatus('loading');
+    try {
+      const res  = await fetch('/api/admin/test-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ testEmail }),
+      });
+      const data = await res.json();
+      setStatus({ ok: data.success, msg: data.message });
+    } catch (e) {
+      setStatus({ ok: false, msg: e.message });
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+      <h2 className="font-bold text-gray-800 mb-1">Test Email Notifications</h2>
+      <p className="text-xs text-gray-400 mb-4">Send a test mail to verify your SMTP setup is working</p>
+      <div className="flex gap-3">
+        <input
+          type="email"
+          value={testEmail}
+          onChange={(e) => setTestEmail(e.target.value)}
+          placeholder="Enter your email to receive test"
+          className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400"
+        />
+        <button
+          type="button"
+          onClick={runTest}
+          disabled={status === 'loading'}
+          className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-60 transition whitespace-nowrap"
+        >
+          {status === 'loading' ? 'Sending…' : 'Send Test Email'}
+        </button>
+      </div>
+
+      {status && status !== 'loading' && (
+        <div className={`mt-3 px-4 py-3 rounded-lg text-sm font-medium ${status.ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+          {status.ok ? '✅ ' : '❌ '}
+          {status.msg}
+          {!status.ok && (
+            <div className="mt-2 text-xs font-normal text-red-600 space-y-1">
+              <p>Common fixes:</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>SMTP_USER / SMTP_PASS / ADMIN_EMAIL not set in <code className="bg-red-100 px-1 rounded">.env.local</code></li>
+                <li>Gmail: use <strong>App Password</strong>, not your normal password</li>
+                <li>Gmail: 2-Step Verification must be ON before creating App Password</li>
+                <li>After editing .env.local, <strong>restart the server</strong> (npm run dev)</li>
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState({
     businessName: 'Tulsi Bridal Jewellery',
     tagline: 'Premium Bridal Jewellery Rentals',
-    phone: '+91 98765 43210',
+    phone: '+91 76958 68787',
     email: '',
     address: '',
     gstin: '',
@@ -266,6 +328,8 @@ export default function SettingsPage() {
             </div>
           </div>
         ))}
+
+        <TestEmailPanel />
 
         <div className="flex justify-end">
           <button type="submit" disabled={saving}

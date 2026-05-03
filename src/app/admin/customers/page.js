@@ -6,7 +6,7 @@ import Badge from '@/components/ui/Badge';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { format } from 'date-fns';
 
-const WA_NUMBER_FALLBACK = '919876543210';
+const WA_NUMBER_FALLBACK = '917695868787';
 
 function Avatar({ name, size = 'md' }) {
   const initials = (name || '?').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();

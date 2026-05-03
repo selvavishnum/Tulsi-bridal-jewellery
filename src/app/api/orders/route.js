@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getDB, paginate, snapshotToArr } from '@/lib/firebase';
+import { getDB, snapshotToArr } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
+import { sendOrderConfirmation, sendOrderNotificationToAdmin } from '@/lib/email';
+import { sendOrderWhatsAppToAdmin, sendOrderWhatsAppToCustomer } from '@/lib/whatsapp';
 
 export async function GET(request) {
   try {
@@ -13,7 +15,6 @@ export async function GET(request) {
     const limit = parseInt(searchParams.get('limit') || '10');
     const status = searchParams.get('status');
 
-    // Admin: fetch all, filter in JS to avoid composite index requirement
     if (session.user.role === 'admin') {
       const snap = await db.collection('orders').orderBy('createdAt', 'desc').get();
       let orders = snap.docs.map((d) => ({ id: d.id, _id: d.id, ...d.data() }));
@@ -24,7 +25,6 @@ export async function GET(request) {
       return NextResponse.json({ success: true, data: { orders: orders.slice(start, start + limit), total, pages, page } });
     }
 
-    // Regular user: fetch orders by userId AND by guestEmail matching their email, then merge
     const [byUserId, byEmail] = await Promise.all([
       db.collection('orders').where('userId', '==', session.user.id).get(),
       session.user.email
@@ -41,16 +41,14 @@ export async function GET(request) {
       }
     }
 
-    // Sort by createdAt desc, apply status filter in JS, then paginate in JS
     let orders = merged.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     if (status) orders = orders.filter((o) => o.status === status);
 
     const total = orders.length;
     const pages = Math.ceil(total / limit);
     const start = (page - 1) * limit;
-    const paged = orders.slice(start, start + limit);
 
-    return NextResponse.json({ success: true, data: { orders: paged, total, pages, page } });
+    return NextResponse.json({ success: true, data: { orders: orders.slice(start, start + limit), total, pages, page } });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
@@ -67,7 +65,6 @@ export async function POST(request) {
       return NextResponse.json({ success: false, message: 'Items and shipping address are required' }, { status: 400 });
     }
 
-    // Verify stock (skip if product ID is missing)
     for (const item of items) {
       if (!item.product) continue;
       const prodDoc = await db.collection('products').doc(item.product).get();
@@ -78,8 +75,8 @@ export async function POST(request) {
 
     const orderRef = db.collection('orders').doc();
     const orderNumber = `TBJ${Date.now()}`;
-    // Always store the email so guest orders can be linked when the user logs in later
     const resolvedEmail = guestEmail || session?.user?.email || shippingAddress?.email || null;
+
     const orderData = {
       orderNumber,
       userId: session?.user?.id || null,
@@ -98,7 +95,18 @@ export async function POST(request) {
       updatedAt: new Date().toISOString(),
     };
     await orderRef.set(orderData);
-    return NextResponse.json({ success: true, data: { id: orderRef.id, ...orderData } }, { status: 201 });
+
+    const fullOrder = { id: orderRef.id, _id: orderRef.id, ...orderData };
+
+    /* Fire & forget — email + WhatsApp notifications */
+    Promise.all([
+      sendOrderConfirmation(fullOrder),
+      sendOrderNotificationToAdmin(fullOrder),
+      sendOrderWhatsAppToAdmin(fullOrder),
+      sendOrderWhatsAppToCustomer(fullOrder),
+    ]).catch(() => {});
+
+    return NextResponse.json({ success: true, data: fullOrder }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
