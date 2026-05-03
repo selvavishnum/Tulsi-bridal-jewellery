@@ -1,16 +1,41 @@
 import { NextResponse } from 'next/server';
 import { getDB, docToObj } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
+import { sendRentalConfirmation, sendRentalNotificationToAdmin } from '@/lib/email';
 import nodemailer from 'nodemailer';
 
-/* POST /api/admin/resend-email  { orderId, type: 'customer' | 'admin' } */
+/* POST /api/admin/resend-email
+   { orderId, type: 'customer'|'admin' }           — purchase order
+   { rentalId, type: 'customer'|'admin' }          — rental booking */
 export async function POST(request) {
   try {
     const session = await requireAdmin();
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
-    const { orderId, type = 'admin' } = await request.json();
-    if (!orderId) return NextResponse.json({ success: false, message: 'orderId required' }, { status: 400 });
+    const { orderId, rentalId, type = 'admin' } = await request.json();
+
+    /* ── Rental resend (uses existing email functions) ── */
+    if (rentalId) {
+      if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+        return NextResponse.json({ success: false, message: 'SMTP_USER or SMTP_PASS not set in .env.local' });
+      }
+      const db  = getDB();
+      const doc = await db.collection('rentals').doc(rentalId).get();
+      if (!doc.exists) return NextResponse.json({ success: false, message: 'Rental not found' }, { status: 404 });
+      const rental = { id: doc.id, ...docToObj(doc) };
+
+      if (type === 'customer') {
+        const to = rental.guestEmail || rental.customerDetails?.email;
+        if (!to) return NextResponse.json({ success: false, message: 'No customer email on this rental' });
+        await sendRentalConfirmation(rental);
+        return NextResponse.json({ success: true, message: `Rental confirmation sent to ${to}` });
+      } else {
+        await sendRentalNotificationToAdmin(rental);
+        return NextResponse.json({ success: true, message: `Rental admin notification sent` });
+      }
+    }
+
+    if (!orderId) return NextResponse.json({ success: false, message: 'orderId or rentalId required' }, { status: 400 });
 
     /* Check env vars */
     if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {

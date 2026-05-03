@@ -379,3 +379,118 @@ export async function sendContactNotification(msg) {
     console.error('[Email] Contact notification failed:', err.message);
   }
 }
+
+/* ═══════════════════════════════════════════
+   6. CUSTOMER RENTAL CONFIRMATION
+   ═══════════════════════════════════════════ */
+export async function sendRentalConfirmation(rental) {
+  const cd  = rental.customerDetails || {};
+  const to  = rental.guestEmail || cd.email;
+  if (!to || !process.env.SMTP_USER) return;
+
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 6px;font-family:Georgia,serif;font-size:24px;color:#292524;">Rental Booking Confirmed! 🎉</h2>
+    <p style="margin:0 0 24px;font-size:14px;color:#78716c;">Thank you ${cd.name || ''}! Your jewellery rental is booked and confirmed.</p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#fdf9ee;border:1px solid #e4dfc8;border-radius:12px;margin-bottom:28px;">
+      <tr><td style="padding:20px 24px;">
+        <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#78716c;">Booking Number</p>
+        <p style="margin:0;font-family:monospace;font-size:22px;font-weight:700;color:#8b1a4a;">#${rental.rentalNumber}</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#a8a29e;">${new Date(rental.createdAt).toLocaleDateString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</p>
+      </td></tr>
+    </table>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f9f8;border-radius:12px;margin-bottom:20px;">
+      <tr><td style="padding:18px 22px;">
+        <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#44403c;text-transform:uppercase;letter-spacing:0.1em;">Jewellery Details</p>
+        ${rental.productImage ? `<img src="${rental.productImage}" alt="${rental.productName}" width="80" height="80" style="width:80px;height:80px;object-fit:cover;border-radius:10px;border:1px solid #e7e5e4;margin-bottom:10px;display:block;"/>` : ''}
+        <p style="margin:0;font-size:15px;font-weight:700;color:#292524;">${rental.productName}</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;">
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;width:140px;">Rental Period:</td><td style="font-size:13px;font-weight:600;color:#292524;">${rental.rentalDays} day${rental.rentalDays > 1 ? 's' : ''}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;">Start Date:</td><td style="font-size:13px;font-weight:600;color:#292524;">${new Date(rental.rentalStartDate).toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;">End Date:</td><td style="font-size:13px;font-weight:600;color:#292524;">${new Date(rental.rentalEndDate).toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;">Rate:</td><td style="font-size:13px;font-weight:600;color:#8b1a4a;">₹${rental.pricePerDay}/day</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;">Delivery:</td><td style="font-size:13px;font-weight:600;color:#292524;text-transform:capitalize;">${rental.delivery?.method || 'self'}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;">Return:</td><td style="font-size:13px;font-weight:600;color:#292524;text-transform:capitalize;">${rental.returnMethod?.method || 'self'}</td></tr>
+        </table>
+      </td></tr>
+    </table>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:20px;">
+      <tr><td style="padding:7px 0;font-size:13px;color:#78716c;border-bottom:1px solid #f5f5f4;">Rental Cost</td><td style="padding:7px 0;text-align:right;font-size:13px;color:#44403c;border-bottom:1px solid #f5f5f4;">₹${rental.totalRentalCost || 0}</td></tr>
+      <tr><td style="padding:7px 0;font-size:13px;color:#78716c;border-bottom:1px solid #f5f5f4;">Security Deposit <span style="font-size:11px;">(refundable)</span></td><td style="padding:7px 0;text-align:right;font-size:13px;color:#44403c;border-bottom:1px solid #f5f5f4;">₹${rental.securityDeposit || 0}</td></tr>
+      ${rental.deliveryCharge > 0 ? `<tr><td style="padding:7px 0;font-size:13px;color:#78716c;border-bottom:1px solid #f5f5f4;">Delivery Charge</td><td style="padding:7px 0;text-align:right;font-size:13px;color:#44403c;border-bottom:1px solid #f5f5f4;">₹${rental.deliveryCharge}</td></tr>` : ''}
+      ${rental.returnCharge > 0 ? `<tr><td style="padding:7px 0;font-size:13px;color:#78716c;border-bottom:1px solid #f5f5f4;">Return Pickup</td><td style="padding:7px 0;text-align:right;font-size:13px;color:#44403c;border-bottom:1px solid #f5f5f4;">₹${rental.returnCharge}</td></tr>` : ''}
+      <tr><td style="padding:10px 0;font-size:16px;font-weight:700;color:#292524;">Total</td><td style="padding:10px 0;text-align:right;font-size:18px;font-weight:700;color:#8b1a4a;">₹${rental.total || 0}</td></tr>
+    </table>
+
+    <p style="margin:0;font-size:13px;color:#78716c;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 16px;">
+      ✅ <strong style="color:#166534;">Security deposit</strong> of ₹${rental.securityDeposit || 0} will be fully refunded after safe return.
+    </p>
+
+    <p style="margin:24px 0 0;font-size:14px;color:#57534e;">We'll contact you before the rental date to coordinate delivery/pickup.</p>
+    <p style="margin:16px 0 0;font-size:13px;color:#a8a29e;">Questions? Reply to this email or WhatsApp us at +91 76958 68787.</p>
+  `);
+
+  try {
+    const transporter = createTransporter();
+    await transporter.sendMail({
+      from: `"${BRAND.name}" <${process.env.SMTP_USER}>`,
+      to,
+      subject: `Rental Booking Confirmed #${rental.rentalNumber} | ${BRAND.name}`,
+      html,
+    });
+  } catch (err) {
+    console.error('[Email] Rental confirmation failed:', err.message);
+  }
+}
+
+/* ═══════════════════════════════════════════
+   7. ADMIN RENTAL NOTIFICATION
+   ═══════════════════════════════════════════ */
+export async function sendRentalNotificationToAdmin(rental) {
+  const adminEmails = [
+    process.env.ADMIN_EMAIL,
+    ...(process.env.STAFF_EMAILS || '').split(',').map((e) => e.trim()),
+  ].filter(Boolean);
+  if (!adminEmails.length || !process.env.SMTP_USER) return;
+
+  const cd  = rental.customerDetails || {};
+  const to  = rental.guestEmail || cd.email || '—';
+
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 6px;font-family:Georgia,serif;font-size:22px;color:#292524;">New Rental Booking 📅</h2>
+    <p style="margin:0 0 24px;font-size:14px;color:#78716c;">A new rental has been booked on ${BRAND.name}.</p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff8f0;border:1px solid #e4dfc8;border-radius:12px;margin-bottom:24px;">
+      <tr><td style="padding:20px 24px;">
+        <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#78716c;">Booking</p>
+        <p style="margin:0 0 12px;font-family:monospace;font-size:22px;font-weight:700;color:#8b1a4a;">#${rental.rentalNumber}</p>
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;width:120px;"><strong style="color:#44403c;">Product:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${rental.productName}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Customer:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${cd.name || '—'}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Email:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${to}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Phone:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${cd.phone || '—'}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Dates:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${rental.rentalStartDate} → ${rental.rentalEndDate} (${rental.rentalDays}d)</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Delivery:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;text-transform:capitalize;">${rental.delivery?.method || 'self'}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Total:</strong></td><td style="font-size:16px;font-weight:700;color:#8b1a4a;padding:3px 0;">₹${rental.total || 0}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Payment:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${rental.payment?.method || '—'} — ${rental.payment?.status || '—'}</td></tr>
+        </table>
+      </td></tr>
+    </table>
+
+    ${ctaBtn('View in Admin →', `${BRAND.site}/admin/rentals`)}
+  `);
+
+  try {
+    const transporter = createTransporter();
+    await transporter.sendMail({
+      from: `"${BRAND.name}" <${process.env.SMTP_USER}>`,
+      to: adminEmails,
+      subject: `📅 New Rental #${rental.rentalNumber} — ${rental.productName} | ${BRAND.name}`,
+      html,
+    });
+  } catch (err) {
+    console.error('[Email] Rental admin notification failed:', err.message);
+  }
+}

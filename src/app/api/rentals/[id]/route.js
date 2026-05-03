@@ -32,10 +32,14 @@ export async function PUT(request, context) {
     const update = { updatedAt: new Date().toISOString() };
     if (body.status) {
       update.status = body.status;
-      if (body.status === 'returned') update.returnedAt = new Date().toISOString();
+      if (body.status === 'returned')  update.returnedAt  = new Date().toISOString();
+      if (body.status === 'active')    update.activatedAt = new Date().toISOString();
+      if (body.status === 'cancelled') update.cancelledAt = new Date().toISOString();
     }
-    if (body.notes) update.notes = body.notes;
-    if (body.returnCondition) update.returnCondition = body.returnCondition;
+    if (body.notes           !== undefined) update.notes           = body.notes;
+    if (body.returnCondition !== undefined) update.returnCondition = body.returnCondition;
+    if (body.trackingNumber  !== undefined) update.trackingNumber  = body.trackingNumber;
+    if (body.courierName     !== undefined) update.courierName     = body.courierName;
     const ref = db.collection('rentals').doc(id);
     await ref.update(update);
     const updated = await ref.get();
