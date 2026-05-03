@@ -92,10 +92,12 @@ function ctaBtn(text, url) {
    1. CUSTOMER ORDER CONFIRMATION
    ═══════════════════════════════════════════ */
 export async function sendOrderConfirmation(order) {
-  const to = order.guestEmail || order.shippingAddress?.email;
+  const to = order.guestEmail || order.shippingAddress?.email || order.shippingAddress?.email;
   if (!to || !process.env.SMTP_USER) return;
 
   const addr = order.shippingAddress || {};
+  /* Support both fullName (checkout form) and name (normalized) */
+  addr.name = addr.name || addr.fullName || '';
   const trackUrl = `${BRAND.site}/track-order?orderNumber=${order.orderNumber}&email=${encodeURIComponent(to)}`;
 
   const html = emailWrapper(`
@@ -174,6 +176,8 @@ export async function sendOrderNotificationToAdmin(order) {
 
   const customerEmail = order.guestEmail || order.shippingAddress?.email || '—';
   const adminUrl = `${BRAND.site}/admin/orders`;
+  const addr2 = order.shippingAddress || {};
+  addr2.name = addr2.name || addr2.fullName || '';
 
   const html = emailWrapper(`
     <h2 style="margin:0 0 6px;font-family:Georgia,serif;font-size:22px;color:#292524;">New Order Received 🛍️</h2>
@@ -186,7 +190,7 @@ export async function sendOrderNotificationToAdmin(order) {
         <table width="100%" cellpadding="0" cellspacing="0">
           <tr>
             <td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Customer:</strong></td>
-            <td style="font-size:13px;color:#44403c;padding:3px 0;">${order.shippingAddress?.name || '—'}</td>
+            <td style="font-size:13px;color:#44403c;padding:3px 0;">${addr2.name || '—'}</td>
           </tr>
           <tr>
             <td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Email:</strong></td>
@@ -194,7 +198,7 @@ export async function sendOrderNotificationToAdmin(order) {
           </tr>
           <tr>
             <td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Phone:</strong></td>
-            <td style="font-size:13px;color:#44403c;padding:3px 0;">${order.shippingAddress?.phone || '—'}</td>
+            <td style="font-size:13px;color:#44403c;padding:3px 0;">${addr2.phone || '—'}</td>
           </tr>
           <tr>
             <td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Total:</strong></td>

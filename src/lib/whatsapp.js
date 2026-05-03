@@ -72,6 +72,7 @@ function formatItems(items = []) {
  */
 export async function sendOrderWhatsAppToAdmin(order) {
   const addr = order.shippingAddress || {};
+  addr.name = addr.name || addr.fullName || '';
   const body =
 `🛍️ *New Order — Tulsi Bridal Jewellery*
 
@@ -96,6 +97,7 @@ View in admin: ${process.env.NEXT_PUBLIC_SITE_URL || ''}/admin/orders`;
  */
 export async function sendOrderWhatsAppToCustomer(order) {
   const addr = order.shippingAddress || {};
+  addr.name = addr.name || addr.fullName || '';
   const phone = addr.phone;
   if (!phone) return { success: false, message: 'No customer phone number' };
 

@@ -77,12 +77,19 @@ export async function POST(request) {
     const orderNumber = `TBJ${Date.now()}`;
     const resolvedEmail = guestEmail || session?.user?.email || shippingAddress?.email || null;
 
+    /* Normalize address fields: checkout sends fullName, emails expect name */
+    const normalizedAddress = {
+      ...shippingAddress,
+      name:  shippingAddress.fullName || shippingAddress.name || '',
+      email: shippingAddress.email || resolvedEmail || '',
+    };
+
     const orderData = {
       orderNumber,
       userId: session?.user?.id || null,
       guestEmail: resolvedEmail,
       items,
-      shippingAddress,
+      shippingAddress: normalizedAddress,
       payment: payment || { method: 'razorpay', status: 'pending' },
       coupon: coupon || null,
       couponCode: couponCode || null,
