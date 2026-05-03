@@ -186,6 +186,73 @@ function ReviewForm({ productId, onSubmitted }) {
   );
 }
 
+/* ── Image Zoom Modal ── */
+function ImageZoomModal({ images, startIndex, onClose }) {
+  const [current, setCurrent] = useState(startIndex);
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowRight') setCurrent((c) => Math.min(images.length - 1, c + 1));
+      if (e.key === 'ArrowLeft') setCurrent((c) => Math.max(0, c - 1));
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [images.length, onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+      onClick={onClose}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 w-10 h-10 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center text-white text-xl transition z-10"
+      >
+        ×
+      </button>
+      {images.length > 1 && current > 0 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setCurrent((c) => c - 1); }}
+          className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center text-white text-xl transition z-10"
+        >
+          ‹
+        </button>
+      )}
+      {images.length > 1 && current < images.length - 1 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setCurrent((c) => c + 1); }}
+          className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center text-white text-xl transition z-10"
+        >
+          ›
+        </button>
+      )}
+      <div
+        className="relative w-full max-w-3xl max-h-[90vh] mx-4 aspect-square"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Image
+          src={images[current]}
+          alt={`Image ${current + 1}`}
+          fill
+          className="object-contain"
+          sizes="(max-width: 768px) 100vw, 800px"
+        />
+      </div>
+      {images.length > 1 && (
+        <div className="absolute bottom-4 flex gap-2">
+          {images.map((_, i) => (
+            <button
+              key={i}
+              onClick={(e) => { e.stopPropagation(); setCurrent(i); }}
+              className={`w-2 h-2 rounded-full transition-all ${i === current ? 'bg-white scale-125' : 'bg-white/40'}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Main Page ── */
 export default function ProductDetailPage() {
   const { id } = useParams();
@@ -199,6 +266,8 @@ export default function ProductDetailPage() {
   const [rentalDates, setRentalDates] = useState({ start: '', end: '' });
   const [showRental, setShowRental] = useState(false);
   const [qty, setQty] = useState(1);
+  const [zoomOpen, setZoomOpen] = useState(false);
+  const [zoomIndex, setZoomIndex] = useState(0);
 
   const [reviews, setReviews] = useState([]);
   const [reviewStats, setReviewStats] = useState({ average: 0, count: 0 });
@@ -265,11 +334,14 @@ export default function ProductDetailPage() {
   }
 
   const SPECS = [
-    product.category && { label: 'Category', value: product.category.replace(/-/g, ' ') },
-    product.material  && { label: 'Material', value: product.material.replace(/-/g, ' ') },
-    product.weight    && { label: 'Weight',   value: `${product.weight}g` },
-    product.purity    && { label: 'Purity',   value: product.purity },
-    product.sku       && { label: 'SKU',      value: product.sku },
+    product.category  && { label: 'Category',   value: product.category.replace(/-/g, ' ') },
+    product.material  && { label: 'Material',   value: product.material.replace(/-/g, ' ') },
+    product.metalType && { label: 'Metal Type', value: product.metalType },
+    product.stoneType && { label: 'Stone Type', value: product.stoneType },
+    product.color     && { label: 'Color',      value: product.color },
+    product.weight    && { label: 'Weight',     value: `${product.weight}g` },
+    product.purity    && { label: 'Purity',     value: product.purity },
+    product.sku       && { label: 'SKU',        value: product.sku },
   ].filter(Boolean);
 
   /* Rating breakdown */
@@ -280,6 +352,13 @@ export default function ProductDetailPage() {
 
   return (
     <div className="min-h-screen bg-stone-50">
+      {zoomOpen && product.images?.length > 0 && (
+        <ImageZoomModal
+          images={product.images}
+          startIndex={zoomIndex}
+          onClose={() => setZoomOpen(false)}
+        />
+      )}
 
       {/* Breadcrumb */}
       <div className="bg-white border-b border-stone-100">
@@ -305,7 +384,10 @@ export default function ProductDetailPage() {
 
             {/* ── IMAGE GALLERY ── */}
             <div className="p-6 lg:p-8 bg-stone-50/60">
-              <div className="relative aspect-square rounded-2xl overflow-hidden bg-white border border-stone-100 mb-3 group">
+              <div
+                className="relative aspect-square rounded-2xl overflow-hidden bg-white border border-stone-100 mb-3 group cursor-zoom-in"
+                onClick={() => { if (product.images?.[selectedImage]) { setZoomIndex(selectedImage); setZoomOpen(true); } }}
+              >
                 {product.images?.[selectedImage] ? (
                   <Image
                     src={product.images[selectedImage]}
@@ -320,9 +402,12 @@ export default function ProductDetailPage() {
                 {discount > 0 && (
                   <span className="absolute top-3 left-3 badge-sale text-sm px-3 py-1">-{discount}% OFF</span>
                 )}
-                <button onClick={share} className="absolute top-3 right-3 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-stone-500 hover:text-wine-700 shadow-sm transition">
+                <button onClick={(e) => { e.stopPropagation(); share(); }} className="absolute top-3 right-3 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-stone-500 hover:text-wine-700 shadow-sm transition">
                   <FiShare2 className="text-sm" />
                 </button>
+                {product.images?.[selectedImage] && (
+                  <span className="absolute bottom-3 right-3 bg-black/40 text-white text-[10px] px-2 py-1 rounded-full pointer-events-none">Tap to zoom</span>
+                )}
               </div>
 
               {product.images?.length > 1 && (
@@ -382,6 +467,23 @@ export default function ProductDetailPage() {
                   ))}
                 </div>
               )}
+
+              {/* Care Instructions */}
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 mb-5">
+                <h3 className="font-semibold text-stone-700 text-sm mb-2 flex items-center gap-2">⚠️ Care Instructions</h3>
+                <ul className="text-xs text-stone-500 space-y-1">
+                  {product.usageInstructions ? (
+                    <li>{product.usageInstructions}</li>
+                  ) : (
+                    <>
+                      <li>• Avoid contact with water — remove before bathing or swimming</li>
+                      <li>• Keep away from perfume, deodorant, and cosmetics</li>
+                      <li>• Store in the provided box or a soft pouch</li>
+                      <li>• Wipe gently with a dry cloth after use</li>
+                    </>
+                  )}
+                </ul>
+              </div>
 
               {/* Stock */}
               <div className="flex items-center gap-2 mb-6">

@@ -18,6 +18,7 @@ const EMPTY_FORM = {
   stock: 1, rentalStock: 0,
   isAvailableForRent: false, featured: false,
   images: [], tags: '', weight: '', purity: '',
+  metalType: '', stoneType: '', color: '', usageInstructions: '', isNew: false,
 };
 
 function Field({ label, children, required }) {
@@ -78,6 +79,11 @@ export default function AdminProductsPage() {
       images: p.images || [],
       weight: p.weight?.toString() || '',
       purity: p.purity || '',
+      metalType: p.metalType || '',
+      stoneType: p.stoneType || '',
+      color: p.color || '',
+      usageInstructions: p.usageInstructions || '',
+      isNew: p.isNew || false,
     });
     setEditId(p._id);
     setModalOpen(true);
@@ -346,6 +352,66 @@ export default function AdminProductsPage() {
               <Field label="Tags (comma separated)">
                 <input value={form.tags} onChange={(e) => upd('tags', e.target.value)} className={inp} placeholder="bridal, kundan, gold, heavy set" />
               </Field>
+
+              {/* Metal Type + Stone Type + Color */}
+              <div className="grid grid-cols-3 gap-4">
+                <Field label="Metal Type">
+                  <select value={form.metalType} onChange={(e) => upd('metalType', e.target.value)} className={sel}>
+                    <option value="">Select</option>
+                    <option value="Copper">Copper</option>
+                    <option value="Brass">Brass</option>
+                    <option value="Zinc Alloy">Zinc Alloy</option>
+                    <option value="German Silver">German Silver</option>
+                    <option value="Sterling Silver">Sterling Silver</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </Field>
+                <Field label="Stone Type">
+                  <select value={form.stoneType} onChange={(e) => upd('stoneType', e.target.value)} className={sel}>
+                    <option value="">Select</option>
+                    <option value="Ruby">Ruby</option>
+                    <option value="Emerald">Emerald</option>
+                    <option value="Pearl">Pearl</option>
+                    <option value="Crystal">Crystal</option>
+                    <option value="Kundan Stone">Kundan Stone</option>
+                    <option value="Turquoise">Turquoise</option>
+                    <option value="CZ Stone">CZ Stone</option>
+                    <option value="No Stone">No Stone</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </Field>
+                <Field label="Color">
+                  <select value={form.color} onChange={(e) => upd('color', e.target.value)} className={sel}>
+                    <option value="">Select</option>
+                    <option value="Gold">Gold</option>
+                    <option value="Silver">Silver</option>
+                    <option value="Rose Gold">Rose Gold</option>
+                    <option value="Red">Red</option>
+                    <option value="Green">Green</option>
+                    <option value="Blue">Blue</option>
+                    <option value="Pink">Pink</option>
+                    <option value="White">White</option>
+                    <option value="Multi-color">Multi-color</option>
+                  </select>
+                </Field>
+              </div>
+
+              {/* Usage Instructions */}
+              <Field label="Care / Usage Instructions">
+                <textarea value={form.usageInstructions} onChange={(e) => upd('usageInstructions', e.target.value)}
+                  rows={2} className={`${inp} resize-none`}
+                  placeholder="e.g. Avoid water contact. Keep away from perfume. Store in box." />
+              </Field>
+
+              {/* Is New Arrival */}
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => upd('isNew', !form.isNew)}
+                  className={`w-10 h-6 rounded-full transition-colors relative ${form.isNew ? 'bg-gold-500' : 'bg-gray-200'}`}>
+                  <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${form.isNew ? 'right-0.5' : 'left-0.5'}`} />
+                </button>
+                <span className="text-sm text-gray-600 font-medium">Mark as New Arrival</span>
+                {form.isNew && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">NEW badge shown</span>}
+              </div>
 
               {/* Images */}
               <div>

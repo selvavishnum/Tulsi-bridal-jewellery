@@ -55,6 +55,20 @@ const BLANK_SLIDE = {
   cta2Link: '/rentals',
 };
 
+const BLANK_TESTIMONIAL = {
+  name: '',
+  location: '',
+  photo: '',
+  rating: 5,
+  review: '',
+};
+
+const BLANK_INSTA_POST = {
+  imageUrl: '',
+  caption: '',
+  postUrl: '',
+};
+
 /* ── Hero Slide Editor row ── */
 function SlideRow({ slide, index, onChange, onDelete }) {
   return (
@@ -125,6 +139,142 @@ function SlideRow({ slide, index, onChange, onDelete }) {
           <label className="text-xs text-gray-500 mb-1 block font-medium">Button 2 Link <span className="text-gray-400">(optional)</span></label>
           <input value={slide.cta2Link} onChange={(e) => onChange('cta2Link', e.target.value)} placeholder="/rentals"
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Testimonial Editor row ── */
+function TestimonialRow({ testimonial, index, onChange, onDelete }) {
+  return (
+    <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 space-y-3">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Review {index + 1}</span>
+        <button type="button" onClick={onDelete} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition">
+          <FiTrash2 className="text-sm" />
+        </button>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Customer Name</label>
+          <input
+            value={testimonial.name}
+            onChange={(e) => onChange('name', e.target.value)}
+            placeholder="e.g. Priya Sharma"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Location</label>
+          <input
+            value={testimonial.location}
+            onChange={(e) => onChange('location', e.target.value)}
+            placeholder="e.g. Chennai"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400"
+          />
+        </div>
+
+        <div className="md:col-span-2">
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Photo URL <span className="text-gray-400">(optional — circular avatar)</span></label>
+          <div className="flex gap-2 items-center">
+            <div className="relative flex-1">
+              <FiImage className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+              <input
+                type="url"
+                value={testimonial.photo}
+                onChange={(e) => onChange('photo', e.target.value)}
+                placeholder="https://… paste image link here"
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400"
+              />
+            </div>
+            {testimonial.photo && (
+              <div className="relative w-10 h-10 rounded-full overflow-hidden border border-gray-300 flex-shrink-0">
+                <Image src={testimonial.photo} alt="avatar" fill className="object-cover" />
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Star Rating</label>
+          <select
+            value={testimonial.rating}
+            onChange={(e) => onChange('rating', Number(e.target.value))}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400 bg-white"
+          >
+            {[5, 4, 3, 2, 1].map((r) => (
+              <option key={r} value={r}>{r} Star{r > 1 ? 's' : ''}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="md:col-span-2">
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Review Text</label>
+          <textarea
+            value={testimonial.review}
+            onChange={(e) => onChange('review', e.target.value)}
+            placeholder="What did the customer say about their experience?"
+            rows={3}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400 resize-none"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Instagram Post Editor row ── */
+function InstaPostRow({ post, index, onChange, onDelete }) {
+  return (
+    <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 space-y-3">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Post {index + 1}</span>
+        <button type="button" onClick={onDelete} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition">
+          <FiTrash2 className="text-sm" />
+        </button>
+      </div>
+
+      {/* Image preview */}
+      {post.imageUrl && (
+        <div className="relative aspect-square w-24 rounded-lg overflow-hidden bg-gray-200 border border-gray-300">
+          <Image src={post.imageUrl} alt="post preview" fill className="object-cover" />
+        </div>
+      )}
+
+      <div className="grid md:grid-cols-2 gap-3">
+        <div className="md:col-span-2">
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Image URL</label>
+          <div className="relative">
+            <FiImage className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+            <input
+              type="url"
+              value={post.imageUrl}
+              onChange={(e) => onChange('imageUrl', e.target.value)}
+              placeholder="https://… paste image link here"
+              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Caption <span className="text-gray-400">(optional)</span></label>
+          <input
+            value={post.caption}
+            onChange={(e) => onChange('caption', e.target.value)}
+            placeholder="Beautiful bridal necklace set…"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Post URL <span className="text-gray-400">(instagram.com/p/…)</span></label>
+          <input
+            type="url"
+            value={post.postUrl}
+            onChange={(e) => onChange('postUrl', e.target.value)}
+            placeholder="https://instagram.com/p/…"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400"
+          />
         </div>
       </div>
     </div>
@@ -213,6 +363,8 @@ export default function SettingsPage() {
     emailNotify: '',
   });
   const [heroSlides, setHeroSlides] = useState([]);
+  const [testimonials, setTestimonials] = useState([]);
+  const [instagramFeed, setInstagramFeed] = useState([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -222,6 +374,8 @@ export default function SettingsPage() {
         if (d.success && d.data) {
           setSettings((prev) => ({ ...prev, ...d.data }));
           if (Array.isArray(d.data.heroSlides)) setHeroSlides(d.data.heroSlides);
+          if (Array.isArray(d.data.testimonials)) setTestimonials(d.data.testimonials);
+          if (Array.isArray(d.data.instagramFeed)) setInstagramFeed(d.data.instagramFeed);
         }
       })
       .catch(() => {});
@@ -241,6 +395,31 @@ export default function SettingsPage() {
     setHeroSlides((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function addTestimonial() {
+    setTestimonials((prev) => [...prev, { ...BLANK_TESTIMONIAL }]);
+  }
+
+  function updateTestimonial(index, field, value) {
+    setTestimonials((prev) => prev.map((t, i) => i === index ? { ...t, [field]: value } : t));
+  }
+
+  function deleteTestimonial(index) {
+    setTestimonials((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function addInstaPost() {
+    if (instagramFeed.length >= 6) { toast.error('Maximum 6 Instagram posts allowed'); return; }
+    setInstagramFeed((prev) => [...prev, { ...BLANK_INSTA_POST }]);
+  }
+
+  function updateInstaPost(index, field, value) {
+    setInstagramFeed((prev) => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
+  }
+
+  function deleteInstaPost(index) {
+    setInstagramFeed((prev) => prev.filter((_, i) => i !== index));
+  }
+
   async function save(e) {
     e.preventDefault();
     setSaving(true);
@@ -248,7 +427,7 @@ export default function SettingsPage() {
       const res = await fetch('/api/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...settings, heroSlides }),
+        body: JSON.stringify({ ...settings, heroSlides, testimonials, instagramFeed }),
       });
       const data = await res.json();
       if (data.success) toast.success('Settings saved!');
@@ -328,6 +507,90 @@ export default function SettingsPage() {
             </div>
           </div>
         ))}
+
+        {/* ── Happy Customers / Testimonials ── */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
+            <div>
+              <h2 className="font-bold text-gray-800">Happy Customers (Testimonials)</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Customer reviews shown in the "Happy Customers" section on the homepage</p>
+            </div>
+            <button type="button" onClick={addTestimonial}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-maroon-950 text-white text-xs font-semibold rounded-lg hover:bg-maroon-900 transition">
+              <FiPlus /> Add Review
+            </button>
+          </div>
+
+          {testimonials.length === 0 ? (
+            <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+              <p className="text-sm font-medium">No testimonials configured</p>
+              <p className="text-xs mt-1">Default reviews will be shown until you add custom ones here</p>
+              <button type="button" onClick={addTestimonial} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-gold-600 text-white text-xs font-semibold rounded-lg hover:bg-gold-700 transition">
+                <FiPlus /> Add First Review
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {testimonials.map((testimonial, i) => (
+                <TestimonialRow
+                  key={i}
+                  testimonial={testimonial}
+                  index={i}
+                  onChange={(field, value) => updateTestimonial(i, field, value)}
+                  onDelete={() => deleteTestimonial(i)}
+                />
+              ))}
+              <button type="button" onClick={addTestimonial}
+                className="w-full py-3 border-2 border-dashed border-gray-200 text-sm text-gray-500 hover:border-gold-400 hover:text-gold-600 rounded-xl flex items-center justify-center gap-2 transition">
+                <FiPlus /> Add Another Review
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Instagram Feed ── */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
+            <div>
+              <h2 className="font-bold text-gray-800">Instagram Feed</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Up to 6 posts shown in the Instagram grid on the homepage</p>
+            </div>
+            <button type="button" onClick={addInstaPost}
+              disabled={instagramFeed.length >= 6}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-maroon-950 text-white text-xs font-semibold rounded-lg hover:bg-maroon-900 disabled:opacity-50 disabled:cursor-not-allowed transition">
+              <FiPlus /> Add Post
+            </button>
+          </div>
+
+          {instagramFeed.length === 0 ? (
+            <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+              <FiImage className="text-3xl mx-auto mb-2 opacity-40" />
+              <p className="text-sm font-medium">No Instagram posts configured</p>
+              <p className="text-xs mt-1">A placeholder with your Instagram handle will be shown until posts are added</p>
+              <button type="button" onClick={addInstaPost} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-gold-600 text-white text-xs font-semibold rounded-lg hover:bg-gold-700 transition">
+                <FiPlus /> Add First Post
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {instagramFeed.map((post, i) => (
+                <InstaPostRow
+                  key={i}
+                  post={post}
+                  index={i}
+                  onChange={(field, value) => updateInstaPost(i, field, value)}
+                  onDelete={() => deleteInstaPost(i)}
+                />
+              ))}
+              {instagramFeed.length < 6 && (
+                <button type="button" onClick={addInstaPost}
+                  className="w-full py-3 border-2 border-dashed border-gray-200 text-sm text-gray-500 hover:border-gold-400 hover:text-gold-600 rounded-xl flex items-center justify-center gap-2 transition">
+                  <FiPlus /> Add Another Post ({instagramFeed.length}/6)
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         <TestEmailPanel />
 

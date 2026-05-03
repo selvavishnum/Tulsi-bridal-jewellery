@@ -7,6 +7,7 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { FiX } from 'react-icons/fi';
 
 const CATEGORIES = ['necklace', 'earrings', 'bangles', 'bracelet', 'ring', 'maang-tikka', 'nose-ring', 'anklet', 'set', 'other'];
+const COLORS = ['Gold', 'Silver', 'Red', 'Green', 'Blue', 'Pink', 'White', 'Multi-color'];
 const SORT_OPTIONS = [
   { label: 'Newest', value: 'createdAt-desc' },
   { label: 'Price: Low to High', value: 'price-asc' },
@@ -22,25 +23,41 @@ export default function ShopContent() {
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
 
+  const [priceMinInput, setPriceMinInput] = useState(searchParams.get('priceMin') || '');
+  const [priceMaxInput, setPriceMaxInput] = useState(searchParams.get('priceMax') || '');
+
   const category = searchParams.get('category') || '';
   const search = searchParams.get('search') || '';
   const rental = searchParams.get('rental') || '';
+  const color = searchParams.get('color') || '';
+  const priceMin = searchParams.get('priceMin') || '';
+  const priceMax = searchParams.get('priceMax') || '';
+  const isNew = searchParams.get('isNew') || '';
   const page = parseInt(searchParams.get('page') || '1');
   const sort = searchParams.get('sort') || 'createdAt-desc';
   const [sortField, sortOrder] = sort.split('-');
+
+  useEffect(() => {
+    setPriceMinInput(priceMin);
+    setPriceMaxInput(priceMax);
+  }, [priceMin, priceMax]);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams({ page: page.toString(), limit: '12', sort: sortField, order: sortOrder, rental: 'false' });
     if (category) params.set('category', category);
     if (search) params.set('search', search);
+    if (color) params.set('color', color);
+    if (priceMin) params.set('priceMin', priceMin);
+    if (priceMax) params.set('priceMax', priceMax);
+    if (isNew) params.set('isNew', isNew);
     try {
       const res = await fetch(`/api/products?${params}`);
       const data = await res.json();
       if (data.success) { setProducts(data.data.products); setTotal(data.data.total); setPages(data.data.pages); }
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [category, search, rental, page, sortField, sortOrder]);
+  }, [category, search, rental, color, priceMin, priceMax, isNew, page, sortField, sortOrder]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
@@ -50,6 +67,16 @@ export default function ShopContent() {
     params.delete('page');
     router.push(`/shop?${params.toString()}`);
   }
+
+  function applyPriceRange() {
+    const params = new URLSearchParams(searchParams.toString());
+    if (priceMinInput) params.set('priceMin', priceMinInput); else params.delete('priceMin');
+    if (priceMaxInput) params.set('priceMax', priceMaxInput); else params.delete('priceMax');
+    params.delete('page');
+    router.push(`/shop?${params.toString()}`);
+  }
+
+  const hasActiveFilters = category || rental || search || color || priceMin || priceMax || isNew;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -63,7 +90,9 @@ export default function ShopContent() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+
+        {/* Category pills + Sort */}
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <div className="flex items-center gap-2 flex-wrap">
             {CATEGORIES.map((cat) => (
               <button
@@ -80,12 +109,84 @@ export default function ShopContent() {
           </select>
         </div>
 
-        {(category || rental || search) && (
+        {/* Color filter */}
+        <div className="flex items-center gap-2 flex-wrap mb-4">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide mr-1">Color:</span>
+          {COLORS.map((c) => (
+            <button
+              key={c}
+              onClick={() => updateParam('color', color === c ? '' : c)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition border ${color === c ? 'bg-maroon-950 text-white border-maroon-950' : 'bg-white text-gray-600 hover:bg-maroon-50 border-gray-200'}`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+
+        {/* Price range + New Arrivals */}
+        <div className="flex items-center gap-4 flex-wrap mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Price:</span>
+            <input
+              type="number"
+              value={priceMinInput}
+              onChange={(e) => setPriceMinInput(e.target.value)}
+              onBlur={applyPriceRange}
+              onKeyDown={(e) => e.key === 'Enter' && applyPriceRange()}
+              placeholder="Min ₹"
+              min="0"
+              className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-gold-500 bg-white"
+            />
+            <span className="text-gray-400 text-xs">—</span>
+            <input
+              type="number"
+              value={priceMaxInput}
+              onChange={(e) => setPriceMaxInput(e.target.value)}
+              onBlur={applyPriceRange}
+              onKeyDown={(e) => e.key === 'Enter' && applyPriceRange()}
+              placeholder="Max ₹"
+              min="0"
+              className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-gold-500 bg-white"
+            />
+            <button
+              onClick={applyPriceRange}
+              className="px-3 py-1.5 bg-maroon-950 text-white text-xs font-semibold rounded-lg hover:bg-maroon-900 transition"
+            >
+              Apply
+            </button>
+          </div>
+
+          <button
+            onClick={() => updateParam('isNew', isNew ? '' : 'true')}
+            className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition ${isNew ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-green-50 hover:border-green-300'}`}
+          >
+            New Arrivals
+          </button>
+        </div>
+
+        {/* Active filter tags */}
+        {hasActiveFilters && (
           <div className="flex items-center gap-2 mb-4 flex-wrap">
             <span className="text-sm text-gray-500">Active filters:</span>
             {category && <span className="flex items-center gap-1 bg-gold-100 text-gold-800 text-xs px-2 py-1 rounded-full capitalize">{category} <button onClick={() => updateParam('category', '')}><FiX /></button></span>}
             {rental && <span className="flex items-center gap-1 bg-gold-100 text-gold-800 text-xs px-2 py-1 rounded-full">Rental Only <button onClick={() => updateParam('rental', '')}><FiX /></button></span>}
             {search && <span className="flex items-center gap-1 bg-gold-100 text-gold-800 text-xs px-2 py-1 rounded-full">&quot;{search}&quot; <button onClick={() => updateParam('search', '')}><FiX /></button></span>}
+            {color && <span className="flex items-center gap-1 bg-gold-100 text-gold-800 text-xs px-2 py-1 rounded-full">Color: {color} <button onClick={() => updateParam('color', '')}><FiX /></button></span>}
+            {(priceMin || priceMax) && (
+              <span className="flex items-center gap-1 bg-gold-100 text-gold-800 text-xs px-2 py-1 rounded-full">
+                Price: {priceMin ? `₹${priceMin}` : '0'} — {priceMax ? `₹${priceMax}` : '∞'}
+                <button onClick={() => {
+                  setPriceMinInput('');
+                  setPriceMaxInput('');
+                  const params = new URLSearchParams(searchParams.toString());
+                  params.delete('priceMin');
+                  params.delete('priceMax');
+                  params.delete('page');
+                  router.push(`/shop?${params.toString()}`);
+                }}><FiX /></button>
+              </span>
+            )}
+            {isNew && <span className="flex items-center gap-1 bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">New Arrivals <button onClick={() => updateParam('isNew', '')}><FiX /></button></span>}
           </div>
         )}
 
