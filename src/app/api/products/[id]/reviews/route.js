@@ -68,8 +68,10 @@ export async function POST(request, context) {
     await ref.set(review);
 
     /* Notify admin — email + WhatsApp */
-    sendReviewNotification(review).catch(() => {});
-    sendReviewWhatsApp(review).catch(() => {});
+    await Promise.all([
+      sendReviewNotification(review).catch((e) => console.error('[Email] Review notification failed:', e.message)),
+      sendReviewWhatsApp(review).catch((e) => console.error('[WhatsApp] Review alert failed:', e.message)),
+    ]);
 
     /* Update product aggregate ratings */
     const allSnap = await db.collection('reviews').where('productId', '==', id).get();

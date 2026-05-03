@@ -16,8 +16,10 @@ export async function POST(request) {
     await ref.set(msgData);
 
     /* Notify admin + staff — email + WhatsApp */
-    sendContactNotification(msgData).catch(() => {});
-    sendContactWhatsApp(msgData).catch(() => {});
+    await Promise.all([
+      sendContactNotification(msgData).catch((e) => console.error('[Email] Contact notification failed:', e.message)),
+      sendContactWhatsApp(msgData).catch((e) => console.error('[WhatsApp] Contact alert failed:', e.message)),
+    ]);
 
     return NextResponse.json({ success: true });
   } catch (error) {
