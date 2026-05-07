@@ -309,32 +309,74 @@ export default function HomePage() {
       </div>
 
       {/* ── TOP CATEGORIES ── */}
-      <section className="py-12 bg-white">
-        <div className="section-container">
-          <h2 className="text-center text-xs font-bold tracking-[0.35em] uppercase text-wine-700 mb-8">Top Categories</h2>
-          <div className="grid grid-cols-3 gap-3 md:gap-5">
-            {CATEGORIES.map((cat) => {
-              const photo = categoryImages[cat.key];
-              return (
-                <Link
-                  key={cat.href}
-                  href={cat.href}
-                  className={`group flex flex-col items-center gap-3 pb-5 pt-6 px-2 rounded-2xl bg-gradient-to-br ${cat.color} border border-stone-100 hover:border-gold-300 hover:shadow-card transition-all duration-300 text-center`}
-                >
-                  <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl overflow-hidden flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
-                    {photo ? (
-                      <img src={photo} alt={cat.label} className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-4xl md:text-5xl">{cat.emoji}</span>
-                    )}
-                  </div>
-                  <span className="text-xs font-semibold text-stone-700 group-hover:text-wine-700 transition-colors leading-tight">{cat.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </section>
+      {(() => {
+        const shape = siteSettings.categoryShape || 'square';
+        const size  = siteSettings.categorySize  || 'large';
+
+        /* Square full-image style (Kushal-like) */
+        if (shape === 'square') {
+          const cols  = size === 'small' ? 'grid-cols-3' : 'grid-cols-2';
+          const aspect = size === 'small' ? 'aspect-square' : size === 'medium' ? 'aspect-[3/4]' : 'aspect-[4/5]';
+          const radius = 'rounded-2xl';
+          return (
+            <section className="py-12 bg-white">
+              <div className="section-container">
+                <h2 className="text-center text-xs font-bold tracking-[0.35em] uppercase text-wine-700 mb-8">Top Categories</h2>
+                <div className={`grid ${cols} gap-3 md:gap-4`}>
+                  {CATEGORIES.map((cat) => {
+                    const photo = categoryImages[cat.key];
+                    return (
+                      <Link key={cat.href} href={cat.href}
+                        className={`group relative ${aspect} overflow-hidden ${radius} bg-gradient-to-br ${cat.color} border border-stone-100 hover:shadow-lg transition-all duration-300`}>
+                        {photo ? (
+                          <img src={photo} alt={cat.label} className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className={size === 'small' ? 'text-3xl' : size === 'medium' ? 'text-5xl' : 'text-6xl'}>{cat.emoji}</span>
+                          </div>
+                        )}
+                        {/* Bottom name overlay */}
+                        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/65 via-black/20 to-transparent pt-10 pb-3 px-3">
+                          <span className={`text-white font-bold drop-shadow ${size === 'small' ? 'text-xs' : size === 'medium' ? 'text-sm' : 'text-base'}`}>{cat.label}</span>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+          );
+        }
+
+        /* Circle style */
+        const cols   = size === 'large' ? 'grid-cols-3' : size === 'medium' ? 'grid-cols-3' : 'grid-cols-3';
+        const imgSz  = size === 'small' ? 'w-20 h-20' : size === 'medium' ? 'w-24 h-24 md:w-28 md:h-28' : 'w-28 h-28 md:w-36 md:h-36';
+        const txtSz  = size === 'small' ? 'text-xs' : size === 'medium' ? 'text-xs' : 'text-sm';
+        return (
+          <section className="py-12 bg-white">
+            <div className="section-container">
+              <h2 className="text-center text-xs font-bold tracking-[0.35em] uppercase text-wine-700 mb-8">Top Categories</h2>
+              <div className={`grid ${cols} gap-4 md:gap-6`}>
+                {CATEGORIES.map((cat) => {
+                  const photo = categoryImages[cat.key];
+                  return (
+                    <Link key={cat.href} href={cat.href} className="group flex flex-col items-center gap-3">
+                      <div className={`${imgSz} rounded-full overflow-hidden border-2 border-gold-200 group-hover:border-gold-500 group-hover:shadow-md flex items-center justify-center bg-gradient-to-br ${cat.color} transition-all duration-300`}>
+                        {photo ? (
+                          <img src={photo} alt={cat.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                        ) : (
+                          <span className={size === 'small' ? 'text-2xl' : size === 'medium' ? 'text-3xl' : 'text-4xl'}>{cat.emoji}</span>
+                        )}
+                      </div>
+                      <span className={`${txtSz} font-semibold text-stone-700 group-hover:text-wine-700 transition-colors leading-tight text-center`}>{cat.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* ── FEATURED PRODUCTS ── */}
       <section className="py-14 bg-stone-50">

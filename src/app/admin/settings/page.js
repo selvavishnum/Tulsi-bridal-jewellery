@@ -290,7 +290,7 @@ const CATEGORY_LIST = [
   { key: 'rentals',    label: 'Rentals',     emoji: '🗓️' },
 ];
 
-function CategoryImagesPanel({ images, onChange }) {
+function CategoryImagesPanel({ images, onChange, shape, size, onShapeChange, onSizeChange }) {
   const fileRefs = useRef({});
   const [uploading, setUploading] = useState(null);
 
@@ -317,16 +317,48 @@ function CategoryImagesPanel({ images, onChange }) {
     onChange(updated);
   }
 
+  const btnBase = 'px-3 py-1.5 text-xs font-semibold rounded-lg border transition';
+  const btnActive = 'bg-maroon-950 text-white border-maroon-950';
+  const btnInactive = 'bg-white text-gray-600 border-gray-200 hover:border-maroon-300';
+
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
       <div className="mb-4 pb-2 border-b border-gray-100">
-        <h2 className="font-bold text-gray-800">Category Photos</h2>
-        <p className="text-xs text-gray-400 mt-0.5">Upload a photo for each category shown on the homepage. Emoji is used as fallback.</p>
+        <h2 className="font-bold text-gray-800">Category Display</h2>
+        <p className="text-xs text-gray-400 mt-0.5">Upload photos and control how categories look on the homepage.</p>
       </div>
+
+      {/* Shape + Size selectors */}
+      <div className="grid grid-cols-2 gap-4 mb-5 p-4 bg-stone-50 rounded-xl border border-gray-100">
+        <div>
+          <p className="text-xs font-semibold text-gray-600 mb-2">Shape</p>
+          <div className="flex gap-2">
+            {['square', 'circle'].map((s) => (
+              <button key={s} type="button" onClick={() => onShapeChange(s)}
+                className={`${btnBase} ${shape === s ? btnActive : btnInactive} capitalize`}>
+                {s === 'square' ? '⬜ Square' : '⭕ Circle'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-gray-600 mb-2">Size</p>
+          <div className="flex gap-2 flex-wrap">
+            {['small', 'medium', 'large'].map((s) => (
+              <button key={s} type="button" onClick={() => onSizeChange(s)}
+                className={`${btnBase} ${size === s ? btnActive : btnInactive} capitalize`}>
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Category photo cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         {CATEGORY_LIST.map(({ key, label, emoji }) => (
           <div key={key} className="border border-gray-200 rounded-xl p-3 text-center flex flex-col">
-            <div className="aspect-square rounded-xl overflow-hidden bg-stone-50 mb-2 flex items-center justify-center border border-gray-100">
+            <div className={`aspect-square overflow-hidden bg-stone-50 mb-2 flex items-center justify-center border border-gray-100 ${shape === 'circle' ? 'rounded-full' : 'rounded-xl'}`}>
               {images[key] ? (
                 <img src={images[key]} alt={label} className="w-full h-full object-cover" />
               ) : (
@@ -577,7 +609,14 @@ export default function SettingsPage() {
         </div>
 
         {/* ── Category Photos ── */}
-        <CategoryImagesPanel images={categoryImages} onChange={setCategoryImages} />
+        <CategoryImagesPanel
+          images={categoryImages}
+          onChange={setCategoryImages}
+          shape={settings.categoryShape || 'square'}
+          size={settings.categorySize || 'large'}
+          onShapeChange={(v) => update('categoryShape', v)}
+          onSizeChange={(v) => update('categorySize', v)}
+        />
 
         {/* ── Other Settings ── */}
         {SECTIONS.map((section) => (
