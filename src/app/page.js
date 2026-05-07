@@ -44,12 +44,12 @@ const DEFAULT_SLIDES = [
 ];
 
 const CATEGORIES = [
-  { label: 'Necklaces',   href: '/catalog?category=necklace',    emoji: '📿', color: 'from-rose-50 to-pink-50' },
-  { label: 'Earrings',    href: '/catalog?category=earrings',    emoji: '✨', color: 'from-amber-50 to-yellow-50' },
-  { label: 'Bangles',     href: '/catalog?category=bangles',     emoji: '🟡', color: 'from-orange-50 to-amber-50' },
-  { label: 'Maang Tikka', href: '/catalog?category=maang-tikka', emoji: '👑', color: 'from-purple-50 to-violet-50' },
-  { label: 'Bridal Sets', href: '/catalog?category=set',         emoji: '💍', color: 'from-red-50 to-rose-50' },
-  { label: 'Rentals',     href: '/rentals',                      emoji: '🗓️', color: 'from-gold-50 to-amber-50' },
+  { key: 'necklace',    label: 'Necklaces',   href: '/catalog?category=necklace',    emoji: '📿', color: 'from-rose-50 to-pink-50' },
+  { key: 'earrings',   label: 'Earrings',    href: '/catalog?category=earrings',    emoji: '✨', color: 'from-amber-50 to-yellow-50' },
+  { key: 'bangles',    label: 'Bangles',     href: '/catalog?category=bangles',     emoji: '🟡', color: 'from-orange-50 to-amber-50' },
+  { key: 'maang-tikka', label: 'Maang Tikka', href: '/catalog?category=maang-tikka', emoji: '👑', color: 'from-purple-50 to-violet-50' },
+  { key: 'set',        label: 'Bridal Sets', href: '/catalog?category=set',         emoji: '💍', color: 'from-red-50 to-rose-50' },
+  { key: 'rentals',    label: 'Rentals',     href: '/rentals',                      emoji: '🗓️', color: 'from-gold-50 to-amber-50' },
 ];
 
 const TRUST = [
@@ -268,6 +268,7 @@ export default function HomePage() {
   const [heroSlides, setHeroSlides] = useState([]);
   const [testimonials, setTestimonials] = useState(DEFAULT_TESTIMONIALS);
   const [instagramFeed, setInstagramFeed] = useState([]);
+  const [categoryImages, setCategoryImages] = useState({});
 
   const waNumber = (siteSettings.whatsapp || siteSettings.phone || DEFAULT_WA).replace(/\D/g, '');
 
@@ -286,6 +287,7 @@ export default function HomePage() {
           if (Array.isArray(d.data.heroSlides)) setHeroSlides(d.data.heroSlides);
           if (Array.isArray(d.data.testimonials) && d.data.testimonials.length > 0) setTestimonials(d.data.testimonials);
           if (Array.isArray(d.data.instagramFeed)) setInstagramFeed(d.data.instagramFeed);
+          if (d.data.categoryImages && typeof d.data.categoryImages === 'object') setCategoryImages(d.data.categoryImages);
         }
       })
       .catch(() => {});
@@ -310,17 +312,26 @@ export default function HomePage() {
       <section className="py-12 bg-white">
         <div className="section-container">
           <h2 className="text-center text-xs font-bold tracking-[0.35em] uppercase text-wine-700 mb-8">Top Categories</h2>
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-3 md:gap-4">
-            {CATEGORIES.map((cat) => (
-              <Link
-                key={cat.href}
-                href={cat.href}
-                className={`group flex flex-col items-center gap-3 py-7 px-2 rounded-2xl bg-gradient-to-br ${cat.color} border border-stone-100 hover:border-gold-300 hover:shadow-card transition-all duration-300 text-center`}
-              >
-                <span className="text-3xl group-hover:scale-110 transition-transform duration-300">{cat.emoji}</span>
-                <span className="text-xs font-semibold text-stone-700 group-hover:text-wine-700 transition-colors leading-tight">{cat.label}</span>
-              </Link>
-            ))}
+          <div className="grid grid-cols-3 gap-3 md:gap-5">
+            {CATEGORIES.map((cat) => {
+              const photo = categoryImages[cat.key];
+              return (
+                <Link
+                  key={cat.href}
+                  href={cat.href}
+                  className={`group flex flex-col items-center gap-3 pb-5 pt-6 px-2 rounded-2xl bg-gradient-to-br ${cat.color} border border-stone-100 hover:border-gold-300 hover:shadow-card transition-all duration-300 text-center`}
+                >
+                  <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl overflow-hidden flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
+                    {photo ? (
+                      <img src={photo} alt={cat.label} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-4xl md:text-5xl">{cat.emoji}</span>
+                    )}
+                  </div>
+                  <span className="text-xs font-semibold text-stone-700 group-hover:text-wine-700 transition-colors leading-tight">{cat.label}</span>
+                </Link>
+              );
+            })}
           </div>
         </div>
       </section>
