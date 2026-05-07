@@ -1,6 +1,6 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { FiSettings, FiSave, FiPlus, FiTrash2, FiImage } from 'react-icons/fi';
+import { useState, useEffect, useRef } from 'react';
+import { FiSettings, FiSave, FiPlus, FiTrash2, FiImage, FiUpload } from 'react-icons/fi';
 import Image from 'next/image';
 import toast from 'react-hot-toast';
 
@@ -281,6 +281,93 @@ function InstaPostRow({ post, index, onChange, onDelete }) {
   );
 }
 
+const CATEGORY_LIST = [
+  { key: 'necklace',    label: 'Necklaces',   emoji: '📿' },
+  { key: 'earrings',   label: 'Earrings',    emoji: '✨' },
+  { key: 'bangles',    label: 'Bangles',     emoji: '🟡' },
+  { key: 'maang-tikka', label: 'Maang Tikka', emoji: '👑' },
+  { key: 'set',        label: 'Bridal Sets', emoji: '💍' },
+  { key: 'rentals',    label: 'Rentals',     emoji: '🗓️' },
+];
+
+function CategoryImagesPanel({ images, onChange }) {
+  const fileRefs = useRef({});
+  const [uploading, setUploading] = useState(null);
+
+  async function handleUpload(key, file) {
+    setUploading(key);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.success) {
+        onChange({ ...images, [key]: data.data.url });
+        toast.success('Photo uploaded!');
+      } else {
+        toast.error(data.message || 'Upload failed');
+      }
+    } catch { toast.error('Upload failed'); }
+    finally { setUploading(null); }
+  }
+
+  function removeImage(key) {
+    const updated = { ...images };
+    delete updated[key];
+    onChange(updated);
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+      <div className="mb-4 pb-2 border-b border-gray-100">
+        <h2 className="font-bold text-gray-800">Category Photos</h2>
+        <p className="text-xs text-gray-400 mt-0.5">Upload a photo for each category shown on the homepage. Emoji is used as fallback.</p>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        {CATEGORY_LIST.map(({ key, label, emoji }) => (
+          <div key={key} className="border border-gray-200 rounded-xl p-3 text-center flex flex-col">
+            <div className="aspect-square rounded-xl overflow-hidden bg-stone-50 mb-2 flex items-center justify-center border border-gray-100">
+              {images[key] ? (
+                <img src={images[key]} alt={label} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-4xl">{emoji}</span>
+              )}
+            </div>
+            <p className="text-xs font-semibold text-gray-700 mb-2">{label}</p>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              ref={(el) => { if (el) fileRefs.current[key] = el; }}
+              onChange={(e) => e.target.files[0] && handleUpload(key, e.target.files[0])}
+            />
+            <div className="flex gap-1.5 mt-auto">
+              <button
+                type="button"
+                onClick={() => fileRefs.current[key]?.click()}
+                disabled={uploading === key}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-gold-600 text-white text-xs font-semibold rounded-lg hover:bg-gold-700 transition disabled:opacity-60"
+              >
+                <FiUpload className="text-xs" />
+                {uploading === key ? 'Uploading…' : images[key] ? 'Change' : 'Upload'}
+              </button>
+              {images[key] && (
+                <button
+                  type="button"
+                  onClick={() => removeImage(key)}
+                  className="px-2.5 py-1.5 bg-red-50 text-red-500 text-xs font-semibold rounded-lg hover:bg-red-100 transition"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TestEmailPanel() {
   const [testEmail, setTestEmail] = useState('');
   const [status, setStatus]       = useState(null); // null | 'loading' | {ok, msg}
@@ -365,6 +452,7 @@ export default function SettingsPage() {
   const [heroSlides, setHeroSlides] = useState([]);
   const [testimonials, setTestimonials] = useState([]);
   const [instagramFeed, setInstagramFeed] = useState([]);
+  const [categoryImages, setCategoryImages] = useState({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -376,6 +464,7 @@ export default function SettingsPage() {
           if (Array.isArray(d.data.heroSlides)) setHeroSlides(d.data.heroSlides);
           if (Array.isArray(d.data.testimonials)) setTestimonials(d.data.testimonials);
           if (Array.isArray(d.data.instagramFeed)) setInstagramFeed(d.data.instagramFeed);
+          if (d.data.categoryImages && typeof d.data.categoryImages === 'object') setCategoryImages(d.data.categoryImages);
         }
       })
       .catch(() => {});
@@ -427,7 +516,7 @@ export default function SettingsPage() {
       const res = await fetch('/api/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...settings, heroSlides, testimonials, instagramFeed }),
+        body: JSON.stringify({ ...settings, heroSlides, testimonials, instagramFeed, categoryImages }),
       });
       const data = await res.json();
       if (data.success) toast.success('Settings saved!');
@@ -486,6 +575,9 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
+
+        {/* ── Category Photos ── */}
+        <CategoryImagesPanel images={categoryImages} onChange={setCategoryImages} />
 
         {/* ── Other Settings ── */}
         {SECTIONS.map((section) => (
