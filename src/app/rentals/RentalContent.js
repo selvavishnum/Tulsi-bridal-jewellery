@@ -4,11 +4,17 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { FiCalendar, FiTag, FiSearch, FiX } from 'react-icons/fi';
+import { FiCalendar, FiTag, FiSearch, FiMessageCircle } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
 const CATEGORIES = ['necklace', 'earrings', 'bangles', 'bracelet', 'ring', 'maang-tikka', 'set'];
+const WA_NUMBER = '917695868787';
+
+function waUrl(product) {
+  const msg = `Hi! I'm interested in renting *${product.name}*.\nRental: ₹${product.rentalPrice}/day\nPlease let me know availability and details.`;
+  return `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`;
+}
 
 export default function RentalContent() {
   const router = useRouter();
@@ -65,7 +71,7 @@ export default function RentalContent() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
             {[
               { icon: '🔍', step: '1', text: 'Browse & Select' },
-              { icon: '📅', step: '2', text: 'Pick Your Dates' },
+              { icon: '💬', step: '2', text: 'Enquire on WhatsApp' },
               { icon: '🚚', step: '3', text: 'Get it Delivered' },
               { icon: '📦', step: '4', text: 'Return After Use' },
             ].map((s) => (
@@ -150,17 +156,20 @@ export default function RentalContent() {
                     {product.price && (
                       <p className="text-xs text-gray-400 mb-3">Security deposit: {formatPrice(Math.round(product.price * 0.3))}</p>
                     )}
-                    <Link
-                      href={product.rentalStock > 0 ? `/rental-booking/${pid}` : '#'}
-                      className={`block w-full py-2 text-center text-xs font-bold rounded-lg transition ${
-                        product.rentalStock > 0
-                          ? 'bg-maroon-950 text-white hover:bg-maroon-900'
-                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      }`}
-                    >
-                      <FiCalendar className="inline mr-1 text-xs" />
-                      {product.rentalStock > 0 ? 'Book Now' : 'Unavailable'}
-                    </Link>
+                    {product.rentalStock > 0 ? (
+                      <a
+                        href={waUrl(product)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-1.5 w-full py-2 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 transition"
+                      >
+                        <FiMessageCircle className="text-xs" /> Enquire on WhatsApp
+                      </a>
+                    ) : (
+                      <span className="block w-full py-2 text-center text-xs font-bold rounded-lg bg-gray-100 text-gray-400">
+                        Unavailable
+                      </span>
+                    )}
                   </div>
                 </div>
               );
