@@ -12,7 +12,7 @@ import {
 } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
-import { formatPrice, getDiscountPercentage, calculateRentalDays } from '@/lib/utils';
+import { formatPrice, getDiscountPercentage } from '@/lib/utils';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
 
@@ -263,8 +263,6 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
-  const [rentalDates, setRentalDates] = useState({ start: '', end: '' });
-  const [showRental, setShowRental] = useState(false);
   const [qty, setQty] = useState(1);
   const [zoomOpen, setZoomOpen] = useState(false);
   const [zoomIndex, setZoomIndex] = useState(0);
@@ -527,41 +525,27 @@ export default function ProductDetailPage() {
                 Enquire on WhatsApp
               </a>
 
-              {/* Rental */}
+              {/* Rental enquiry */}
               {product.isAvailableForRent && product.rentalPrice && (
-                <>
-                  <button onClick={() => setShowRental(!showRental)}
-                    className="w-full py-3 border-2 border-gold-400 text-gold-700 font-bold rounded-xl hover:bg-gold-50 transition flex items-center justify-center gap-2 text-sm">
-                    <FiCalendar /> Rent from {formatPrice(product.rentalPrice)}/day
-                  </button>
-                  {showRental && (
-                    <div className="mt-3 p-4 bg-gold-50 rounded-xl border border-gold-200">
-                      <h3 className="font-semibold text-stone-800 mb-3 text-sm">Select Rental Dates</h3>
-                      <div className="grid grid-cols-2 gap-3 mb-3">
-                        <div>
-                          <label className="text-xs text-stone-500 mb-1 block">Start Date</label>
-                          <input type="date" value={rentalDates.start} onChange={(e) => setRentalDates({ ...rentalDates, start: e.target.value })} min={new Date().toISOString().split('T')[0]} className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400 bg-white" />
-                        </div>
-                        <div>
-                          <label className="text-xs text-stone-500 mb-1 block">End Date</label>
-                          <input type="date" value={rentalDates.end} onChange={(e) => setRentalDates({ ...rentalDates, end: e.target.value })} min={rentalDates.start || new Date().toISOString().split('T')[0]} className="w-full px-3 py-2 border border-stone-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-400 bg-white" />
-                        </div>
-                      </div>
-                      {rentalDays > 0 && (
-                        <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 mb-3 text-sm">
-                          <span className="text-stone-500">{rentalDays} day{rentalDays > 1 ? 's' : ''} × {formatPrice(product.rentalPrice)}</span>
-                          <span className="font-bold text-wine-700">{formatPrice(rentalDays * product.rentalPrice)}</span>
-                        </div>
-                      )}
-                      {rentalDates.start && rentalDates.end && (
-                        <Link href={`/rental-booking/${product._id || product.id}?start=${rentalDates.start}&end=${rentalDates.end}`}
-                          className="block w-full py-2.5 bg-gold-600 text-white text-center font-bold rounded-lg hover:bg-gold-500 transition text-sm">
-                          Proceed to Book Rental
-                        </Link>
-                      )}
+                <div className="rounded-xl border border-gold-200 bg-gold-50 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <FiCalendar className="text-gold-600" />
+                      <span className="text-sm font-semibold text-stone-700">Available to Rent</span>
                     </div>
-                  )}
-                </>
+                    <span className="text-sm font-bold text-wine-700">{formatPrice(product.rentalPrice)}<span className="text-xs font-normal text-stone-400">/day</span></span>
+                  </div>
+                  <p className="text-xs text-stone-500 mb-3">Contact us on WhatsApp to check availability and confirm your rental dates.</p>
+                  <a
+                    href={`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(`Hi! I'm interested in renting *${product.name}*.\nRental price: ₹${product.rentalPrice}/day\nPlease let me know about availability and rental details.`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full py-2.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition text-sm"
+                  >
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.133.558 4.133 1.535 5.867L.057 23.428a.5.5 0 00.617.611l5.762-1.505A11.95 11.95 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.797 9.797 0 01-5.028-1.386l-.361-.214-3.718.971.997-3.618-.234-.371A9.797 9.797 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/></svg>
+                    Enquire on WhatsApp for Rental
+                  </a>
+                </div>
               )}
 
               {/* Trust */}
