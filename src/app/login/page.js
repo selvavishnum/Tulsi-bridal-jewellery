@@ -172,7 +172,6 @@ function LoginForm() {
 
   const tabs = [
     ...(GOOGLE_CONFIGURED ? [{ id: 'google', label: '🔵 Google' }] : []),
-    { id: 'otp', label: '📧 Email OTP' },
     { id: 'password', label: '🔑 Password' },
   ];
 
@@ -195,7 +194,6 @@ function LoginForm() {
       </div>
 
       {tab === 'google' && <GoogleBtn callbackUrl={callbackUrl} />}
-      {tab === 'otp' && <OTPForm callbackUrl={callbackUrl} />}
       {tab === 'password' && <PasswordForm callbackUrl={callbackUrl} />}
 
       <div className="text-center mt-5">

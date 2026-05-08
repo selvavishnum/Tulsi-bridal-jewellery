@@ -421,7 +421,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── RENTAL PROMO ── */}
+      {/* ── SHOP PROMO ── */}
       <section className="relative py-20 overflow-hidden bg-luxury-gradient">
         <div className="absolute inset-0 opacity-[0.04]" style={{
           backgroundImage: 'repeating-linear-gradient(45deg, #c9973a 0, #c9973a 1px, transparent 0, transparent 40px)',
@@ -429,16 +429,16 @@ export default function HomePage() {
         <div className="section-container relative z-10">
           <div className="max-w-xl mx-auto text-center">
             <span className="inline-block text-xs tracking-[0.4em] uppercase font-semibold text-gold-400 mb-5 border border-gold-400/40 px-3 py-1 rounded-full">
-              Plan Your Perfect Day
+              Crafted for Your Special Day
             </span>
             <h2 className="font-serif text-4xl md:text-5xl font-bold text-white mb-5 leading-tight">
-              Rent Exquisite<br /><span className="text-gold-400">Bridal Jewellery</span>
+              Exquisite Bridal<br /><span className="text-gold-400">Jewellery Collection</span>
             </h2>
             <p className="text-white/50 text-sm leading-relaxed mb-10">
-              Access our exclusive collection for your special occasion — at a fraction of the purchase price. Date-wise booking with doorstep delivery.
+              Discover our exclusive collection of handcrafted bridal jewellery — timeless designs for your most memorable moments.
             </p>
             <div className="grid grid-cols-3 gap-6 mb-10 max-w-xs mx-auto">
-              {[['500+', 'Pieces'], ['₹299', 'From/Day'], ['48h', 'Delivery']].map(([val, label]) => (
+              {[['500+', 'Designs'], ['100%', 'Authentic'], ['Free', 'Above ₹2000']].map(([val, label]) => (
                 <div key={label}>
                   <p className="font-serif text-2xl font-bold text-gold-400">{val}</p>
                   <p className="text-white/40 text-xs tracking-wider">{label}</p>
@@ -446,10 +446,10 @@ export default function HomePage() {
               ))}
             </div>
             <div className="flex gap-4 justify-center flex-wrap">
-              <Link href="/rentals" className="inline-flex items-center gap-2 px-8 py-3.5 bg-gold-500 hover:bg-gold-400 text-white font-semibold text-sm tracking-luxury uppercase transition-all duration-300 shadow-gold">
-                <FiCalendar /> Browse Rentals
+              <Link href="/shop" className="inline-flex items-center gap-2 px-8 py-3.5 bg-gold-500 hover:bg-gold-400 text-white font-semibold text-sm tracking-luxury uppercase transition-all duration-300 shadow-gold">
+                <FiShoppingCart /> Shop Now
               </Link>
-              <a href={`https://wa.me/${waNumber}?text=${encodeURIComponent("Hi! I'd like to enquire about bridal jewellery rentals.")}`} target="_blank" rel="noopener noreferrer"
+              <a href={`https://wa.me/${waNumber}?text=${encodeURIComponent("Hi! I'd like to enquire about your bridal jewellery collection.")}`} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-8 py-3.5 border border-white/30 hover:border-gold-400 text-white hover:text-gold-400 font-semibold text-sm tracking-luxury uppercase transition-all duration-300">
                 WhatsApp Us
               </a>
@@ -485,34 +485,31 @@ export default function HomePage() {
           {/* Mobile: horizontal scroll; Desktop: 3-column grid */}
           <div className="flex gap-5 overflow-x-auto pb-3 md:overflow-visible md:grid md:grid-cols-3 md:pb-0 snap-x snap-mandatory md:snap-none scrollbar-hide">
             {testimonials.map((t, i) => (
-              <div key={i} className="bg-white rounded-2xl p-6 shadow-card border border-stone-100 flex-shrink-0 w-[80vw] max-w-xs md:w-auto md:max-w-none snap-start">
-                {/* Star rating */}
-                <div className="flex gap-0.5 mb-4">
-                  {Array.from({ length: 5 }).map((_, si) => (
-                    <FiStar
-                      key={si}
-                      className={`text-sm ${si < (t.rating || 5) ? 'text-gold-400 fill-current' : 'text-stone-200 fill-current'}`}
-                    />
-                  ))}
-                </div>
-                {/* Review text */}
-                <p className="font-serif text-stone-500 text-base leading-relaxed mb-5 italic">"{t.review || t.text}"</p>
-                {/* Customer info */}
-                <div className="flex items-center gap-3 pt-4 border-t border-stone-100">
+              <div key={i} className="bg-white rounded-2xl p-6 shadow-card border border-stone-100 flex-shrink-0 w-[80vw] max-w-xs md:w-auto md:max-w-none snap-start flex flex-col">
+                {/* Customer photo + info at top */}
+                <div className="flex items-center gap-3 mb-4">
                   {t.photo ? (
-                    <div className="relative w-11 h-11 rounded-full overflow-hidden flex-shrink-0 border-2 border-gold-200">
+                    <div className="relative w-14 h-14 rounded-full overflow-hidden flex-shrink-0 border-2 border-gold-300 shadow-sm">
                       <Image src={t.photo} alt={t.name} fill className="object-cover" />
                     </div>
                   ) : (
-                    <div className="w-11 h-11 rounded-full bg-wine-100 flex items-center justify-center flex-shrink-0 border-2 border-gold-200">
-                      <span className="text-wine-700 font-serif font-bold text-base">{(t.name || 'C')[0].toUpperCase()}</span>
+                    <div className="w-14 h-14 rounded-full bg-wine-100 flex items-center justify-center flex-shrink-0 border-2 border-gold-300 shadow-sm">
+                      <span className="text-wine-700 font-serif font-bold text-xl">{(t.name || 'C')[0].toUpperCase()}</span>
                     </div>
                   )}
                   <div>
                     <p className="font-semibold text-stone-800 text-sm">{t.name}</p>
                     {t.location && <p className="text-gold-600 text-xs font-medium">{t.location}</p>}
+                    {/* Star rating */}
+                    <div className="flex gap-0.5 mt-1">
+                      {Array.from({ length: 5 }).map((_, si) => (
+                        <FiStar key={si} className={`text-xs ${si < (t.rating || 5) ? 'text-gold-400 fill-current' : 'text-stone-200 fill-current'}`} />
+                      ))}
+                    </div>
                   </div>
                 </div>
+                {/* Review text */}
+                <p className="font-serif text-stone-500 text-sm leading-relaxed italic flex-1">"{t.review || t.text}"</p>
               </div>
             ))}
           </div>

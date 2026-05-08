@@ -10,7 +10,7 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const { items, subtotal, shippingCost, total, discount, coupon, dispatch } = useCart();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
@@ -22,6 +22,16 @@ export default function CheckoutPage() {
     state: '',
     pincode: '',
   });
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.replace('/login?callbackUrl=/checkout');
+    }
+  }, [status, router]);
+
+  if (status === 'loading' || status === 'unauthenticated') {
+    return <div className="min-h-screen flex items-center justify-center"><LoadingSpinner size="lg" /></div>;
+  }
   const [paymentMethod, setPaymentMethod] = useState('razorpay');
 
   function updateForm(key, value) {
