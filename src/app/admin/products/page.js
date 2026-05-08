@@ -97,8 +97,8 @@ export default function AdminProductsPage() {
       fd.append('file', file);
       const res = await fetch('/api/upload', { method: 'POST', body: fd });
       const data = await res.json();
-      if (data.success && data.url) {
-        upd('images', [...form.images, data.url]);
+      if (data.success && data.data?.url) {
+        upd('images', [...form.images, data.data.url]);
         toast.success('Image uploaded!');
       } else {
         toast.error(data.message || 'Upload failed');
