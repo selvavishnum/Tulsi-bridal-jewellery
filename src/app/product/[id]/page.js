@@ -309,10 +309,6 @@ export default function ProductDetailPage() {
   const displayPrice = product.discountPrice || product.price;
   const wishlisted = isWishlisted(product._id || product.id);
 
-  const rentalDays = rentalDates.start && rentalDates.end
-    ? calculateRentalDays(rentalDates.start, rentalDates.end)
-    : 0;
-
   const waEnquiryUrl = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(
     `Hi! I'm interested in "${product.name}" (${formatPrice(displayPrice)}). Please let me know about availability.`
   )}`;
