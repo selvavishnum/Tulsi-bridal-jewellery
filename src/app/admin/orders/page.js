@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { FiSearch, FiX, FiChevronDown, FiChevronUp, FiPhone, FiTruck, FiPackage, FiExternalLink } from 'react-icons/fi';
+import { FiSearch, FiX, FiChevronDown, FiChevronUp, FiPhone, FiTruck, FiPackage, FiExternalLink, FiPrinter } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
 import Badge from '@/components/ui/Badge';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -27,6 +27,124 @@ const COURIERS = [
   'Shiprocket', 'BlueDart', 'Delhivery', 'DTDC', 'Ecom Express',
   'FedEx', 'India Post', 'XpressBees', 'Shadowfax', 'Other',
 ];
+
+/* ── Print Delivery Label ── */
+function printLabel(order) {
+  const addr = order.shippingAddress || {};
+  const name    = addr.fullName || addr.name || order.user?.name || order.guestEmail || '—';
+  const phone   = addr.phone || '—';
+  const street  = addr.street || '—';
+  const city    = addr.city   || '';
+  const state   = addr.state  || '';
+  const pincode = addr.pincode || '';
+  const email   = addr.email || order.guestEmail || '';
+  const dateStr = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
+  const payLine = `${(order.payment?.method || 'online').toUpperCase()} — ${(order.payment?.status || 'pending').toUpperCase()}`;
+
+  const itemsHtml = (order.items || [])
+    .map((it) => `<tr><td style="padding:3px 6px;">${it.name}</td><td style="padding:3px 6px;text-align:center;">× ${it.quantity}</td><td style="padding:3px 6px;text-align:right;">₹${((it.price || 0) * it.quantity).toLocaleString('en-IN')}</td></tr>`)
+    .join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Label — Order #${order.orderNumber}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#000;}
+  @page{size:A5 portrait;margin:0;}
+  .page{width:148mm;min-height:210mm;padding:8mm;display:flex;flex-direction:column;gap:4mm;}
+  .border-box{border:1.5px solid #000;border-radius:3px;padding:4mm;}
+  .from-header{display:flex;align-items:center;gap:3mm;border-bottom:2px solid #000;padding-bottom:3mm;margin-bottom:3mm;}
+  .logo-block{font-size:16pt;font-weight:900;line-height:1;letter-spacing:-0.5px;}
+  .logo-sub{font-size:7pt;letter-spacing:3px;color:#555;margin-top:1px;}
+  .from-addr{font-size:7pt;color:#444;line-height:1.5;}
+  .ship-to-label{font-size:7pt;font-weight:700;letter-spacing:2px;color:#555;text-transform:uppercase;margin-bottom:2mm;}
+  .ship-name{font-size:18pt;font-weight:900;line-height:1.1;text-transform:uppercase;margin-bottom:2mm;}
+  .ship-addr{font-size:11pt;font-weight:600;line-height:1.6;color:#111;}
+  .ship-phone{font-size:11pt;font-weight:700;margin-top:2mm;letter-spacing:0.5px;}
+  .order-bar{background:#000;color:#fff;padding:2.5mm 4mm;border-radius:2px;display:flex;justify-content:space-between;align-items:center;font-size:8pt;}
+  .order-num{font-weight:900;font-size:12pt;letter-spacing:1px;}
+  .items-table{width:100%;border-collapse:collapse;font-size:8.5pt;}
+  .items-table th{background:#f0f0f0;padding:3px 6px;text-align:left;font-size:7pt;text-transform:uppercase;letter-spacing:1px;}
+  .items-table td{border-bottom:1px solid #eee;}
+  .total-row{font-weight:900;font-size:10pt;text-align:right;padding-top:2mm;}
+  .barcode{font-family:'Courier New',monospace;font-size:28pt;font-weight:900;letter-spacing:4px;text-align:center;padding:3mm 0;border:1.5px solid #ddd;border-radius:3px;background:#fafafa;}
+  .barcode-label{font-size:7pt;text-align:center;color:#777;margin-top:1mm;letter-spacing:1px;}
+  .tags{display:flex;gap:3mm;}
+  .tag{flex:1;border:2px solid #000;border-radius:3px;padding:2mm;text-align:center;font-size:8pt;font-weight:900;text-transform:uppercase;letter-spacing:1px;}
+  .tag.fragile{border-color:#cc0000;color:#cc0000;}
+  .footer-note{font-size:7pt;color:#777;text-align:center;padding-top:2mm;}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- FROM header -->
+  <div class="border-box from-header">
+    <div>
+      <div class="logo-block">TULSI</div>
+      <div class="logo-sub">BRIDAL JEWELLERY</div>
+    </div>
+    <div class="from-addr" style="margin-left:auto;text-align:right;">
+      <strong>FROM:</strong><br/>
+      Tulsi Bridal Jewellery<br/>
+      Tamil Nadu, India<br/>
+      +91 76958 68787
+    </div>
+  </div>
+
+  <!-- Order bar -->
+  <div class="order-bar">
+    <span class="order-num">ORDER #${order.orderNumber}</span>
+    <span style="font-size:7pt;">${dateStr}</span>
+    <span style="font-size:8pt;font-weight:700;">${payLine}</span>
+  </div>
+
+  <!-- SHIP TO -->
+  <div class="border-box" style="flex:1;">
+    <div class="ship-to-label">▶ SHIP TO</div>
+    <div class="ship-name">${name}</div>
+    <div class="ship-addr">
+      ${street}<br/>
+      ${city}${city && state ? ', ' : ''}${state}${pincode ? ' — ' + pincode : ''}
+    </div>
+    <div class="ship-phone">📞 ${phone}</div>
+    ${email ? `<div style="font-size:8pt;color:#555;margin-top:1.5mm;">✉ ${email}</div>` : ''}
+  </div>
+
+  <!-- Items -->
+  <div class="border-box">
+    <table class="items-table">
+      <thead><tr><th>Item</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th></tr></thead>
+      <tbody>${itemsHtml}</tbody>
+    </table>
+    <div class="total-row">Total: ₹${(order.total || 0).toLocaleString('en-IN')}</div>
+  </div>
+
+  <!-- Barcode / order number -->
+  <div>
+    <div class="barcode">${String(order.orderNumber).padStart(8, '0')}</div>
+    <div class="barcode-label">ORDER NUMBER — SCAN AT DELIVERY</div>
+  </div>
+
+  <!-- Tags -->
+  <div class="tags">
+    <div class="tag fragile">⚠ Fragile</div>
+    <div class="tag">Handle with Care</div>
+    <div class="tag">Jewellery</div>
+  </div>
+
+  <div class="footer-note">Tulsi Bridal Jewellery · Customer support: +91 76958 68787</div>
+</div>
+<script>window.onload=function(){window.print();setTimeout(function(){window.close();},1000);};</script>
+</body>
+</html>`;
+
+  const w = window.open('', '_blank', 'width=600,height=800');
+  if (w) { w.document.write(html); w.document.close(); }
+}
 
 /* ── Shipment / Tracking Modal ── */
 function ShipmentModal({ order, onClose, onShipped }) {
@@ -298,6 +416,12 @@ export default function AdminOrdersPage() {
           <h1 className="text-2xl font-bold text-gray-800">Orders</h1>
           <p className="text-sm text-gray-400 mt-0.5">{filtered.length} of {orders.length} orders</p>
         </div>
+        <button
+          onClick={() => filtered.forEach((o) => printLabel(o))}
+          disabled={filtered.length === 0}
+          className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold rounded-xl transition disabled:opacity-40 shadow-sm">
+          <FiPrinter /> Print All Labels ({filtered.length})
+        </button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -392,6 +516,11 @@ export default function AdminOrdersPage() {
                           <button onClick={() => setSelected(o)} className="text-xs text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-md transition">
                             Edit
                           </button>
+                          <button onClick={() => printLabel(o)}
+                            title="Print delivery label"
+                            className="text-xs text-purple-600 hover:text-purple-800 bg-purple-50 hover:bg-purple-100 px-2 py-1 rounded-md transition flex items-center gap-1 whitespace-nowrap">
+                            <FiPrinter className="text-[11px]" /> Label
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -430,6 +559,10 @@ export default function AdminOrdersPage() {
                             <div>
                               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Quick Actions</p>
                               <div className="space-y-2">
+                                <button onClick={() => printLabel(o)}
+                                  className="flex items-center gap-2 w-full px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg transition">
+                                  <FiPrinter /> Print Delivery Label
+                                </button>
                                 <button onClick={() => setShipModal(o)}
                                   className="flex items-center gap-2 w-full px-3 py-2 bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-semibold rounded-lg transition">
                                   <FiTruck /> {o.trackingNumber ? 'Update Tracking' : 'Add Tracking / Ship'}

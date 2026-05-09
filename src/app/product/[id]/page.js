@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Image from 'next/image';
@@ -189,66 +189,96 @@ function ReviewForm({ productId, onSubmitted }) {
 }
 
 /* ── Image Zoom Modal ── */
-function ImageZoomModal({ images, startIndex, onClose }) {
+function ImageZoomModal({ images, startIndex, productName, onClose }) {
   const [current, setCurrent] = useState(startIndex);
+  const touchStartX = useRef(null);
+
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') onClose();
       if (e.key === 'ArrowRight') setCurrent((c) => Math.min(images.length - 1, c + 1));
-      if (e.key === 'ArrowLeft') setCurrent((c) => Math.max(0, c - 1));
+      if (e.key === 'ArrowLeft')  setCurrent((c) => Math.max(0, c - 1));
     }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [images.length, onClose]);
 
+  function onTouchStart(e) { touchStartX.current = e.touches[0].clientX; }
+  function onTouchEnd(e) {
+    if (touchStartX.current === null) return;
+    const delta = e.changedTouches[0].clientX - touchStartX.current;
+    if (delta < -50) setCurrent((c) => Math.min(images.length - 1, c + 1));
+    if (delta >  50) setCurrent((c) => Math.max(0, c - 1));
+    touchStartX.current = null;
+  }
+
+  const prev = () => setCurrent((c) => Math.max(0, c - 1));
+  const next = () => setCurrent((c) => Math.min(images.length - 1, c + 1));
+
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
-      onClick={onClose}
-    >
-      <button
-        onClick={onClose}
-        className="absolute top-4 right-4 w-10 h-10 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center text-white text-xl transition z-10"
-      >
-        ×
-      </button>
-      {images.length > 1 && current > 0 && (
-        <button
-          onClick={(e) => { e.stopPropagation(); setCurrent((c) => c - 1); }}
-          className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center text-white text-xl transition z-10"
-        >
-          ‹
+    <div className="fixed inset-0 z-50 flex flex-col bg-white" onClick={onClose}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 bg-white z-10" onClick={(e) => e.stopPropagation()}>
+        <div>
+          <p className="font-serif font-bold text-stone-800 text-base leading-tight">{productName}</p>
+          <p className="text-xs text-stone-400 mt-0.5">{current + 1} / {images.length}</p>
+        </div>
+        <button onClick={onClose} className="w-10 h-10 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-600 text-lg font-light transition">
+          ×
         </button>
-      )}
-      {images.length > 1 && current < images.length - 1 && (
-        <button
-          onClick={(e) => { e.stopPropagation(); setCurrent((c) => c + 1); }}
-          className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center text-white text-xl transition z-10"
-        >
-          ›
-        </button>
-      )}
-      <div
-        className="relative w-full max-w-3xl max-h-[90vh] mx-4 aspect-square"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <Image
-          src={images[current]}
-          alt={`Image ${current + 1}`}
-          fill
-          className="object-contain"
-          sizes="(max-width: 768px) 100vw, 800px"
-        />
       </div>
+
+      {/* Main image */}
+      <div
+        className="flex-1 relative flex items-center justify-center bg-white px-4"
+        onClick={(e) => e.stopPropagation()}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+      >
+        <div className="relative w-full max-w-lg aspect-square">
+          <Image
+            src={images[current]}
+            alt={`${productName} — image ${current + 1}`}
+            fill
+            className="object-contain"
+            sizes="(max-width: 768px) 100vw, 600px"
+            priority
+          />
+        </div>
+
+        {/* Prev arrow */}
+        {current > 0 && (
+          <button onClick={prev}
+            className="absolute left-2 top-1/2 -translate-y-1/2 w-11 h-11 bg-white shadow-lg rounded-full flex items-center justify-center text-stone-700 hover:bg-stone-50 border border-stone-100 transition text-xl z-10">
+            ‹
+          </button>
+        )}
+        {/* Next arrow */}
+        {current < images.length - 1 && (
+          <button onClick={next}
+            className="absolute right-2 top-1/2 -translate-y-1/2 w-11 h-11 bg-white shadow-lg rounded-full flex items-center justify-center text-stone-700 hover:bg-stone-50 border border-stone-100 transition text-xl z-10">
+            ›
+          </button>
+        )}
+      </div>
+
+      {/* Thumbnail strip */}
       {images.length > 1 && (
-        <div className="absolute bottom-4 flex gap-2">
-          {images.map((_, i) => (
-            <button
-              key={i}
-              onClick={(e) => { e.stopPropagation(); setCurrent(i); }}
-              className={`w-2 h-2 rounded-full transition-all ${i === current ? 'bg-white scale-125' : 'bg-white/40'}`}
-            />
-          ))}
+        <div className="bg-white border-t border-stone-100 px-4 py-3" onClick={(e) => e.stopPropagation()}>
+          <div className="flex gap-2 overflow-x-auto justify-center">
+            {images.map((img, i) => (
+              <button key={i} onClick={() => setCurrent(i)}
+                className={`relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${i === current ? 'border-wine-600 shadow-sm scale-105' : 'border-stone-200 opacity-60 hover:opacity-100'}`}>
+                <Image src={img} alt={`Thumb ${i + 1}`} fill className="object-cover" />
+              </button>
+            ))}
+          </div>
+          {/* Dot indicators */}
+          <div className="flex justify-center gap-1.5 mt-2.5">
+            {images.map((_, i) => (
+              <span key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === current ? 'bg-wine-600 scale-125' : 'bg-stone-300'}`} />
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -355,6 +385,7 @@ export default function ProductDetailPage() {
         <ImageZoomModal
           images={product.images}
           startIndex={zoomIndex}
+          productName={product.name}
           onClose={() => setZoomOpen(false)}
         />
       )}
@@ -392,6 +423,7 @@ export default function ProductDetailPage() {
 
             {/* ── IMAGE GALLERY ── */}
             <div className="p-6 lg:p-8 bg-stone-50/60">
+              {/* Main image with slide arrows */}
               <div
                 className="relative aspect-square rounded-2xl overflow-hidden bg-white border border-stone-100 mb-3 group cursor-zoom-in"
                 onClick={() => { if (product.images?.[selectedImage]) { setZoomIndex(selectedImage); setZoomOpen(true); } }}
@@ -402,27 +434,52 @@ export default function ProductDetailPage() {
                     alt={product.name}
                     fill
                     priority
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                    className="object-contain transition-opacity duration-300"
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-8xl text-stone-200">💍</div>
                 )}
+
+                {/* Slide arrows */}
+                {product.images?.length > 1 && selectedImage > 0 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setSelectedImage((i) => i - 1); }}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-white/90 hover:bg-white shadow-md rounded-full flex items-center justify-center text-stone-700 text-xl transition z-10 opacity-0 group-hover:opacity-100">
+                    ‹
+                  </button>
+                )}
+                {product.images?.length > 1 && selectedImage < product.images.length - 1 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setSelectedImage((i) => i + 1); }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-white/90 hover:bg-white shadow-md rounded-full flex items-center justify-center text-stone-700 text-xl transition z-10 opacity-0 group-hover:opacity-100">
+                    ›
+                  </button>
+                )}
+
                 {discount > 0 && (
                   <span className="absolute top-3 left-3 badge-sale text-sm px-3 py-1">-{discount}% OFF</span>
                 )}
-                <button onClick={(e) => { e.stopPropagation(); share(); }} className="absolute top-3 right-3 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-stone-500 hover:text-wine-700 shadow-sm transition">
+                <button onClick={(e) => { e.stopPropagation(); share(); }}
+                  className="absolute top-3 right-3 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-stone-500 hover:text-wine-700 shadow-sm transition">
                   <FiShare2 className="text-sm" />
                 </button>
                 {product.images?.[selectedImage] && (
                   <span className="absolute bottom-3 right-3 bg-black/40 text-white text-[10px] px-2 py-1 rounded-full pointer-events-none">Tap to zoom</span>
                 )}
+                {/* Image counter dot */}
+                {product.images?.length > 1 && (
+                  <span className="absolute bottom-3 left-3 bg-black/40 text-white text-[10px] px-2 py-1 rounded-full pointer-events-none">
+                    {selectedImage + 1} / {product.images.length}
+                  </span>
+                )}
               </div>
 
+              {/* Thumbnail strip */}
               {product.images?.length > 1 && (
                 <div className="flex gap-2 overflow-x-auto pb-1">
                   {product.images.map((img, i) => (
                     <button key={i} onClick={() => setSelectedImage(i)}
-                      className={`relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${selectedImage === i ? 'border-wine-600 shadow-sm' : 'border-transparent hover:border-stone-200'}`}>
+                      className={`relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${selectedImage === i ? 'border-wine-600 shadow-sm scale-105' : 'border-transparent opacity-60 hover:opacity-100 hover:border-stone-200'}`}>
                       <Image src={img} alt={`View ${i + 1}`} fill className="object-cover" />
                     </button>
                   ))}
@@ -526,17 +583,6 @@ export default function ProductDetailPage() {
                 </button>
               </div>
 
-              {/* Virtual Try-On — earrings only */}
-              {isEarring && (
-                <button
-                  onClick={() => setTryOnOpen(true)}
-                  className="w-full py-3 mb-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 text-sm"
-                >
-                  <FiCamera /> Virtual Try-On
-                  <span className="text-[10px] font-normal bg-white/20 px-2 py-0.5 rounded-full ml-1">AR</span>
-                </button>
-              )}
-
               {/* WhatsApp */}
               <a href={waEnquiryUrl} target="_blank" rel="noopener noreferrer"
                 className="w-full py-3 bg-green-500 hover:bg-green-400 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 text-sm mb-4">
@@ -580,6 +626,24 @@ export default function ProductDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* ── VIRTUAL TRY-ON BANNER — earrings only ── */}
+        {isEarring && (
+          <div className="mb-8 rounded-2xl overflow-hidden bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 shadow-lg">
+            <div className="flex items-center justify-between px-6 py-5">
+              <div>
+                <p className="text-white font-bold text-lg leading-tight">✨ Virtual Try-On</p>
+                <p className="text-purple-200 text-sm mt-1">Try this earring on your face live using your camera — AR powered</p>
+              </div>
+              <button
+                onClick={() => setTryOnOpen(true)}
+                className="flex-shrink-0 ml-4 px-5 py-3 bg-white text-purple-700 font-bold rounded-xl hover:bg-purple-50 transition text-sm shadow-md flex items-center gap-2"
+              >
+                <FiCamera size={16} /> Try On
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── REVIEWS SECTION ── */}
         <div className="bg-white rounded-2xl shadow-card p-8">
