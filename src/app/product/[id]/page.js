@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Image from 'next/image';
@@ -8,13 +8,15 @@ import Link from 'next/link';
 import {
   FiShoppingCart, FiHeart, FiShare2, FiStar, FiArrowLeft,
   FiCalendar, FiShield, FiCheckCircle, FiTruck, FiRefreshCw,
-  FiUser, FiSend,
+  FiUser, FiSend, FiCamera,
 } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
+
+const TryOnModal = lazy(() => import('@/components/ar/TryOnModal'));
 
 const WA_NUMBER = '917695868787';
 
@@ -271,6 +273,7 @@ export default function ProductDetailPage() {
   const [reviewStats, setReviewStats] = useState({ average: 0, count: 0 });
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [showReviewForm, setShowReviewForm] = useState(false);
+  const [tryOnOpen, setTryOnOpen] = useState(false);
 
   useEffect(() => {
     fetch(`/api/products/${id}`)
@@ -344,6 +347,8 @@ export default function ProductDetailPage() {
     count: reviews.filter((r) => r.rating === star).length,
   }));
 
+  const isEarring = product.category?.toLowerCase().includes('earring');
+
   return (
     <div className="min-h-screen bg-stone-50">
       {zoomOpen && product.images?.length > 0 && (
@@ -352,6 +357,15 @@ export default function ProductDetailPage() {
           startIndex={zoomIndex}
           onClose={() => setZoomOpen(false)}
         />
+      )}
+      {tryOnOpen && isEarring && (
+        <Suspense fallback={null}>
+          <TryOnModal
+            earringImage={product.images?.[selectedImage] || product.images?.[0]}
+            productName={product.name}
+            onClose={() => setTryOnOpen(false)}
+          />
+        </Suspense>
       )}
 
       {/* Breadcrumb */}
@@ -511,6 +525,17 @@ export default function ProductDetailPage() {
                   <FiHeart className={wishlisted ? 'fill-current' : ''} />
                 </button>
               </div>
+
+              {/* Virtual Try-On — earrings only */}
+              {isEarring && (
+                <button
+                  onClick={() => setTryOnOpen(true)}
+                  className="w-full py-3 mb-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 text-sm"
+                >
+                  <FiCamera /> Virtual Try-On
+                  <span className="text-[10px] font-normal bg-white/20 px-2 py-0.5 rounded-full ml-1">AR</span>
+                </button>
+              )}
 
               {/* WhatsApp */}
               <a href={waEnquiryUrl} target="_blank" rel="noopener noreferrer"
