@@ -2,36 +2,31 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import CatalogProductItem from '@/components/catalog/CatalogProductItem';
+import ProductCard from '@/components/shop/ProductCard';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
-import { FiSearch, FiX } from 'react-icons/fi';
-import Link from 'next/link';
+import { FiSearch, FiX, FiSliders } from 'react-icons/fi';
 
 const CATEGORIES = [
-  { label: 'All', value: '' },
-  { label: 'Necklaces', value: 'necklace' },
-  { label: 'Earrings', value: 'earrings' },
-  { label: 'Bangles', value: 'bangles' },
-  { label: 'Rings', value: 'ring' },
-  { label: 'Maang Tikka', value: 'maang-tikka' },
-  { label: 'Bridal Sets', value: 'set' },
-  { label: 'Anklets', value: 'anklet' },
-  { label: 'Bracelets', value: 'bracelet' },
-  { label: 'Other', value: 'other' },
+  { label: 'All',          value: '' },
+  { label: 'Necklaces',    value: 'necklace' },
+  { label: 'Earrings',     value: 'earrings' },
+  { label: 'Bangles',      value: 'bangles' },
+  { label: 'Rings',        value: 'ring' },
+  { label: 'Maang Tikka',  value: 'maang-tikka' },
+  { label: 'Bridal Sets',  value: 'set' },
+  { label: 'Anklets',      value: 'anklet' },
+  { label: 'Bracelets',    value: 'bracelet' },
+  { label: 'Other',        value: 'other' },
 ];
 
-/* Group products by category for section headings */
-function groupByCategory(products) {
-  const groups = {};
-  products.forEach((p) => {
-    const cat = p.category || 'other';
-    if (!groups[cat]) groups[cat] = [];
-    groups[cat].push(p);
-  });
-  return groups;
-}
+const SORT_OPTIONS = [
+  { label: 'Newest',            value: 'createdAt-desc' },
+  { label: 'Price: Low → High', value: 'price-asc' },
+  { label: 'Price: High → Low', value: 'price-desc' },
+];
 
-function labelForCategory(slug) {
+function categoryTitle(slug) {
+  if (!slug) return 'All Jewellery';
   const found = CATEGORIES.find((c) => c.value === slug);
   return found ? found.label : slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -39,27 +34,34 @@ function labelForCategory(slug) {
 export default function CatalogContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts]     = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [total, setTotal]           = useState(0);
   const [searchInput, setSearchInput] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   const category = searchParams.get('category') || '';
-  const search = searchParams.get('search') || '';
-  const rental = searchParams.get('rental') || '';
+  const search   = searchParams.get('search')   || '';
+  const rental   = searchParams.get('rental')   || '';
+  const sort     = searchParams.get('sort')     || 'createdAt-desc';
+  const [sortField, sortOrder] = sort.split('-');
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({ limit: '100' });
+    const params = new URLSearchParams({ limit: '100', sort: sortField, order: sortOrder });
     if (category) params.set('category', category);
-    if (search) params.set('search', search);
-    if (rental) params.set('rental', 'true');
+    if (search)   params.set('search', search);
+    if (rental)   params.set('rental', 'true');
     try {
-      const res = await fetch(`/api/products?${params}`);
+      const res  = await fetch(`/api/products?${params}`);
       const data = await res.json();
-      if (data.success) setProducts(data.data.products);
+      if (data.success) {
+        setProducts(data.data.products);
+        setTotal(data.data.total);
+      }
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [category, search, rental]);
+  }, [category, search, rental, sortField, sortOrder]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
@@ -74,109 +76,94 @@ export default function CatalogContent() {
     setParam('search', searchInput.trim());
   }
 
-  const grouped = category || search ? null : groupByCategory(products);
-
   return (
     <div className="min-h-screen bg-white">
-      {/* Catalog header bar */}
-      <div className="border-b border-gray-200 bg-white sticky top-0 z-30 shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center gap-3">
-          {/* Category pills */}
-          <div className="flex items-center gap-1.5 flex-wrap flex-1">
-            {CATEGORIES.map((c) => (
-              <button
-                key={c.value}
-                onClick={() => setParam('category', c.value)}
-                className={`px-3 py-1 text-xs font-semibold uppercase tracking-wide border transition rounded-sm ${
-                  category === c.value
-                    ? 'bg-velvet-800 text-white border-velvet-800'
-                    : 'bg-white text-gray-600 border-gray-300 hover:border-velvet-700 hover:text-velvet-800'
-                }`}
-              >
-                {c.label}
-              </button>
-            ))}
-            <button
-              onClick={() => setParam('rental', rental ? '' : 'true')}
-              className={`px-3 py-1 text-xs font-semibold uppercase tracking-wide border transition rounded-sm ${
-                rental ? 'bg-gold-600 text-white border-gold-600' : 'bg-white text-gray-600 border-gray-300 hover:border-gold-500 hover:text-gold-700'
-              }`}
-            >
-              Rental Only
-            </button>
-          </div>
 
-          {/* Search */}
-          <form onSubmit={handleSearch} className="flex items-center border border-gray-300 rounded overflow-hidden">
-            <input
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search catalogue…"
-              className="px-3 py-1.5 text-xs outline-none w-40"
-            />
-            <button type="submit" className="px-2 py-1.5 bg-gray-100 hover:bg-gray-200 transition">
-              <FiSearch className="text-gray-500 text-sm" />
-            </button>
-            {search && (
-              <button type="button" onClick={() => { setSearchInput(''); setParam('search', ''); }} className="px-2 py-1.5 bg-gray-100 hover:bg-red-100 transition">
-                <FiX className="text-red-400 text-sm" />
-              </button>
-            )}
-          </form>
-        </div>
+      {/* ── Title header — arshis.in style ── */}
+      <div className="bg-[#f5ede6] py-7 text-center border-b border-stone-200">
+        <h1 className="font-serif text-3xl font-bold text-stone-800 tracking-wide">
+          {search ? `"${search}"` : categoryTitle(category)}
+        </h1>
       </div>
 
-      {/* Breadcrumb */}
-      <div className="max-w-5xl mx-auto px-4 pt-4 pb-1 text-xs text-gray-400 tracking-wide">
-        <Link href="/" className="hover:text-wine transition">Home</Link>
-        <span className="mx-1.5">/</span>
-        <span className="text-gray-600">{category ? labelForCategory(category) : 'Full Catalogue'}</span>
-        {search && <><span className="mx-1.5">/</span><span className="text-gray-600">Search: &ldquo;{search}&rdquo;</span></>}
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-24"><LoadingSpinner size="lg" /></div>
-      ) : products.length === 0 ? (
-        <div className="text-center py-24">
-          <div className="text-6xl mb-4">💍</div>
-          <p className="text-gray-500 text-lg">No items found</p>
-          <button onClick={() => router.push('/catalog')} className="mt-4 text-sm text-wine hover:underline">
-            Clear filters
+      {/* ── Filter bar ── */}
+      <div className="max-w-3xl mx-auto px-3 py-3">
+        <div className="flex items-center justify-between mb-3 pb-3 border-b border-stone-100">
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            className="flex items-center gap-1.5 text-sm text-stone-600 font-medium">
+            <FiSliders size={14} /> Filter and sort
           </button>
+          <span className="text-sm text-stone-500">{total || products.length} products</span>
         </div>
-      ) : category || search ? (
-        /* Single-category view — no section headings, just list */
-        <div>
-          {category && (
-            <div className="max-w-5xl mx-auto px-4 pt-5 pb-2">
-              <h2 className="text-xs tracking-[0.3em] uppercase text-gray-400">
-                {labelForCategory(category)}
-                <span className="ml-3 text-gray-300">({products.length} items)</span>
-              </h2>
-            </div>
-          )}
-          {products.map((p) => <CatalogProductItem key={p._id} product={p} />)}
-        </div>
-      ) : (
-        /* Full catalogue — grouped by category with section headings */
-        Object.entries(grouped).map(([cat, items]) => (
-          <div key={cat}>
-            {/* Category section heading — exactly like Swastik "ANTIQUE BANGLES" etc. */}
-            <div className="max-w-5xl mx-auto px-4 pt-8 pb-1 flex items-center gap-4">
-              <div className="h-px flex-1 bg-gray-200" />
-              <h2 className="text-xs font-bold tracking-[0.35em] uppercase text-wine whitespace-nowrap">
-                {labelForCategory(cat)}
-              </h2>
-              <div className="h-px flex-1 bg-gray-200" />
-            </div>
 
-            {items.map((p) => <CatalogProductItem key={p._id} product={p} />)}
+        {/* Filter panel */}
+        {showFilters && (
+          <div className="mb-4 space-y-3 pb-4 border-b border-stone-100">
+            {/* Search */}
+            <form onSubmit={handleSearch} className="flex items-center border border-stone-200 rounded-lg overflow-hidden">
+              <input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search catalogue…"
+                className="flex-1 px-3 py-2 text-sm outline-none text-stone-700"
+              />
+              <button type="submit" className="px-3 py-2 bg-stone-100 hover:bg-stone-200 transition">
+                <FiSearch className="text-stone-500 text-sm" />
+              </button>
+              {search && (
+                <button type="button" onClick={() => { setSearchInput(''); setParam('search', ''); }}
+                  className="px-2 py-2 bg-stone-100 hover:bg-red-100 transition">
+                  <FiX className="text-red-400 text-sm" />
+                </button>
+              )}
+            </form>
+
+            {/* Sort */}
+            <select value={sort} onChange={(e) => setParam('sort', e.target.value)}
+              className="w-full text-sm border border-stone-200 rounded-lg px-3 py-2 bg-white outline-none text-stone-600">
+              {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+
+            {/* Rental toggle */}
+            <button onClick={() => setParam('rental', rental ? '' : 'true')}
+              className={`w-full py-2 rounded-lg text-sm font-semibold border transition ${rental ? 'bg-stone-800 text-white border-stone-800' : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'}`}>
+              {rental ? '✓ Rental Only' : 'Show Rental Only'}
+            </button>
           </div>
-        ))
-      )}
+        )}
 
-      {/* Bottom padding */}
-      <div className="h-12" />
+        {/* Category pills */}
+        <div className="flex items-center gap-1.5 flex-wrap mb-4">
+          {CATEGORIES.map((c) => (
+            <button key={c.value} onClick={() => setParam('category', c.value)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition border ${
+                category === c.value
+                  ? 'bg-stone-800 text-white border-stone-800'
+                  : 'bg-white text-stone-600 hover:bg-stone-50 border-stone-200'
+              }`}>
+              {c.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Product grid */}
+        {loading ? (
+          <div className="flex justify-center py-20"><LoadingSpinner size="lg" /></div>
+        ) : products.length === 0 ? (
+          <div className="text-center py-20">
+            <div className="text-5xl mb-4">💍</div>
+            <p className="text-stone-500 text-lg mb-2">No products found</p>
+            <button onClick={() => router.push('/catalog')} className="text-sm text-stone-400 hover:underline mt-1">
+              Clear filters
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-x-2 gap-y-6">
+            {products.map((p) => <ProductCard key={p._id || p.id} product={p} />)}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
