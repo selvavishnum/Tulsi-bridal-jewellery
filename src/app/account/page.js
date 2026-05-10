@@ -93,6 +93,14 @@ export default function AccountPage() {
   const [expandedId, setExpandedId]   = useState(null);
   const [cancelling, setCancelling]   = useState(null);
   const [confirmCancel, setConfirmCancel] = useState(null);
+  const [profile, setProfile]       = useState({ phone: '', city: '', birthday: '', weddingDate: '' });
+  const [savingProfile, setSaving]  = useState(false);
+  const [loyalty, setLoyalty]       = useState({ points: 0, transactions: [] });
+  const [settings, setSettings]     = useState({ loyaltyEnabled: false, referralEnabled: false });
+  const [referralCode, setReferralCode] = useState('');
+  const [referralInput, setReferralInput] = useState('');
+  const [applyingReferral, setApplyingReferral] = useState(false);
+  const [copied, setCopied]         = useState(false);
 
   useEffect(() => {
     if (status === 'unauthenticated') router.replace('/login');
@@ -106,6 +114,25 @@ export default function AccountPage() {
       .catch(() => {})
       .finally(() => setLoadingOrders(false));
   }, [status]);
+
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    // Track session
+    fetch('/api/auth/track-session', { method: 'POST' }).catch(() => {});
+    // Load loyalty points
+    fetch('/api/loyalty').then((r) => r.json()).then((d) => { if (d.success) setLoyalty(d.data); }).catch(() => {});
+    // Load site settings (loyalty/referral enabled flags)
+    fetch('/api/admin/settings').then((r) => r.json()).then((d) => {
+      if (d.success && d.data) setSettings({ loyaltyEnabled: !!d.data.loyaltyEnabled, referralEnabled: !!d.data.referralEnabled });
+    }).catch(() => {});
+  }, [status]);
+
+  useEffect(() => {
+    // Set profile fields and referral code from session
+    if (session?.user) {
+      setReferralCode(session.user.referralCode || '');
+    }
+  }, [session]);
 
   if (status === 'loading') {
     return <div className="min-h-screen flex items-center justify-center"><LoadingSpinner size="lg" /></div>;
@@ -142,6 +169,51 @@ export default function AccountPage() {
     }
   }
 
+  async function saveProfile(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch('/api/auth/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile),
+      });
+      const data = await res.json();
+      if (data.success) toast.success('Profile updated!');
+      else toast.error(data.message);
+    } catch { toast.error('Failed to save profile'); }
+    finally { setSaving(false); }
+  }
+
+  async function applyReferral() {
+    if (!referralInput.trim()) return;
+    setApplyingReferral(true);
+    try {
+      const res = await fetch('/api/referral/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referralCode: referralInput.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message);
+        setLoyalty((prev) => ({ ...prev, points: prev.points + 20 }));
+        setReferralInput('');
+      } else {
+        toast.error(data.message);
+      }
+    } catch { toast.error('Failed to apply referral code'); }
+    finally { setApplyingReferral(false); }
+  }
+
+  function copyReferralCode() {
+    if (!referralCode) return;
+    navigator.clipboard.writeText(referralCode).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -173,7 +245,7 @@ export default function AccountPage() {
         {/* Tabs */}
         <div className="flex gap-1 bg-white rounded-xl shadow-sm p-1 mb-6">
           {[
-            { id: 'orders',  label: 'My Orders', icon: FiShoppingBag },
+            { id: 'orders', label: orders.length ? `My Orders (${orders.length})` : 'My Orders', icon: FiShoppingBag },
             { id: 'profile', label: 'Profile',   icon: FiUser },
           ].map((t) => (
             <button
@@ -363,32 +435,148 @@ export default function AccountPage() {
 
         {/* Profile tab */}
         {tab === 'profile' && (
-          <div className="bg-white rounded-xl shadow-sm p-6 space-y-5">
-            <h2 className="font-bold text-gray-800">Account Details</h2>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-xs text-gray-400 mb-1 flex items-center gap-1"><FiUser /> Name</p>
-                <p className="font-semibold text-gray-800">{user?.name || '—'}</p>
+          <div className="space-y-4">
+            {/* Loyalty Points Card */}
+            {settings.loyaltyEnabled && (
+              <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">🏆</span>
+                    <div>
+                      <p className="font-bold text-gray-800">Loyalty Points</p>
+                      <p className="text-xs text-gray-500">₹100 spent = 1 point · 50 points = ₹50 off</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-3xl font-bold text-amber-600">{loyalty.points}</p>
+                    <p className="text-xs text-amber-700 font-semibold">points</p>
+                  </div>
+                </div>
+                {loyalty.points >= 50 && (
+                  <div className="bg-amber-100 rounded-lg px-3 py-2 text-xs text-amber-800 font-medium">
+                    ✨ You can redeem ₹{Math.floor(loyalty.points / 50) * 50} discount on your next order!
+                  </div>
+                )}
+                {loyalty.transactions.length > 0 && (
+                  <div className="mt-3 space-y-1">
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Recent Activity</p>
+                    {loyalty.transactions.slice(0, 4).map((tx) => (
+                      <div key={tx.id} className="flex justify-between text-xs text-gray-600">
+                        <span>{tx.description}</span>
+                        <span className={tx.points > 0 ? 'text-green-600 font-semibold' : 'text-red-500 font-semibold'}>
+                          {tx.points > 0 ? '+' : ''}{tx.points} pts
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-xs text-gray-400 mb-1 flex items-center gap-1"><FiMail /> Email</p>
-                <p className="font-semibold text-gray-800">{user?.email || '—'}</p>
+            )}
+
+            {/* Referral Card */}
+            {settings.referralEnabled && (
+              <div className="bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-200 rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-2xl">🔁</span>
+                  <div>
+                    <p className="font-bold text-gray-800">Refer a Friend</p>
+                    <p className="text-xs text-gray-500">Both you and your friend earn 20 loyalty points!</p>
+                  </div>
+                </div>
+                {referralCode ? (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Your referral code</p>
+                    <div className="flex gap-2">
+                      <div className="flex-1 bg-white border border-purple-200 rounded-lg px-3 py-2 font-mono font-bold text-purple-700 tracking-widest text-sm">
+                        {referralCode}
+                      </div>
+                      <button onClick={copyReferralCode} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg transition">
+                        {copied ? '✓ Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500 bg-white rounded-lg px-3 py-2 border border-purple-100">Your referral code will appear here after your first order.</p>
+                )}
+                <div className="mt-3 border-t border-purple-100 pt-3">
+                  <p className="text-xs text-gray-500 mb-1">Have a friend's referral code?</p>
+                  <div className="flex gap-2">
+                    <input
+                      value={referralInput}
+                      onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
+                      placeholder="Enter referral code"
+                      className="flex-1 px-3 py-2 border border-purple-200 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-purple-400 bg-white uppercase"
+                    />
+                    <button onClick={applyReferral} disabled={applyingReferral} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg disabled:opacity-60 transition">
+                      {applyingReferral ? 'Applying…' : 'Apply'}
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-xs text-gray-400 mb-1">Account Type</p>
-                <p className="font-semibold text-gray-800 capitalize">{user?.role || 'Customer'}</p>
+            )}
+
+            {/* Profile Edit Form */}
+            <form onSubmit={saveProfile} className="bg-white rounded-xl shadow-sm p-6 space-y-5">
+              <h2 className="font-bold text-gray-800">Account Details</h2>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-xs text-gray-400 mb-1 flex items-center gap-1"><FiUser /> Name</p>
+                  <p className="font-semibold text-gray-800">{user?.name || '—'}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-xs text-gray-400 mb-1 flex items-center gap-1"><FiMail /> Email</p>
+                  <p className="font-semibold text-gray-800">{user?.email || '—'}</p>
+                </div>
               </div>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-xs text-gray-400 mb-1">Total Orders</p>
-                <p className="font-semibold text-gray-800">{orders.length}</p>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block font-medium">Phone / WhatsApp</label>
+                  <input
+                    type="tel"
+                    value={profile.phone}
+                    onChange={(e) => setProfile((p) => ({ ...p, phone: e.target.value }))}
+                    placeholder="e.g. 9876543210"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block font-medium">City</label>
+                  <input
+                    value={profile.city}
+                    onChange={(e) => setProfile((p) => ({ ...p, city: e.target.value }))}
+                    placeholder="e.g. Chennai"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block font-medium">🎂 Birthday</label>
+                  <input
+                    type="date"
+                    value={profile.birthday}
+                    onChange={(e) => setProfile((p) => ({ ...p, birthday: e.target.value }))}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block font-medium">💍 Wedding Date</label>
+                  <input
+                    type="date"
+                    value={profile.weddingDate}
+                    onChange={(e) => setProfile((p) => ({ ...p, weddingDate: e.target.value }))}
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">We'll send you special offers before your big day!</p>
+                </div>
               </div>
-            </div>
-            <button
-              onClick={() => signOut({ callbackUrl: '/' })}
-              className="flex items-center gap-2 px-5 py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl text-sm font-semibold hover:bg-red-100 transition"
-            >
-              <FiLogOut /> Sign Out
-            </button>
+              <div className="flex gap-3">
+                <button type="submit" disabled={savingProfile} className="px-6 py-2.5 bg-maroon-950 text-white text-sm font-semibold rounded-xl hover:bg-maroon-900 disabled:opacity-60 transition">
+                  {savingProfile ? 'Saving…' : 'Save Profile'}
+                </button>
+                <button type="button" onClick={() => signOut({ callbackUrl: '/' })} className="flex items-center gap-2 px-5 py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl text-sm font-semibold hover:bg-red-100 transition">
+                  <FiLogOut /> Sign Out
+                </button>
+              </div>
+            </form>
           </div>
         )}
       </div>

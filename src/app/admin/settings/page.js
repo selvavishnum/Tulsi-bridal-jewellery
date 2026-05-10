@@ -480,6 +480,8 @@ export default function SettingsPage() {
     freeDeliveryAbove: '2000',
     whatsappNotify: '',
     emailNotify: '',
+    loyaltyEnabled: false,
+    referralEnabled: false,
   });
   const [heroSlides, setHeroSlides] = useState([]);
   const [testimonials, setTestimonials] = useState([]);
@@ -721,6 +723,57 @@ export default function SettingsPage() {
               )}
             </div>
           )}
+        </div>
+
+        {/* ── Marketing Features ── */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <h2 className="font-bold text-gray-800 mb-1">Marketing Features</h2>
+          <p className="text-xs text-gray-400 mb-5">Enable or disable customer loyalty and referral programs. Changes are saved with the Save All Settings button.</p>
+          <div className="space-y-4">
+            {/* Loyalty Points */}
+            <div className="flex items-start justify-between gap-4 p-4 bg-amber-50 border border-amber-100 rounded-xl">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-lg">🏆</span>
+                  <p className="font-semibold text-gray-800 text-sm">Loyalty Points Program</p>
+                </div>
+                <p className="text-xs text-gray-500 leading-relaxed">Customers earn 1 point per ₹100 spent. 50 points = ₹50 discount. Points are awarded automatically on every order.</p>
+                <div className="flex flex-wrap gap-3 mt-2 text-xs text-amber-700 font-medium">
+                  <span className="bg-amber-100 px-2 py-0.5 rounded-full">₹100 = 1 point</span>
+                  <span className="bg-amber-100 px-2 py-0.5 rounded-full">50 points = ₹50 off</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => update('loyaltyEnabled', !settings.loyaltyEnabled)}
+                className={`relative flex-shrink-0 w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${settings.loyaltyEnabled ? 'bg-green-500' : 'bg-gray-300'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${settings.loyaltyEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+              </button>
+            </div>
+
+            {/* Referral Program */}
+            <div className="flex items-start justify-between gap-4 p-4 bg-purple-50 border border-purple-100 rounded-xl">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-lg">🔁</span>
+                  <p className="font-semibold text-gray-800 text-sm">Referral Program</p>
+                </div>
+                <p className="text-xs text-gray-500 leading-relaxed">Each customer gets a unique referral code. When a friend uses their code, both earn 20 loyalty points.</p>
+                <div className="flex flex-wrap gap-3 mt-2 text-xs text-purple-700 font-medium">
+                  <span className="bg-purple-100 px-2 py-0.5 rounded-full">Referrer earns 20 pts</span>
+                  <span className="bg-purple-100 px-2 py-0.5 rounded-full">New customer earns 20 pts</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => update('referralEnabled', !settings.referralEnabled)}
+                className={`relative flex-shrink-0 w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${settings.referralEnabled ? 'bg-green-500' : 'bg-gray-300'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${settings.referralEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+              </button>
+            </div>
+          </div>
         </div>
 
         <TestEmailPanel />
