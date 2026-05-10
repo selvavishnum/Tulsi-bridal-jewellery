@@ -9,24 +9,26 @@ const initialState = { items: [], coupon: null, discount: 0 };
 function cartReducer(state, action) {
   switch (action.type) {
     case 'ADD_ITEM': {
-      const existing = state.items.find((i) => i._id === action.payload._id);
+      const pid = action.payload._id || action.payload.id;
+      const existing = state.items.find((i) => (i._id || i.id) === pid);
       if (existing) {
         return {
           ...state,
           items: state.items.map((i) =>
-            i._id === action.payload._id ? { ...i, quantity: i.quantity + 1 } : i
+            (i._id || i.id) === pid ? { ...i, quantity: i.quantity + 1 } : i
           ),
         };
       }
-      return { ...state, items: [...state.items, { ...action.payload, quantity: 1 }] };
+      // Normalize: always set _id so downstream code (cart page, checkout) works reliably
+      return { ...state, items: [...state.items, { ...action.payload, _id: pid, quantity: 1 }] };
     }
     case 'REMOVE_ITEM':
-      return { ...state, items: state.items.filter((i) => i._id !== action.payload) };
+      return { ...state, items: state.items.filter((i) => (i._id || i.id) !== action.payload) };
     case 'UPDATE_QUANTITY':
       return {
         ...state,
         items: state.items.map((i) =>
-          i._id === action.payload.id ? { ...i, quantity: action.payload.quantity } : i
+          (i._id || i.id) === action.payload.id ? { ...i, quantity: action.payload.quantity } : i
         ),
       };
     case 'APPLY_COUPON':
