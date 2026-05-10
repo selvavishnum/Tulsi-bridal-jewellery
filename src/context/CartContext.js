@@ -37,8 +37,13 @@ function cartReducer(state, action) {
       return { ...state, coupon: null, discount: 0 };
     case 'CLEAR_CART':
       return initialState;
-    case 'HYDRATE':
-      return action.payload;
+    case 'HYDRATE': {
+      const items = (action.payload.items || []).map((i) => {
+        const pid = i._id || i.id;
+        return { ...i, _id: pid };
+      });
+      return { ...action.payload, items };
+    }
     default:
       return state;
   }

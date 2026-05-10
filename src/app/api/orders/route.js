@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDB, snapshotToArr } from '@/lib/firebase';
+import { getDB, FieldValue, snapshotToArr } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
 import { sendOrderConfirmation, sendOrderNotificationToAdmin } from '@/lib/email';
 import { sendOrderWhatsAppToAdmin, sendOrderWhatsAppToCustomer } from '@/lib/whatsapp';
@@ -102,6 +102,27 @@ export async function POST(request) {
       updatedAt: new Date().toISOString(),
     };
     await orderRef.set(orderData);
+
+    // Award loyalty points — ₹100 = 1 point
+    if (session?.user?.id) {
+      const pointsEarned = Math.floor(Number(total) / 100);
+      if (pointsEarned > 0) {
+        await db.collection('users').doc(session.user.id).update({
+          loyaltyPoints: FieldValue.increment(pointsEarned),
+          totalOrders: FieldValue.increment(1),
+          totalSpent: FieldValue.increment(Number(total)),
+          lastSeen: new Date().toISOString(),
+        }).catch(() => {});
+        await db.collection('loyaltyTransactions').add({
+          userId: session.user.id,
+          type: 'earn',
+          points: pointsEarned,
+          orderId: orderRef.id,
+          description: `Earned for order ₹${total}`,
+          createdAt: new Date().toISOString(),
+        }).catch(() => {});
+      }
+    }
 
     const fullOrder = { id: orderRef.id, _id: orderRef.id, ...orderData };
 

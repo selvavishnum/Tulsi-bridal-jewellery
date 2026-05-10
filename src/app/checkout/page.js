@@ -13,6 +13,10 @@ export default function CheckoutPage() {
   const { data: session, status } = useSession();
   const { items, subtotal, shippingCost, total, discount, coupon, dispatch } = useCart();
   const [loading, setLoading] = useState(false);
+  const [loyalty, setLoyalty]           = useState({ points: 0 });
+  const [loyaltyEnabled, setLoyaltyEnabled] = useState(false);
+  const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
+  const [redeemingPoints, setRedeeming] = useState(false);
   const [form, setForm] = useState({
     fullName: session?.user?.name || '',
     phone: '',
@@ -29,6 +33,14 @@ export default function CheckoutPage() {
     }
   }, [status, router]);
 
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    fetch('/api/loyalty').then((r) => r.json()).then((d) => { if (d.success) setLoyalty(d.data); }).catch(() => {});
+    fetch('/api/admin/settings').then((r) => r.json()).then((d) => {
+      if (d.success) setLoyaltyEnabled(!!d.data?.loyaltyEnabled);
+    }).catch(() => {});
+  }, [status]);
+
   if (status === 'loading' || status === 'unauthenticated') {
     return <div className="min-h-screen flex items-center justify-center"><LoadingSpinner size="lg" /></div>;
   }
@@ -36,6 +48,27 @@ export default function CheckoutPage() {
 
   function updateForm(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function redeemLoyaltyPoints() {
+    if (loyaltyDiscount > 0) { setLoyaltyDiscount(0); return; }
+    setRedeeming(true);
+    try {
+      const res = await fetch('/api/loyalty', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'redeem' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLoyaltyDiscount(data.data.discount);
+        setLoyalty((prev) => ({ ...prev, points: prev.points - data.data.pointsRedeemed }));
+        toast.success(`₹${data.data.discount} discount applied!`);
+      } else {
+        toast.error(data.message);
+      }
+    } catch { toast.error('Failed to redeem points'); }
+    finally { setRedeeming(false); }
   }
 
   async function handleSubmit(e) {
@@ -62,7 +95,8 @@ export default function CheckoutPage() {
           payment: { method: paymentMethod, status: 'pending' },
           coupon: coupon?._id,
           couponCode: coupon?.code,
-          subtotal, shippingCost, discount, total,
+          subtotal, shippingCost, discount: discount + loyaltyDiscount, total: total - loyaltyDiscount,
+          loyaltyDiscount,
           guestEmail: !session ? form.email : undefined,
         }),
       });
@@ -209,12 +243,30 @@ export default function CheckoutPage() {
                     <div className="flex justify-between"><span>Subtotal</span><span>{formatPrice(subtotal)}</span></div>
                     <div className="flex justify-between"><span>Shipping</span><span className={shippingCost === 0 ? 'text-green-600' : ''}>{shippingCost === 0 ? 'FREE' : formatPrice(shippingCost)}</span></div>
                     {discount > 0 && <div className="flex justify-between text-green-600"><span>Discount</span><span>-{formatPrice(discount)}</span></div>}
+                    {loyaltyEnabled && loyalty.points >= 50 && loyaltyDiscount === 0 && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-xs font-semibold text-amber-800">🏆 {loyalty.points} Loyalty Points</p>
+                          <p className="text-xs text-amber-700">= ₹{Math.floor(loyalty.points / 50) * 50} discount</p>
+                        </div>
+                        <button type="button" onClick={redeemLoyaltyPoints} disabled={redeemingPoints}
+                          className="w-full py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-lg disabled:opacity-60 transition">
+                          {redeemingPoints ? 'Redeeming…' : 'Use Points'}
+                        </button>
+                      </div>
+                    )}
+                    {loyaltyDiscount > 0 && (
+                      <div className="flex justify-between text-amber-700">
+                        <span>🏆 Points Discount <button type="button" onClick={redeemLoyaltyPoints} className="text-red-400 text-xs ml-1">✕ Remove</button></span>
+                        <span className="font-semibold">-{formatPrice(loyaltyDiscount)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between font-bold text-gray-800 text-base border-t pt-2">
-                      <span>Total</span><span>{formatPrice(total)}</span>
+                      <span>Total</span><span>{formatPrice(total - loyaltyDiscount)}</span>
                     </div>
                   </div>
                   <button type="submit" disabled={loading} className="w-full mt-4 py-3 bg-maroon-950 text-white font-bold rounded-xl hover:bg-maroon-900 disabled:opacity-60 transition flex items-center justify-center gap-2">
-                    {loading ? <><LoadingSpinner size="sm" /> Processing...</> : `Place Order · ${formatPrice(total)}`}
+                    {loading ? <><LoadingSpinner size="sm" /> Processing...</> : `Place Order · ${formatPrice(total - loyaltyDiscount)}`}
                   </button>
                 </div>
               </div>

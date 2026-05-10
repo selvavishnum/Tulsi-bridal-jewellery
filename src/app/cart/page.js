@@ -56,8 +56,10 @@ export default function CartPage() {
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Items */}
           <div className="lg:col-span-2 space-y-3">
-            {items.map((item) => (
-              <div key={item._id} className="bg-white rounded-xl p-4 flex items-center gap-4 shadow-sm">
+            {items.map((item) => {
+              const itemId = item._id || item.id;
+              return (
+              <div key={itemId} className="bg-white rounded-xl p-4 flex items-center gap-4 shadow-sm">
                 <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
                   {item.images?.[0] ? (
                     <Image src={item.images[0]} alt={item.name} fill className="object-cover" />
@@ -66,23 +68,24 @@ export default function CartPage() {
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <Link href={`/product/${item._id}`} className="font-serif font-semibold text-gray-800 hover:text-maroon-950 line-clamp-2 text-sm">{item.name}</Link>
+                  <Link href={`/product/${itemId}`} className="font-serif font-semibold text-gray-800 hover:text-maroon-950 line-clamp-2 text-sm">{item.name}</Link>
                   <p className="text-gold-600 font-bold mt-1">{formatPrice(item.discountPrice || item.price)}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <button onClick={() => item.quantity > 1 ? dispatch({ type: 'UPDATE_QUANTITY', payload: { id: item._id, quantity: item.quantity - 1 } }) : dispatch({ type: 'REMOVE_ITEM', payload: item._id })} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition">
+                  <button onClick={() => item.quantity > 1 ? dispatch({ type: 'UPDATE_QUANTITY', payload: { id: itemId, quantity: item.quantity - 1 } }) : dispatch({ type: 'REMOVE_ITEM', payload: itemId })} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition">
                     <FiMinus className="text-xs" />
                   </button>
                   <span className="w-8 text-center font-semibold text-sm">{item.quantity}</span>
-                  <button onClick={() => dispatch({ type: 'UPDATE_QUANTITY', payload: { id: item._id, quantity: item.quantity + 1 } })} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition">
+                  <button onClick={() => dispatch({ type: 'UPDATE_QUANTITY', payload: { id: itemId, quantity: item.quantity + 1 } })} className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition">
                     <FiPlus className="text-xs" />
                   </button>
-                  <button onClick={() => { dispatch({ type: 'REMOVE_ITEM', payload: item._id }); toast.success('Removed from cart'); }} className="ml-2 p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full transition">
+                  <button onClick={() => { dispatch({ type: 'REMOVE_ITEM', payload: itemId }); toast.success('Removed from cart'); }} className="ml-2 p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full transition">
                     <FiTrash2 className="text-sm" />
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Summary */}
