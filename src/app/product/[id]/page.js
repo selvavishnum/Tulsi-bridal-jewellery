@@ -377,7 +377,10 @@ export default function ProductDetailPage() {
     count: reviews.filter((r) => r.rating === star).length,
   }));
 
-  const isEarring = product.category?.toLowerCase().includes('earring');
+  const isEarring  = product.category?.toLowerCase().includes('earring');
+  const isNecklace = product.category?.toLowerCase().includes('necklace');
+  const isTryOn    = isEarring || isNecklace;
+  const tryOnType  = isEarring ? 'earring' : 'necklace';
 
   return (
     <div className="min-h-screen bg-stone-50">
@@ -389,11 +392,12 @@ export default function ProductDetailPage() {
           onClose={() => setZoomOpen(false)}
         />
       )}
-      {tryOnOpen && isEarring && (
+      {tryOnOpen && isTryOn && (
         <Suspense fallback={null}>
           <TryOnModal
-            earringImage={product.images?.[selectedImage] || product.images?.[0]}
+            productImage={product.images?.[selectedImage] || product.images?.[0]}
             productName={product.name}
+            category={tryOnType}
             onClose={() => setTryOnOpen(false)}
           />
         </Suspense>
@@ -627,13 +631,17 @@ export default function ProductDetailPage() {
           </div>
         </div>
 
-        {/* ── VIRTUAL TRY-ON BANNER — earrings only ── */}
-        {isEarring && (
+        {/* ── VIRTUAL TRY-ON BANNER — earrings & necklaces ── */}
+        {isTryOn && (
           <div className="mb-8 rounded-2xl overflow-hidden bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 shadow-lg">
             <div className="flex items-center justify-between px-6 py-5">
               <div>
                 <p className="text-white font-bold text-lg leading-tight">✨ Virtual Try-On</p>
-                <p className="text-purple-200 text-sm mt-1">Try this earring on your face live using your camera — AR powered</p>
+                <p className="text-purple-200 text-sm mt-1">
+                  {isEarring
+                    ? 'Try these earrings on your face live using your camera — AR powered'
+                    : 'Try this necklace on your neck live using your camera — AR powered'}
+                </p>
               </div>
               <button
                 onClick={() => setTryOnOpen(true)}
