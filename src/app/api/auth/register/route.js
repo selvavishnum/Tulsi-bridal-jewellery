@@ -2,6 +2,13 @@ import { NextResponse } from 'next/server';
 import { getDB, FieldValue } from '@/lib/firebase';
 import bcrypt from 'bcryptjs';
 
+function generateReferralCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = 'TBJ';
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
 export async function POST(request) {
   try {
     const { name, email, password, phone } = await request.json();
@@ -28,6 +35,10 @@ export async function POST(request) {
       role: 'customer',
       isActive: true,
       createdAt: new Date().toISOString(),
+      referralCode: generateReferralCode(),
+      loyaltyPoints: 0,
+      loginCount: 0,
+      lastSeen: new Date().toISOString(),
     };
     await userRef.set(userData);
 
