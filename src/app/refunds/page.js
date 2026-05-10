@@ -29,6 +29,35 @@ export default function RefundsPage() {
             ))}
           </div>
 
+          {/* ── Video Unboxing Banner ── */}
+          <div className="bg-gradient-to-br from-red-700 to-rose-800 rounded-2xl p-6 text-white shadow-lg">
+            <div className="flex items-start gap-4">
+              <div className="text-4xl flex-shrink-0">🎥</div>
+              <div>
+                <p className="font-bold text-lg mb-1 tracking-wide">Unboxing Video — Mandatory for All Returns</p>
+                <p className="text-white/85 text-sm leading-relaxed mb-3">
+                  To protect both our customers and our store, <strong className="text-white">an unboxing video is required</strong> for
+                  any return or damage claim to be accepted.
+                </p>
+                <div className="grid sm:grid-cols-3 gap-2">
+                  {[
+                    { icon: '📦', text: 'Start recording BEFORE opening the package' },
+                    { icon: '🔄', text: 'Show all sides of the sealed box first' },
+                    { icon: '💍', text: 'Continue recording until item is fully visible' },
+                  ].map(({ icon, text }) => (
+                    <div key={text} className="bg-white/15 rounded-xl p-3 text-xs text-white/90 flex gap-2 items-start">
+                      <span className="text-base flex-shrink-0">{icon}</span>
+                      <span>{text}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-white/60 text-xs mt-3 italic">
+                  ⚠ Returns without an unboxing video will not be accepted, regardless of the reason.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="bg-white rounded-2xl shadow-card p-8 md:p-10 space-y-8">
 
             <section>
@@ -57,6 +86,7 @@ export default function RefundsPage() {
               <p className="text-stone-500 text-sm leading-relaxed mb-2">We do <strong className="text-stone-700">not</strong> accept returns for:</p>
               <ul className="space-y-2">
                 {[
+                  'Claims without an unboxing video as proof',
                   'Change of mind after delivery',
                   'Minor colour variations due to photography or screen calibration',
                   'Items that have been worn, used, or tampered with',
@@ -74,11 +104,12 @@ export default function RefundsPage() {
               <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">2. How to Initiate a Return</h2>
               <ol className="space-y-3">
                 {[
-                  { step: '1', text: 'Contact us within 7 days of delivery via WhatsApp (+91 76958 68787) or email (tulsibridaljewellery@gmail.com).' },
-                  { step: '2', text: 'Share your order number, reason for return, and clear photographs of the item and packaging.' },
-                  { step: '3', text: 'Our team reviews your request within 24 hours and confirms eligibility.' },
-                  { step: '4', text: 'We arrange a free return pickup from your address (or provide prepaid return label).' },
-                  { step: '5', text: 'Once we receive and inspect the item, your refund is processed within 5–7 business days.' },
+                  { step: '1', text: 'Record an unboxing video starting before you open the sealed package — this is mandatory proof for your claim.' },
+                  { step: '2', text: 'Contact us within 7 days of delivery via WhatsApp (+91 76958 68787) or email (tulsibridaljewellery@gmail.com).' },
+                  { step: '3', text: 'Share your order number, unboxing video, reason for return, and clear photographs of the item and packaging.' },
+                  { step: '4', text: 'Our team reviews your request within 24 hours and confirms eligibility.' },
+                  { step: '5', text: 'We arrange a free return pickup from your address (or provide prepaid return label).' },
+                  { step: '6', text: 'Once we receive and inspect the item, your refund is processed within 5–7 business days.' },
                 ].map(({ step, text }) => (
                   <li key={step} className="flex gap-4 text-sm text-stone-500">
                     <span className="w-7 h-7 rounded-full bg-wine-100 text-wine-700 font-bold text-xs flex items-center justify-center flex-shrink-0">{step}</span>
