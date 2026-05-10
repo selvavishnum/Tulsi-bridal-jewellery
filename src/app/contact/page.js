@@ -17,7 +17,7 @@ export default function ContactPage() {
   }, []);
 
   const phone   = s.phone   || '+91 76958 68787';
-  const email   = s.email   || 'hello@tulsibridal.com';
+  const email   = s.email   || 'tulsibridaljewellery@gmail.com';
   const address = s.address || '428, Tulsi Bridal Jewellery, Upstairs Udangudi Karuppatti Coffee, Main Bazaar, Udangudi - 628203, Tuticorin Dt.';
 
   async function handleSubmit(e) {

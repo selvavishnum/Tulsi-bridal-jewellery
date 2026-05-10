@@ -132,7 +132,7 @@ export default function TermsPage() {
             <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">9. Governing Law</h2>
             <p className="text-stone-500 text-sm leading-relaxed">
               These terms are governed by the laws of India. Any disputes arising from these terms or your use of our
-              services shall be subject to the exclusive jurisdiction of the courts of Mumbai, Maharashtra.
+              services shall be subject to the exclusive jurisdiction of the courts of Tuticorin, Tamil Nadu.
             </p>
           </section>
 
@@ -140,7 +140,7 @@ export default function TermsPage() {
             <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">10. Contact</h2>
             <p className="text-stone-500 text-sm">
               Questions about these terms? Reach us at{' '}
-              <a href="mailto:hello@tulsibridal.com" className="text-wine-700 hover:underline font-medium">hello@tulsibridal.com</a>
+              <a href="mailto:tulsibridaljewellery@gmail.com" className="text-wine-700 hover:underline font-medium">tulsibridaljewellery@gmail.com</a>
               {' '}or call{' '}
               <a href="tel:+917695868787" className="text-wine-700 hover:underline font-medium">+91 76958 68787</a>.
             </p>
