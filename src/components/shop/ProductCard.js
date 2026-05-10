@@ -2,8 +2,8 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useState } from 'react';
-import { FiHeart, FiShoppingCart, FiCalendar } from 'react-icons/fi';
+import { useState, useRef } from 'react';
+import { FiHeart, FiStar } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
@@ -12,12 +12,16 @@ import toast from 'react-hot-toast';
 export default function ProductCard({ product }) {
   const { dispatch } = useCart();
   const { toggle, isWishlisted } = useWishlist();
-  const [hovered, setHovered] = useState(false);
+  const [imgIdx, setImgIdx] = useState(0);
+  const touchStartX = useRef(null);
 
-  const id = product._id || product.id;
-  const discount = getDiscountPercentage(product.price, product.discountPrice);
+  const id          = product._id || product.id;
+  const images      = product.images?.filter(Boolean) || [];
+  const discount    = getDiscountPercentage(product.price, product.discountPrice);
   const displayPrice = product.discountPrice || product.price;
-  const wishlisted = isWishlisted(id);
+  const wishlisted  = isWishlisted(id);
+  const rating      = product.ratings?.average || 0;
+  const reviewCount = product.ratings?.count || 0;
 
   function addToCart(e) {
     e.preventDefault();
@@ -29,93 +33,116 @@ export default function ProductCard({ product }) {
   function toggleWishlist(e) {
     e.preventDefault();
     e.stopPropagation();
-    const wasWishlisted = isWishlisted(id);
     toggle(product);
-    toast.success(wasWishlisted ? 'Removed from wishlist' : 'Saved to wishlist');
+    toast.success(isWishlisted(id) ? 'Removed from wishlist' : 'Saved to wishlist');
+  }
+
+  function onTouchStart(e) {
+    touchStartX.current = e.touches[0].clientX;
+  }
+
+  function onTouchEnd(e) {
+    if (touchStartX.current === null || images.length < 2) return;
+    const delta = e.changedTouches[0].clientX - touchStartX.current;
+    if (delta < -40) setImgIdx((i) => Math.min(images.length - 1, i + 1));
+    if (delta >  40) setImgIdx((i) => Math.max(0, i - 1));
+    touchStartX.current = null;
+  }
+
+  function onClickImage(e) {
+    if (images.length < 2) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setImgIdx((i) => (i + 1) % images.length);
   }
 
   return (
-    <div
-      className="group bg-white rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-all duration-300"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <Link href={`/product/${id}`} className="block relative aspect-square overflow-hidden bg-white border border-stone-100 rounded-t-2xl">
-        {product.images?.[0] ? (
-          <Image
-            src={hovered && product.images[1] ? product.images[1] : product.images[0]}
-            alt={product.name}
-            fill
-            className="object-cover transition-transform duration-700 group-hover:scale-105"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-stone-300">
-            <span className="text-5xl">💍</span>
-          </div>
-        )}
+    <div className="group bg-white">
 
-        {/* Badges */}
-        <div className="absolute top-3 left-3 flex flex-col gap-1.5">
-          {discount > 0 && (
-            <span className="badge-sale">-{discount}%</span>
+      {/* ── Image area ── */}
+      <div
+        className="relative aspect-square overflow-hidden bg-stone-50 mb-2.5 cursor-pointer"
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        onClick={images.length > 1 ? onClickImage : undefined}
+      >
+        <Link href={`/product/${id}`} onClick={(e) => images.length > 1 && e.preventDefault()}>
+          {images[imgIdx] ? (
+            <Image
+              src={images[imgIdx]}
+              alt={product.name}
+              fill
+              className="object-cover transition-opacity duration-300"
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-stone-200">
+              <span className="text-5xl">💍</span>
+            </div>
           )}
-          {product.isAvailableForRent && (
-            <span className="badge-rental"><FiCalendar className="text-[9px]" /> Rent</span>
+        </Link>
+
+        {/* Badges — bottom left, like arshis */}
+        <div className="absolute bottom-2 left-2 flex flex-col gap-1">
+          {discount > 0 && product.stock > 0 && (
+            <span className="bg-[#b5451b] text-white text-[9px] font-bold px-2 py-0.5 tracking-wide">Sale</span>
           )}
           {product.stock === 0 && (
-            <span className="inline-flex items-center bg-stone-500 text-white text-2xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
-              Sold Out
-            </span>
+            <span className="bg-stone-500 text-white text-[9px] font-bold px-2 py-0.5 tracking-wide">Sold out</span>
           )}
         </div>
+
+        {/* Image dots — if multiple images */}
+        {images.length > 1 && (
+          <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1 pointer-events-none">
+            {images.map((_, i) => (
+              <span key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === imgIdx ? 'bg-white scale-125' : 'bg-white/50'}`} />
+            ))}
+          </div>
+        )}
 
         {/* Wishlist */}
         <button
           onClick={toggleWishlist}
-          className={`absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-sm transition-all duration-200 shadow-sm ${
-            wishlisted
-              ? 'bg-wine-700 text-white'
-              : 'bg-white/90 text-stone-400 opacity-0 group-hover:opacity-100 hover:bg-wine-700 hover:text-white'
+          className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${
+            wishlisted ? 'bg-wine-700 text-white' : 'bg-white/90 text-stone-400 hover:text-wine-700'
           }`}
-          aria-label={wishlisted ? 'Remove from wishlist' : 'Save to wishlist'}
+          aria-label="Wishlist"
         >
-          <FiHeart className={`text-sm ${wishlisted ? 'fill-current' : ''}`} />
+          <FiHeart className={`text-xs ${wishlisted ? 'fill-current' : ''}`} />
         </button>
 
-        {/* Quick Add — slides up on hover */}
-        {product.stock > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-            <button
-              onClick={addToCart}
-              className="w-full py-3 bg-wine-700 hover:bg-wine-800 text-white text-xs font-semibold tracking-luxury uppercase flex items-center justify-center gap-2 transition-colors"
-            >
-              <FiShoppingCart className="text-xs" /> Add to Cart
-            </button>
+        {/* Slide hint on desktop hover */}
+        {images.length > 1 && (
+          <div className="absolute inset-0 hidden group-hover:flex items-center justify-between px-2 pointer-events-none">
+            <span className="w-6 h-6 bg-black/30 rounded-full flex items-center justify-center text-white text-xs">‹</span>
+            <span className="w-6 h-6 bg-black/30 rounded-full flex items-center justify-center text-white text-xs">›</span>
           </div>
         )}
-      </Link>
+      </div>
 
-      <div className="p-4">
-        <p className="text-2xs text-gold-600 uppercase tracking-widest font-semibold mb-1.5 capitalize">{product.category}</p>
-        <Link href={`/product/${id}`}>
-          <h3 className="font-serif text-stone-800 text-base font-semibold line-clamp-2 mb-2.5 leading-snug group-hover:text-wine-700 transition-colors">
-            {product.name}
-          </h3>
-        </Link>
+      {/* ── Text below ── */}
+      <Link href={`/product/${id}`} className="block px-0.5">
+        <h3 className="text-stone-800 text-sm font-medium leading-snug mb-1.5 line-clamp-3" style={{ fontFamily: 'inherit' }}>
+          {product.name}
+        </h3>
 
-        <div className="flex items-baseline gap-2 mb-2">
-          <span className="font-serif font-bold text-wine-700 text-base">{formatPrice(displayPrice)}</span>
-          {discount > 0 && (
-            <span className="text-xs text-stone-400 line-through">{formatPrice(product.price)}</span>
-          )}
+        {/* Stars */}
+        <div className="flex items-center gap-1 mb-1.5">
+          {[1, 2, 3, 4, 5].map((s) => (
+            <FiStar key={s} className={`text-[11px] ${s <= Math.round(rating) ? 'fill-amber-400 text-amber-400' : 'text-stone-200 fill-stone-200'}`} />
+          ))}
+          {reviewCount > 0 && <span className="text-[11px] text-stone-400 ml-0.5">({reviewCount})</span>}
         </div>
 
-        {product.isAvailableForRent && product.rentalPrice && (
-          <p className="text-xs text-gold-600 font-medium flex items-center gap-1">
-            <FiCalendar className="text-[10px]" /> Rent from {formatPrice(product.rentalPrice)}/day
-          </p>
-        )}
-      </div>
+        {/* Price */}
+        <div className="flex items-baseline gap-1.5 flex-wrap">
+          {discount > 0 && (
+            <span className="text-[11px] text-stone-400 line-through">{formatPrice(product.price)}</span>
+          )}
+          <span className="text-sm font-bold text-stone-800">{formatPrice(displayPrice)}</span>
+        </div>
+      </Link>
     </div>
   );
 }

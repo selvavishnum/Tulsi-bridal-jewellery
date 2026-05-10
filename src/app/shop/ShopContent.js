@@ -79,134 +79,90 @@ export default function ShopContent() {
   const hasActiveFilters = category || rental || search || color || priceMin || priceMax || isNew;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-maroon-950 text-white py-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h1 className="font-serif text-3xl font-bold mb-1">
-            {category ? category.replace('-', ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : search ? `Search: "${search}"` : 'Buy Jewellery'}
-          </h1>
-          <p className="text-gray-300 text-sm">{total} pieces found</p>
-        </div>
+    <div className="min-h-screen bg-white">
+
+      {/* ── Category title header — arshis.in style ── */}
+      <div className="bg-[#f5ede6] py-7 text-center border-b border-stone-200">
+        <h1 className="font-serif text-3xl font-bold text-stone-800 tracking-wide">
+          {category ? category.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : search ? `"${search}"` : 'All Jewellery'}
+        </h1>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-3xl mx-auto px-3 py-4">
 
-        {/* Category pills + Sort */}
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => updateParam('category', category === cat ? '' : cat)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition ${category === cat ? 'bg-maroon-950 text-white' : 'bg-white text-gray-600 hover:bg-maroon-50 border border-gray-200'}`}
-              >
-                {cat.replace('-', ' ')}
-              </button>
-            ))}
-          </div>
-          <select value={sort} onChange={(e) => updateParam('sort', e.target.value)} className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white outline-none focus:ring-2 focus:ring-gold-500">
-            {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+        {/* Filter bar */}
+        <div className="flex items-center justify-between mb-3 pb-3 border-b border-stone-100">
+          <button className="flex items-center gap-1.5 text-sm text-stone-600 font-medium">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+            Filter and sort
+          </button>
+          <span className="text-sm text-stone-500">{total} products</span>
         </div>
 
-        {/* Color filter */}
-        <div className="flex items-center gap-2 flex-wrap mb-4">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide mr-1">Color:</span>
-          {COLORS.map((c) => (
-            <button
-              key={c}
-              onClick={() => updateParam('color', color === c ? '' : c)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition border ${color === c ? 'bg-maroon-950 text-white border-maroon-950' : 'bg-white text-gray-600 hover:bg-maroon-50 border-gray-200'}`}
-            >
-              {c}
+        {/* Category pills */}
+        <div className="flex items-center gap-2 flex-wrap mb-3">
+          <button onClick={() => updateParam('category', '')} className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition border ${!category ? 'bg-stone-800 text-white border-stone-800' : 'bg-white text-stone-600 hover:bg-stone-50 border-stone-200'}`}>All</button>
+          {CATEGORIES.map((cat) => (
+            <button key={cat} onClick={() => updateParam('category', category === cat ? '' : cat)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition border ${category === cat ? 'bg-stone-800 text-white border-stone-800' : 'bg-white text-stone-600 hover:bg-stone-50 border-stone-200'}`}>
+              {cat.replace(/-/g, ' ')}
             </button>
           ))}
         </div>
 
-        {/* Price range + New Arrivals */}
-        <div className="flex items-center gap-4 flex-wrap mb-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Price:</span>
-            <input
-              type="number"
-              value={priceMinInput}
-              onChange={(e) => setPriceMinInput(e.target.value)}
-              onBlur={applyPriceRange}
-              onKeyDown={(e) => e.key === 'Enter' && applyPriceRange()}
-              placeholder="Min ₹"
-              min="0"
-              className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-gold-500 bg-white"
-            />
-            <span className="text-gray-400 text-xs">—</span>
-            <input
-              type="number"
-              value={priceMaxInput}
-              onChange={(e) => setPriceMaxInput(e.target.value)}
-              onBlur={applyPriceRange}
-              onKeyDown={(e) => e.key === 'Enter' && applyPriceRange()}
-              placeholder="Max ₹"
-              min="0"
-              className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-gold-500 bg-white"
-            />
-            <button
-              onClick={applyPriceRange}
-              className="px-3 py-1.5 bg-maroon-950 text-white text-xs font-semibold rounded-lg hover:bg-maroon-900 transition"
-            >
-              Apply
-            </button>
-          </div>
-
-          <button
-            onClick={() => updateParam('isNew', isNew ? '' : 'true')}
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition ${isNew ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-green-50 hover:border-green-300'}`}
-          >
-            New Arrivals
+        {/* Sort + Price + New */}
+        <div className="flex items-center gap-2 flex-wrap mb-3">
+          <select value={sort} onChange={(e) => updateParam('sort', e.target.value)}
+            className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 bg-white outline-none focus:ring-1 focus:ring-stone-400 text-stone-600">
+            {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <input type="number" value={priceMinInput} onChange={(e) => setPriceMinInput(e.target.value)}
+            onBlur={applyPriceRange} onKeyDown={(e) => e.key === 'Enter' && applyPriceRange()}
+            placeholder="Min ₹" min="0" className="w-20 px-2 py-1.5 border border-stone-200 rounded-lg text-xs outline-none text-stone-600" />
+          <span className="text-stone-400 text-xs">—</span>
+          <input type="number" value={priceMaxInput} onChange={(e) => setPriceMaxInput(e.target.value)}
+            onBlur={applyPriceRange} onKeyDown={(e) => e.key === 'Enter' && applyPriceRange()}
+            placeholder="Max ₹" min="0" className="w-20 px-2 py-1.5 border border-stone-200 rounded-lg text-xs outline-none text-stone-600" />
+          <button onClick={() => updateParam('isNew', isNew ? '' : 'true')}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${isNew ? 'bg-stone-800 text-white border-stone-800' : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'}`}>
+            New
           </button>
         </div>
 
         {/* Active filter tags */}
         {hasActiveFilters && (
-          <div className="flex items-center gap-2 mb-4 flex-wrap">
-            <span className="text-sm text-gray-500">Active filters:</span>
-            {category && <span className="flex items-center gap-1 bg-gold-100 text-gold-800 text-xs px-2 py-1 rounded-full capitalize">{category} <button onClick={() => updateParam('category', '')}><FiX /></button></span>}
-            {rental && <span className="flex items-center gap-1 bg-gold-100 text-gold-800 text-xs px-2 py-1 rounded-full">Rental Only <button onClick={() => updateParam('rental', '')}><FiX /></button></span>}
-            {search && <span className="flex items-center gap-1 bg-gold-100 text-gold-800 text-xs px-2 py-1 rounded-full">&quot;{search}&quot; <button onClick={() => updateParam('search', '')}><FiX /></button></span>}
-            {color && <span className="flex items-center gap-1 bg-gold-100 text-gold-800 text-xs px-2 py-1 rounded-full">Color: {color} <button onClick={() => updateParam('color', '')}><FiX /></button></span>}
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            {category && <span className="flex items-center gap-1 bg-stone-100 text-stone-700 text-xs px-2 py-1 rounded-full capitalize">{category.replace(/-/g, ' ')} <button onClick={() => updateParam('category', '')}><FiX className="text-[10px]" /></button></span>}
+            {search   && <span className="flex items-center gap-1 bg-stone-100 text-stone-700 text-xs px-2 py-1 rounded-full">&quot;{search}&quot; <button onClick={() => updateParam('search', '')}><FiX className="text-[10px]" /></button></span>}
+            {color    && <span className="flex items-center gap-1 bg-stone-100 text-stone-700 text-xs px-2 py-1 rounded-full">Color: {color} <button onClick={() => updateParam('color', '')}><FiX className="text-[10px]" /></button></span>}
             {(priceMin || priceMax) && (
-              <span className="flex items-center gap-1 bg-gold-100 text-gold-800 text-xs px-2 py-1 rounded-full">
-                Price: {priceMin ? `₹${priceMin}` : '0'} — {priceMax ? `₹${priceMax}` : '∞'}
-                <button onClick={() => {
-                  setPriceMinInput('');
-                  setPriceMaxInput('');
-                  const params = new URLSearchParams(searchParams.toString());
-                  params.delete('priceMin');
-                  params.delete('priceMax');
-                  params.delete('page');
-                  router.push(`/shop?${params.toString()}`);
-                }}><FiX /></button>
+              <span className="flex items-center gap-1 bg-stone-100 text-stone-700 text-xs px-2 py-1 rounded-full">
+                {priceMin ? `₹${priceMin}` : '0'} — {priceMax ? `₹${priceMax}` : '∞'}
+                <button onClick={() => { setPriceMinInput(''); setPriceMaxInput(''); const p = new URLSearchParams(searchParams.toString()); p.delete('priceMin'); p.delete('priceMax'); p.delete('page'); router.push(`/shop?${p.toString()}`); }}><FiX className="text-[10px]" /></button>
               </span>
             )}
-            {isNew && <span className="flex items-center gap-1 bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">New Arrivals <button onClick={() => updateParam('isNew', '')}><FiX /></button></span>}
+            {isNew && <span className="flex items-center gap-1 bg-stone-100 text-stone-700 text-xs px-2 py-1 rounded-full">New <button onClick={() => updateParam('isNew', '')}><FiX className="text-[10px]" /></button></span>}
           </div>
         )}
 
+        {/* Product grid */}
         {loading ? (
           <div className="flex justify-center py-20"><LoadingSpinner size="lg" /></div>
         ) : products.length === 0 ? (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">💍</div>
-            <p className="text-gray-500 text-lg mb-2">No products found</p>
-            <p className="text-gray-400 text-sm">Try adjusting your filters or search term</p>
+            <p className="text-stone-500 text-lg mb-2">No products found</p>
+            <p className="text-stone-400 text-sm">Try adjusting your filters</p>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+            <div className="grid grid-cols-2 gap-x-2 gap-y-6">
               {products.map((p) => <ProductCard key={p._id} product={p} />)}
             </div>
             {pages > 1 && (
               <div className="flex justify-center gap-2 mt-8">
                 {Array.from({ length: pages }, (_, i) => i + 1).map((p) => (
-                  <button key={p} onClick={() => updateParam('page', p.toString())} className={`w-9 h-9 rounded-lg text-sm font-semibold transition ${p === page ? 'bg-maroon-950 text-white' : 'bg-white text-gray-700 hover:bg-maroon-50 border border-gray-200'}`}>{p}</button>
+                  <button key={p} onClick={() => updateParam('page', p.toString())} className={`w-9 h-9 rounded-lg text-sm font-semibold transition ${p === page ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-50 border border-stone-200'}`}>{p}</button>
                 ))}
               </div>
             )}

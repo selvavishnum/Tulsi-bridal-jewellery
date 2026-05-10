@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -69,7 +69,6 @@ const DEFAULT_TESTIMONIALS = [
 function HeroSlider({ slides }) {
   const [current, setCurrent] = useState(0);
   const [transitioning, setTransitioning] = useState(false);
-  const timerRef = useRef(null);
   const displaySlides = slides.length > 0 ? slides : DEFAULT_SLIDES;
 
   const goTo = useCallback((idx) => {
@@ -84,10 +83,7 @@ function HeroSlider({ slides }) {
   const next = useCallback(() => goTo((current + 1) % displaySlides.length), [current, displaySlides.length, goTo]);
   const prev = useCallback(() => goTo((current - 1 + displaySlides.length) % displaySlides.length), [current, displaySlides.length, goTo]);
 
-  useEffect(() => {
-    timerRef.current = setInterval(next, 5000);
-    return () => clearInterval(timerRef.current);
-  }, [next]);
+  // Auto-slide disabled — manual navigation only
 
   const slide = displaySlides[current];
 
