@@ -35,7 +35,7 @@ export default function Footer() {
 
   const phone   = s.phone   || '+91 76958 68787';
   const email   = s.email   || 'hello@tulsibridal.com';
-  const address = s.address || '123 Jewellery Lane, Mumbai';
+  const address = s.address || '428, Tulsi Bridal Jewellery, Main Bazaar, Udangudi - 628203, Tuticorin Dt.';
   const phoneRaw = phone.replace(/\D/g, '');
 
   return (

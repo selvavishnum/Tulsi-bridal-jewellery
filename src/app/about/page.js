@@ -48,7 +48,7 @@ export default function AboutPage() {
             <div className="inline-flex flex-col items-center gap-2 bg-white/20 backdrop-blur-sm rounded-xl px-8 py-5">
               <p className="font-semibold text-white">Mon – Sat: 10 AM – 8 PM</p>
               <p className="text-white/70 text-sm">Sunday: 11 AM – 6 PM</p>
-              <p className="text-white/80 text-sm mt-1">📍 123 Jewellery Lane, Mumbai, Maharashtra</p>
+              <p className="text-white/80 text-sm mt-1">📍 428, Main Bazaar, Udangudi - 628203, Tuticorin Dt.</p>
             </div>
           </div>
 

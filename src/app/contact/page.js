@@ -18,7 +18,7 @@ export default function ContactPage() {
 
   const phone   = s.phone   || '+91 76958 68787';
   const email   = s.email   || 'hello@tulsibridal.com';
-  const address = s.address || '123 Jewellery Lane, Bridal Market, Mumbai';
+  const address = s.address || '428, Tulsi Bridal Jewellery, Upstairs Udangudi Karuppatti Coffee, Main Bazaar, Udangudi - 628203, Tuticorin Dt.';
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -43,11 +43,13 @@ export default function ContactPage() {
     }
   }
 
+  const MAPS_URL = 'https://maps.app.goo.gl/gtsdSU7KYp8vCjvm9?g_st=aw';
+
   const contactItems = [
-    { icon: FiPhone,  title: 'Phone',    content: phone,   sub: 'Mon–Sat, 10am–7pm' },
+    { icon: FiPhone,  title: 'Phone',    content: phone,   sub: 'Mon–Sat, 10am–8pm' },
     { icon: FiMail,   title: 'Email',    content: email,   sub: 'We reply within 24 hours' },
-    { icon: FiMapPin, title: 'Visit Us', content: address, sub: '' },
-    { icon: FiClock,  title: 'Hours',    content: 'Monday – Saturday: 10am – 7pm', sub: 'Sunday: 11am – 5pm' },
+    { icon: FiMapPin, title: 'Visit Us', content: address, sub: 'Tap to open in Google Maps', link: MAPS_URL },
+    { icon: FiClock,  title: 'Hours',    content: 'Monday – Saturday: 10 AM – 8 PM', sub: 'Sunday: 11 AM – 6 PM' },
   ];
 
   return (
@@ -66,14 +68,18 @@ export default function ContactPage() {
           <div>
             <h2 className="font-serif text-2xl font-bold text-maroon-950 mb-6">Contact Information</h2>
             <div className="space-y-4 mb-8">
-              {contactItems.map(({ icon: Icon, title, content, sub }) => (
-                <div key={title} className="flex items-start gap-4 p-4 bg-white rounded-xl shadow-sm">
+              {contactItems.map(({ icon: Icon, title, content, sub, link }) => (
+                <div key={title}
+                  className={`flex items-start gap-4 p-4 bg-white rounded-xl shadow-sm ${link ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+                  onClick={link ? () => window.open(link, '_blank') : undefined}
+                >
                   <div className="p-2.5 bg-gold-100 text-gold-700 rounded-lg flex-shrink-0"><Icon /></div>
-                  <div>
+                  <div className="flex-1">
                     <p className="font-semibold text-gray-800 text-sm">{title}</p>
                     <p className="text-gray-700 text-sm">{content}</p>
-                    {sub && <p className="text-gray-400 text-xs">{sub}</p>}
+                    {sub && <p className={`text-xs mt-0.5 ${link ? 'text-blue-500 underline' : 'text-gray-400'}`}>{sub}</p>}
                   </div>
+                  {link && <span className="text-blue-400 text-xs mt-0.5 flex-shrink-0">🗺️</span>}
                 </div>
               ))}
             </div>
