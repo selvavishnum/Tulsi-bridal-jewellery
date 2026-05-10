@@ -40,13 +40,20 @@ export default function RefundsPage() {
                 {[
                   'Product received is damaged or defective',
                   'Wrong item delivered (different from what was ordered)',
-                  'Significant colour or design difference from product listing',
                 ].map((item) => (
                   <li key={item} className="flex gap-3 text-sm text-stone-500">
                     <span className="text-green-500 font-bold flex-shrink-0">✓</span> {item}
                   </li>
                 ))}
               </ul>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+                <p className="text-sm font-semibold text-amber-800 mb-1">📸 Please Note — Colour Variations</p>
+                <p className="text-sm text-amber-700 leading-relaxed">
+                  Minor colour differences between the product listing and the actual item are <strong>not eligible for return</strong>.
+                  Colours may appear slightly different due to photography lighting, screen brightness, or display calibration.
+                  This is normal and not considered a defect.
+                </p>
+              </div>
               <p className="text-stone-500 text-sm leading-relaxed mb-2">We do <strong className="text-stone-700">not</strong> accept returns for:</p>
               <ul className="space-y-2">
                 {[
@@ -145,7 +152,7 @@ export default function RefundsPage() {
             <section className="bg-ivory-200 rounded-xl p-6">
               <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">Need Help?</h2>
               <p className="text-stone-500 text-sm leading-relaxed mb-3">
-                Our customer support team is available Monday–Saturday, 10 AM – 7 PM.
+                Our customer support team is available Monday–Saturday, 10 AM – 8 PM.
               </p>
               <div className="flex flex-wrap gap-3">
                 <a href="https://wa.me/917695868787" target="_blank" rel="noopener noreferrer"
