@@ -48,7 +48,10 @@ export async function PATCH(request) {
       if (mrp !== undefined) updateData.discountPrice = Math.round(mrp * (1 - discPct / 100));
     }
     if (inStock !== undefined) updateData.stock = inStock;
-    if (showMe !== undefined) updateData.showMe = showMe;
+    if (showMe !== undefined) {
+      updateData.showMe = showMe;
+      updateData.isActive = showMe; // keep in sync so shop pages respect hidden flag
+    }
     await ref.update(updateData);
     return NextResponse.json({ success: true, data: docToObj(await ref.get()) });
   } catch (e) {

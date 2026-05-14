@@ -22,7 +22,7 @@ export async function GET(request) {
 
     // Simple query — no composite index needed
     const snap = await db.collection('products').orderBy('createdAt', 'desc').get();
-    let products = snapshotToArr(snap).filter((p) => p.isActive !== false);
+    let products = snapshotToArr(snap).filter((p) => p.isActive !== false && p.showMe !== false);
 
     // Filter in JS (avoids Firestore composite index requirement)
     if (category) products = products.filter((p) => p.category === category);
