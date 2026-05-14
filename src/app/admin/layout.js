@@ -9,6 +9,7 @@ import {
   FiTag, FiUsers, FiMenu, FiLogOut, FiTruck, FiArchive,
   FiDollarSign, FiSettings, FiUserCheck, FiTrendingUp, FiX,
   FiExternalLink, FiChevronRight, FiAlertTriangle, FiCamera, FiMessageSquare,
+  FiFolder, FiDownload, FiUpload, FiLayers, FiGrid,
 } from 'react-icons/fi';
 import { GiQueenCrown } from 'react-icons/gi';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -17,28 +18,49 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
    Remove or set to false before going live with real customers. */
 const DEV_BYPASS = process.env.NEXT_PUBLIC_ADMIN_BYPASS === 'true';
 
-const NAV = [
-  { href: '/admin',            label: 'Dashboard',       icon: FiHome,        exact: true },
-  { href: '/admin/orders',     label: 'Orders',          icon: FiShoppingBag },
-  { href: '/admin/messages',   label: 'Messages',        icon: FiMessageSquare, badge: true },
-  { href: '/admin/products',   label: 'Products',        icon: FiPackage },
-  { href: '/admin/rentals',    label: 'Rentals',         icon: FiCalendar },
-  { href: '/admin/customers',  label: 'Customers',       icon: FiUsers },
-  { href: '/admin/coupons',    label: 'Coupons',         icon: FiTag },
-  { href: '/admin/reports',    label: 'Reports',         icon: FiBarChart2 },
-  { href: '/admin/sales',      label: 'Sales',           icon: FiTrendingUp },
-  { href: '/admin/suppliers',  label: 'Suppliers',       icon: FiTruck },
-  { href: '/admin/warehouses', label: 'Warehouses',      icon: FiArchive },
-  { href: '/admin/employees',  label: 'Employees',       icon: FiUserCheck },
-  { href: '/admin/accounting', label: 'Accounting',      icon: FiDollarSign },
-  { href: '/admin/settings',     label: 'Settings',        icon: FiSettings },
-  { href: '/admin/photo-editor', label: 'Photo Editor',    icon: FiCamera },
-];
-
 const NAV_GROUPS = [
-  { label: 'Operations',  items: NAV.slice(0, 7) },
-  { label: 'Analytics',   items: NAV.slice(7, 9) },
-  { label: 'Management',  items: NAV.slice(9) },
+  {
+    label: 'Operations',
+    items: [
+      { href: '/admin',           label: 'Dashboard',   icon: FiHome,         exact: true },
+      { href: '/admin/orders',    label: 'Orders',      icon: FiShoppingBag },
+      { href: '/admin/messages',  label: 'Messages',    icon: FiMessageSquare, badge: true },
+      { href: '/admin/rentals',   label: 'Rentals',     icon: FiCalendar },
+      { href: '/admin/customers', label: 'Customers',   icon: FiUsers },
+      { href: '/admin/coupons',   label: 'Coupons',     icon: FiTag },
+    ],
+  },
+  {
+    label: 'Products',
+    items: [
+      { href: '/admin/products',                label: 'Products',        icon: FiPackage },
+      { href: '/admin/categories',              label: 'Categories',      icon: FiFolder },
+      { href: '/admin/variants',                label: 'Variants',        icon: FiLayers },
+      { href: '/admin/inventory',               label: 'Inventory',       icon: FiGrid },
+      { href: '/admin/inventory/stock-checker', label: 'Stock Checker',   icon: FiBarChart2 },
+      { href: '/admin/purchase/indent',         label: 'Purchase Indent', icon: FiDownload },
+      { href: '/admin/purchase/inward',         label: 'Purchase Inward', icon: FiUpload },
+      { href: '/admin/barcodes',                label: 'Barcodes',        icon: FiTag },
+    ],
+  },
+  {
+    label: 'Analytics',
+    items: [
+      { href: '/admin/reports', label: 'Reports', icon: FiBarChart2 },
+      { href: '/admin/sales',   label: 'Sales',   icon: FiTrendingUp },
+    ],
+  },
+  {
+    label: 'Management',
+    items: [
+      { href: '/admin/suppliers',   label: 'Suppliers',    icon: FiTruck },
+      { href: '/admin/warehouses',  label: 'Warehouses',   icon: FiArchive },
+      { href: '/admin/employees',   label: 'Employees',    icon: FiUserCheck },
+      { href: '/admin/accounting',  label: 'Accounting',   icon: FiDollarSign },
+      { href: '/admin/settings',    label: 'Settings',     icon: FiSettings },
+      { href: '/admin/photo-editor', label: 'Photo Editor', icon: FiCamera },
+    ],
+  },
 ];
 
 function NavItem({ href, label, icon: Icon, exact, pathname, onClick, unread }) {
