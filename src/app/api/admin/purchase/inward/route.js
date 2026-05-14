@@ -24,7 +24,6 @@ export async function POST(request) {
       paymentStatus, items, loadingCharges, transportCharges,
       subtotal, totalTax, grandTotal, payments, notes,
     } = body;
-
     const db = getDB();
     const ref = db.collection('purchaseOrders').doc();
     const doc = {
@@ -46,8 +45,6 @@ export async function POST(request) {
       updatedAt: new Date().toISOString(),
     };
     await ref.set(doc);
-
-    // Update stock and purchase price for each item
     const batch = db.batch();
     for (const item of (items || [])) {
       if (item.productId && item.qty) {
@@ -62,7 +59,6 @@ export async function POST(request) {
       }
     }
     await batch.commit();
-
     return NextResponse.json({ success: true, data: { id: ref.id, ...doc } }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
