@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { FiSearch, FiX, FiPhone, FiMail, FiUser, FiUsers, FiStar, FiGift, FiClock, FiShoppingBag } from 'react-icons/fi';
+import Link from 'next/link';
+import { FiSearch, FiX, FiPhone, FiMail, FiUser, FiUsers, FiStar, FiGift, FiClock, FiShoppingBag, FiEye } from 'react-icons/fi';
 import Badge from '@/components/ui/Badge';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { format, differenceInDays, parseISO, isValid } from 'date-fns';
@@ -273,6 +274,10 @@ export default function AdminCustomersPage() {
                           <a href={`mailto:${c.email}`} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="Email">
                             <FiMail className="text-sm" />
                           </a>
+                          <Link href={`/admin/customers/${c.id || c._id}`}
+                            className="p-1.5 text-amber-500 hover:bg-amber-50 rounded-lg transition" title="View Full Profile">
+                            <FiEye className="text-sm" />
+                          </Link>
                         </div>
                       </td>
                     </tr>
@@ -393,6 +398,10 @@ export default function AdminCustomersPage() {
               {/* Generic actions */}
               <div className="space-y-2">
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Quick Actions</p>
+                <Link href={`/admin/customers/${selected.id || selected._id}`}
+                  className="flex items-center gap-3 w-full px-4 py-3 bg-amber-500 hover:bg-amber-400 text-white font-semibold rounded-xl text-sm transition">
+                  <FiEye /> Full Profile &amp; Analytics
+                </Link>
                 {selected.phone && (
                   <a href={`https://wa.me/91${selected.phone.replace(/\D/g,'')}?text=${encodeURIComponent(`Hi ${selected.name}! Greetings from Tulsi Bridal Jewellery 💛`)}`}
                     target="_blank" rel="noopener noreferrer"
