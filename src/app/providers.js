@@ -7,13 +7,15 @@ import { Toaster } from 'react-hot-toast';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import { TrackingProvider } from '@/components/TrackingProvider';
+import { TopProgressBar } from '@/components/ui/TopProgressBar';
 
 export function Providers({ children }) {
   return (
-    <SessionProvider>
+    <SessionProvider refetchOnWindowFocus={false} refetchInterval={0}>
       <CartProvider>
         <WishlistProvider>
           <TrackingProvider>
+            <TopProgressBar />
             <div className="flex flex-col min-h-screen">
               <Navbar />
               <main className="flex-1">{children}</main>

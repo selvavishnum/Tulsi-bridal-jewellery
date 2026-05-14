@@ -8,11 +8,23 @@ import { useCart } from '@/context/CartContext';
 function extractCategory(path) {
   if (!path) return null;
   const parts = path.split('/').filter(Boolean);
-  // /shop/necklace → necklace
-  // /products/... → products
   if (parts.length >= 2 && parts[0] === 'shop') return parts[1];
   if (parts.length >= 1 && parts[0] === 'products') return 'products';
   return null;
+}
+
+// Fire-and-forget with 5s timeout so hanging mobile connections never freeze the page
+function trackFetch(url, body) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: ctrl.signal,
+  })
+    .catch(() => {})
+    .finally(() => clearTimeout(timer));
 }
 
 export function TrackingProvider({ children }) {
@@ -24,79 +36,54 @@ export function TrackingProvider({ children }) {
   const cartDebounceRef = useRef(null);
   const userId = session?.user?.id;
 
-  // Session tracking — start on mount when user is logged in
   useEffect(() => {
     if (!userId) return;
 
-    // Mark session start
     sessionStartRef.current = Date.now();
-    fetch('/api/track/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'start' }),
-    }).catch(() => {});
+    trackFetch('/api/track/session', { action: 'start' });
 
     function sendSessionEnd() {
       if (sessionStartRef.current === null) return;
       const durationSeconds = Math.floor((Date.now() - sessionStartRef.current) / 1000);
-      navigator.sendBeacon(
-        '/api/track/session',
-        JSON.stringify({ action: 'end', durationSeconds })
-      );
+      navigator.sendBeacon('/api/track/session', JSON.stringify({ action: 'end', durationSeconds }));
       sessionStartRef.current = null;
-    }
-
-    function handleBeforeUnload() {
-      sendSessionEnd();
     }
 
     function handleVisibilityChange() {
       if (document.hidden) {
         sendSessionEnd();
+      } else {
+        // App returned to foreground — restart session timer (fixes 10-min mobile freeze)
+        sessionStartRef.current = Date.now();
+        trackFetch('/api/track/session', { action: 'start' });
       }
     }
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('beforeunload', sendSessionEnd);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('beforeunload', sendSessionEnd);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [userId]);
 
-  // Page view tracking — on every pathname change
+  // Page view tracking
   useEffect(() => {
     if (!userId || !pathname) return;
-
-    fetch('/api/track/pageview', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: pathname, category: extractCategory(pathname) }),
-    }).catch(() => {});
+    trackFetch('/api/track/pageview', { path: pathname, category: extractCategory(pathname) });
   }, [userId, pathname]);
 
-  // Cart sync — debounced 2 seconds when cart changes
+  // Cart sync — debounced 2 seconds
   useEffect(() => {
     if (!userId || !items || items.length === 0) return;
 
-    if (cartDebounceRef.current) {
-      clearTimeout(cartDebounceRef.current);
-    }
-
+    clearTimeout(cartDebounceRef.current);
     cartDebounceRef.current = setTimeout(() => {
-      fetch('/api/track/cart', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items }),
-      }).catch(() => {});
+      trackFetch('/api/track/cart', { items });
     }, 2000);
 
-    return () => {
-      if (cartDebounceRef.current) {
-        clearTimeout(cartDebounceRef.current);
-      }
-    };
+    return () => clearTimeout(cartDebounceRef.current);
   }, [userId, items]);
 
   return children;

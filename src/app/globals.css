@@ -2,6 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes nprogress-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes skeleton-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 800px 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+  border-radius: 6px;
+}
+
 @layer base {
   html {
     scroll-behavior: smooth;

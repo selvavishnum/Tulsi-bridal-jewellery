@@ -12,7 +12,7 @@ export async function GET(request, { params }) {
 
     const [userDoc, ordersSnap] = await Promise.all([
       db.collection('users').doc(id).get(),
-      db.collection('orders').where('userId', '==', id).orderBy('createdAt', 'desc').get(),
+      db.collection('orders').where('userId', '==', id).get(),
     ]);
 
     if (!userDoc.exists) {
@@ -21,7 +21,9 @@ export async function GET(request, { params }) {
 
     const rawUser = docToObj(userDoc);
     const { password, ...user } = rawUser;
-    const orders = snapshotToArr(ordersSnap);
+    const orders = snapshotToArr(ordersSnap).sort((a, b) =>
+      (b.createdAt || '').localeCompare(a.createdAt || '')
+    );
 
     return NextResponse.json({ success: true, user, orders });
   } catch (error) {
