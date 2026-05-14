@@ -14,8 +14,6 @@ import {
 import { GiQueenCrown } from 'react-icons/gi';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
-/* Set NEXT_PUBLIC_ADMIN_BYPASS=true in Vercel env vars to skip login during testing.
-   Remove or set to false before going live with real customers. */
 const DEV_BYPASS = process.env.NEXT_PUBLIC_ADMIN_BYPASS === 'true';
 
 const NAV_GROUPS = [
@@ -53,11 +51,11 @@ const NAV_GROUPS = [
   {
     label: 'Management',
     items: [
-      { href: '/admin/suppliers',   label: 'Suppliers',    icon: FiTruck },
-      { href: '/admin/warehouses',  label: 'Warehouses',   icon: FiArchive },
-      { href: '/admin/employees',   label: 'Employees',    icon: FiUserCheck },
-      { href: '/admin/accounting',  label: 'Accounting',   icon: FiDollarSign },
-      { href: '/admin/settings',    label: 'Settings',     icon: FiSettings },
+      { href: '/admin/suppliers',    label: 'Suppliers',    icon: FiTruck },
+      { href: '/admin/warehouses',   label: 'Warehouses',   icon: FiArchive },
+      { href: '/admin/employees',    label: 'Employees',    icon: FiUserCheck },
+      { href: '/admin/accounting',   label: 'Accounting',   icon: FiDollarSign },
+      { href: '/admin/settings',     label: 'Settings',     icon: FiSettings },
       { href: '/admin/photo-editor', label: 'Photo Editor', icon: FiCamera },
     ],
   },
@@ -93,8 +91,6 @@ function NavItem({ href, label, icon: Icon, exact, pathname, onClick, unread }) 
 function Sidebar({ session, pathname, onClose, unreadMessages }) {
   return (
     <div className="flex flex-col h-full bg-[#0d1117] border-r border-white/[0.06]">
-
-      {/* Brand */}
       <div className="px-4 py-4 flex items-center justify-between flex-shrink-0 border-b border-white/[0.06]">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-amber-900/40 border border-amber-700/30 flex items-center justify-center flex-shrink-0">
@@ -112,7 +108,6 @@ function Sidebar({ session, pathname, onClose, unreadMessages }) {
         )}
       </div>
 
-      {/* Nav groups */}
       <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-5">
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
@@ -129,7 +124,6 @@ function Sidebar({ session, pathname, onClose, unreadMessages }) {
         ))}
       </nav>
 
-      {/* Footer actions */}
       <div className="px-2 py-3 border-t border-white/[0.06] flex-shrink-0 space-y-0.5">
         <Link
           href="/"
@@ -158,10 +152,8 @@ export default function AdminLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
 
-  // Close mobile sidebar on route change
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
 
-  // Poll unread message count every 60s
   useEffect(() => {
     function fetchUnread() {
       fetch('/api/contact').then((r) => r.json()).then((d) => {
@@ -173,7 +165,6 @@ export default function AdminLayout({ children }) {
     return () => clearInterval(t);
   }, []);
 
-  // Dev bypass: skip all auth checks when NEXT_PUBLIC_ADMIN_BYPASS=true
   if (!DEV_BYPASS) {
     if (status === 'loading') {
       return (
@@ -189,7 +180,6 @@ export default function AdminLayout({ children }) {
     }
 
     if (session?.user?.role !== 'admin') {
-      // Show a clear error — never silently bounce to homepage
       return (
         <div className="min-h-screen flex items-center justify-center bg-[#070b11] px-4">
           <div className="text-center space-y-4 max-w-sm">
@@ -222,13 +212,10 @@ export default function AdminLayout({ children }) {
 
   return (
     <div className="flex h-screen bg-[#f0f2f5] overflow-hidden">
-
-      {/* Desktop sidebar */}
       <aside className="hidden md:flex md:w-56 lg:w-60 flex-shrink-0 flex-col">
         <Sidebar session={activeSession} pathname={pathname} unreadMessages={unreadMessages} />
       </aside>
 
-      {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-50 md:hidden flex">
           <div
@@ -241,10 +228,7 @@ export default function AdminLayout({ children }) {
         </div>
       )}
 
-      {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-
-        {/* Mobile top bar */}
         <header className="md:hidden flex items-center gap-3 px-4 py-3 bg-[#0d1117] border-b border-white/[0.06] flex-shrink-0">
           <button
             onClick={() => setSidebarOpen(true)}
@@ -265,7 +249,6 @@ export default function AdminLayout({ children }) {
           </div>
         </header>
 
-        {/* Dev bypass warning banner */}
         {DEV_BYPASS && (
           <div className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white text-xs font-semibold flex-shrink-0">
             <FiAlertTriangle className="flex-shrink-0" />
@@ -275,7 +258,6 @@ export default function AdminLayout({ children }) {
           </div>
         )}
 
-        {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
           {children}
         </main>

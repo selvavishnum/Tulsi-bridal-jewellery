@@ -13,24 +13,18 @@ export async function GET(request) {
     const brand = searchParams.get('brand') || '';
     const showMe = searchParams.get('showMe') || '';
     const limit = parseInt(searchParams.get('limit') || '50');
-
     const db = getDB();
-    let query = db.collection('products').orderBy('createdAt', 'desc').limit(200);
-    const snap = await query.get();
+    const snap = await db.collection('products').orderBy('createdAt', 'desc').limit(200).get();
     let products = snapshotToArr(snap);
-
     if (search) {
       const q = search.toLowerCase();
-      products = products.filter(
-        (p) => p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q),
-      );
+      products = products.filter((p) => p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q));
     }
     if (mainCategory) products = products.filter((p) => p.category === mainCategory);
     if (subCategory) products = products.filter((p) => p.subCategory === subCategory);
     if (brand) products = products.filter((p) => p.brand === brand);
     if (showMe === 'visible') products = products.filter((p) => p.showMe !== false);
     if (showMe === 'hidden') products = products.filter((p) => p.showMe === false);
-
     return NextResponse.json({ success: true, data: products.slice(0, limit) });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
@@ -44,7 +38,6 @@ export async function PATCH(request) {
     const body = await request.json();
     const { id, sku, mrp, discPct, inStock, showMe } = body;
     if (!id) return NextResponse.json({ success: false, message: 'ID required' }, { status: 400 });
-
     const db = getDB();
     const ref = db.collection('products').doc(id);
     const updateData = { updatedAt: new Date().toISOString() };
@@ -52,13 +45,13 @@ export async function PATCH(request) {
     if (mrp !== undefined) updateData.price = mrp;
     if (discPct !== undefined) {
       updateData.discPct = discPct;
-      if (mrp !== undefined) {
-        updateData.discountPrice = Math.round(mrp * (1 - discPct / 100));
-      }
+      if (mrp !== undefined) updateData.discountPrice = Math.round(mrp * (1 - discPct / 100));
     }
     if (inStock !== undefined) updateData.stock = inStock;
-    if (showMe !== undefined) updateData.showMe = showMe;
-
+    if (showMe !== undefined) {
+      updateData.showMe = showMe;
+      updateData.isActive = showMe; // keep in sync so shop pages respect hidden flag
+    }
     await ref.update(updateData);
     return NextResponse.json({ success: true, data: docToObj(await ref.get()) });
   } catch (e) {

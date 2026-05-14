@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDB, snapshotToArr, docToObj, FieldValue } from '@/lib/firebase';
+import { getDB, snapshotToArr, docToObj } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
 
 export async function GET() {
@@ -50,8 +50,7 @@ export async function PUT(request) {
     const db = getDB();
     const ref = db.collection('categories').doc(id);
     await ref.update({ ...rest, updatedAt: new Date().toISOString() });
-    const updated = docToObj(await ref.get());
-    return NextResponse.json({ success: true, data: updated });
+    return NextResponse.json({ success: true, data: docToObj(await ref.get()) });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }
