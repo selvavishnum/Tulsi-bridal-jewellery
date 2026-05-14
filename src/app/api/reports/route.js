@@ -72,6 +72,12 @@ export async function GET(request) {
         .sort((a, b) => a.month.localeCompare(b.month))
         .slice(-6);
 
+      const recentOrders = allOrders.slice(0, 10).map((o) => ({
+        _id: o.id, orderNumber: o.orderNumber, total: o.total, status: o.status,
+        createdAt: o.createdAt, guestEmail: o.guestEmail,
+        user: { name: o.shippingAddress?.name || o.shippingAddress?.fullName || null },
+      }));
+
       return NextResponse.json({
         success: true,
         data: {
@@ -81,7 +87,7 @@ export async function GET(request) {
             totalRentals: allRentals.length, monthRentals: monthRentals.length,
             totalProducts, totalCustomers,
           },
-          topProducts, monthlyData,
+          topProducts, monthlyData, recentOrders,
         },
       });
     }

@@ -30,7 +30,7 @@ export default function AdminDashboard() {
   if (loading) return <div className="flex items-center justify-center h-64"><LoadingSpinner size="lg" /></div>;
   if (!data) return <p className="text-gray-500">Failed to load dashboard data.</p>;
 
-  const { overview, recentOrders, topProducts, monthlyData } = data;
+  const { overview, recentOrders = [], topProducts = [], monthlyData = [] } = data;
 
   const stats = [
     { label: 'Total Revenue', value: formatPrice(overview.totalRevenue), sub: `${formatPrice(overview.monthRevenue)} this month`, icon: FiDollarSign, color: 'bg-green-500' },
