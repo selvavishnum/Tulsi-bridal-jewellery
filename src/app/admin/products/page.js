@@ -45,9 +45,32 @@ export default function AdminProductsPage() {
   const [search, setSearch]       = useState('');
   const [catFilter, setCat]       = useState('');
   const [uploading, setUploading] = useState(false);
+  const [discountAmt, setDiscountAmt] = useState('');
   const fileRef = useRef(null);
 
   const upd = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  function handleDiscountAmt(val) {
+    setDiscountAmt(val);
+    const price = parseFloat(form.price) || 0;
+    const amt = parseFloat(val) || 0;
+    if (price > 0 && amt > 0 && amt < price) {
+      upd('discountPrice', (price - amt).toFixed(0));
+    } else {
+      upd('discountPrice', '');
+    }
+  }
+
+  function handlePriceChange(val) {
+    upd('price', val);
+    const price = parseFloat(val) || 0;
+    const amt = parseFloat(discountAmt) || 0;
+    if (price > 0 && amt > 0 && amt < price) {
+      upd('discountPrice', (price - amt).toFixed(0));
+    } else {
+      upd('discountPrice', '');
+    }
+  }
 
   async function fetchProducts() {
     setLoading(true);
@@ -68,8 +91,11 @@ export default function AdminProductsPage() {
 
   useEffect(() => { fetchProducts(); }, [search, catFilter]);
 
-  function openCreate() { setForm(EMPTY_FORM); setEditId(null); setModalOpen(true); }
+  function openCreate() { setForm(EMPTY_FORM); setDiscountAmt(''); setEditId(null); setModalOpen(true); }
   function openEdit(p) {
+    const computedAmt = p.price && p.discountPrice && p.discountPrice < p.price
+      ? (p.price - p.discountPrice).toFixed(0) : '';
+    setDiscountAmt(computedAmt);
     setForm({
       ...p,
       price: p.price?.toString() || '',
@@ -321,20 +347,24 @@ export default function AdminProductsPage() {
 
               {/* Pricing */}
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Price (₹)" required>
-                  <input type="number" value={form.price} onChange={(e) => upd('price', e.target.value)} className={inp} placeholder="0" min="0" />
+                <Field label="MRP / Original Price (₹)" required>
+                  <input type="number" value={form.price} onChange={(e) => handlePriceChange(e.target.value)} className={inp} placeholder="e.g. 6000" min="0" />
                 </Field>
-                <Field label="Discount Price (₹)">
-                  <input type="number" value={form.discountPrice} onChange={(e) => upd('discountPrice', e.target.value)} className={inp} placeholder="Leave blank if no discount" min="0" />
+                <Field label="Discount Amount (₹ off)">
+                  <input type="number" value={discountAmt} onChange={(e) => handleDiscountAmt(e.target.value)} className={inp} placeholder="e.g. 200 = ₹200 off" min="0" />
                 </Field>
               </div>
 
-              {/* Margin indicator */}
-              {form.price && form.discountPrice && (
-                <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold ${margin > 20 ? 'bg-green-50 text-green-700' : margin > 0 ? 'bg-yellow-50 text-yellow-700' : 'bg-red-50 text-red-700'}`}>
-                  Discount: {margin}% off &nbsp;·&nbsp; Customer saves {formatPrice(parseFloat(form.price) - parseFloat(form.discountPrice))}
+              {/* Selling price indicator */}
+              {form.price && discountAmt && parseFloat(discountAmt) > 0 && parseFloat(discountAmt) < parseFloat(form.price) ? (
+                <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold ${margin > 20 ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}`}>
+                  Customer pays {formatPrice(parseFloat(form.discountPrice))} &nbsp;·&nbsp; {margin}% off &nbsp;·&nbsp; Saves {formatPrice(parseFloat(discountAmt))}
                 </div>
-              )}
+              ) : form.price && !discountAmt ? (
+                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm bg-gray-50 text-gray-500">
+                  Customer pays {formatPrice(parseFloat(form.price))} (no discount)
+                </div>
+              ) : null}
 
               {/* Stock + Weight + Purity */}
               <div className="grid grid-cols-3 gap-4">

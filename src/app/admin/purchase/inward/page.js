@@ -241,10 +241,27 @@ export default function PurchaseInwardPage() {
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
               Supplier <span className="text-red-400">*</span>
             </label>
-            <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className={inp}>
-              <option value="">Select Supplier...</option>
-              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            {suppliers.length > 0 ? (
+              <select value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setSupplierName(''); }} className={inp}>
+                <option value="">Select Supplier...</option>
+                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            ) : (
+              <input
+                value={supplierName}
+                onChange={(e) => { setSupplierName(e.target.value); setSupplierId(''); }}
+                className={inp}
+                placeholder="Type supplier / wholesaler name"
+              />
+            )}
+            {suppliers.length > 0 && !supplierId && (
+              <input
+                value={supplierName}
+                onChange={(e) => { setSupplierName(e.target.value); setSupplierId(''); }}
+                className={`${inp} mt-2`}
+                placeholder="Or type supplier name manually"
+              />
+            )}
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
