@@ -10,7 +10,22 @@ export async function GET() {
     const db = getDB();
     const snap = await db.collection('reviews').orderBy('createdAt', 'desc').get();
     const reviews = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    return NextResponse.json({ success: true, data: reviews });
+
+    // Enrich with product image by fetching unique productIds
+    const productIds = [...new Set(reviews.map((r) => r.productId).filter(Boolean))];
+    const productDocs = await Promise.all(productIds.map((pid) => db.collection('products').doc(pid).get()));
+    const productsMap = {};
+    for (const doc of productDocs) {
+      if (doc.exists) productsMap[doc.id] = { images: doc.data().images, slug: doc.data().slug, price: doc.data().discountPrice || doc.data().price };
+    }
+    const enriched = reviews.map((r) => ({
+      ...r,
+      productImage: r.productId ? (productsMap[r.productId]?.images?.[0] || null) : null,
+      productSlug:  r.productId ? (productsMap[r.productId]?.slug || null) : null,
+      productPrice: r.productId ? (productsMap[r.productId]?.price || null) : null,
+    }));
+
+    return NextResponse.json({ success: true, data: enriched });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }
