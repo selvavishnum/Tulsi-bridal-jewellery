@@ -78,7 +78,7 @@ function ReviewCard({ review }) {
             <p className="font-semibold text-stone-800 text-sm">{review.reviewerName || 'Anonymous'}</p>
             <div className="flex items-center gap-2 mt-0.5">
               <Stars rating={review.rating} size="sm" />
-              {review.verified && (
+              {review.status === 'approved' && (
                 <span className="text-[10px] text-green-600 font-semibold flex items-center gap-1">
                   <FiCheckCircle className="text-[10px]" /> Verified Purchase
                 </span>

@@ -9,7 +9,9 @@ export async function GET(request, context) {
     const { id } = await context.params;
     const db = getDB();
     const snap = await db.collection('reviews').where('productId', '==', id).get();
-    const reviews = snapshotToArr(snap).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    // All reviews always show publicly — admin approve/reject only controls the verified badge
+    const reviews = snapshotToArr(snap)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     const count = reviews.length;
     const average = count > 0 ? +(reviews.reduce((s, r) => s + r.rating, 0) / count).toFixed(1) : 0;
