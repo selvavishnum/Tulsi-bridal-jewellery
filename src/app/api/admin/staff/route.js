@@ -8,8 +8,10 @@ export async function GET() {
     const session = await requireAdmin();
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const db = getDB();
-    const snap = await db.collection('staff').orderBy('createdAt', 'desc').get();
-    const data = snapshotToArr(snap).map(({ password, ...rest }) => rest);
+    const snap = await db.collection('staff').get();
+    const data = snapshotToArr(snap)
+      .map(({ password, ...rest }) => rest)
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     return NextResponse.json({ success: true, data });
   } catch (e) { return NextResponse.json({ success: false, message: e.message }, { status: 500 }); }
 }
