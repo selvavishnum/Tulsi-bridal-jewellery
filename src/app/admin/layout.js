@@ -9,7 +9,7 @@ import {
   FiTag, FiUsers, FiMenu, FiLogOut, FiTruck, FiArchive,
   FiDollarSign, FiSettings, FiUserCheck, FiTrendingUp, FiX,
   FiExternalLink, FiChevronRight, FiAlertTriangle, FiCamera, FiMessageSquare,
-  FiFolder, FiDownload, FiUpload, FiLayers, FiGrid,
+  FiFolder, FiDownload, FiUpload, FiLayers, FiGrid, FiStar, FiAlertCircle, FiShield,
 } from 'react-icons/fi';
 import { GiQueenCrown } from 'react-icons/gi';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -24,8 +24,15 @@ const NAV_GROUPS = [
       { href: '/admin/orders',    label: 'Orders',      icon: FiShoppingBag },
       { href: '/admin/messages',  label: 'Messages',    icon: FiMessageSquare, badge: true },
       { href: '/admin/rentals',   label: 'Rentals',     icon: FiCalendar },
-      { href: '/admin/customers', label: 'Customers',   icon: FiUsers },
-      { href: '/admin/coupons',   label: 'Coupons',     icon: FiTag },
+    ],
+  },
+  {
+    label: 'CRM',
+    items: [
+      { href: '/admin/customers',        label: 'Customer DB',          icon: FiUsers },
+      { href: '/admin/coupons',          label: 'Coupons',              icon: FiTag },
+      { href: '/admin/crm/feedbacks',    label: 'Feedbacks & Ratings',  icon: FiStar },
+      { href: '/admin/crm/complaints',   label: 'Complaints & Issues',  icon: FiAlertCircle },
     ],
   },
   {
@@ -51,12 +58,13 @@ const NAV_GROUPS = [
   {
     label: 'Management',
     items: [
-      { href: '/admin/suppliers',    label: 'Suppliers',    icon: FiTruck },
-      { href: '/admin/warehouses',   label: 'Warehouses',   icon: FiArchive },
-      { href: '/admin/employees',    label: 'Employees',    icon: FiUserCheck },
-      { href: '/admin/accounting',   label: 'Accounting',   icon: FiDollarSign },
-      { href: '/admin/settings',     label: 'Settings',     icon: FiSettings },
-      { href: '/admin/photo-editor', label: 'Photo Editor', icon: FiCamera },
+      { href: '/admin/staff',         label: 'Staff & Access',  icon: FiShield },
+      { href: '/admin/suppliers',    label: 'Suppliers',       icon: FiTruck },
+      { href: '/admin/warehouses',   label: 'Warehouses',      icon: FiArchive },
+      { href: '/admin/employees',    label: 'Employees',       icon: FiUserCheck },
+      { href: '/admin/accounting',   label: 'Accounting',      icon: FiDollarSign },
+      { href: '/admin/settings',     label: 'Settings',        icon: FiSettings },
+      { href: '/admin/photo-editor', label: 'Photo Editor',    icon: FiCamera },
     ],
   },
 ];
