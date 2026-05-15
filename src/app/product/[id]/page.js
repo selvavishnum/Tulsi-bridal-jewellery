@@ -395,7 +395,7 @@ export default function ProductDetailPage() {
       {tryOnOpen && isTryOn && (
         <Suspense fallback={null}>
           <TryOnModal
-            productImage={product.images?.[selectedImage] || product.images?.[0]}
+            productImage={product.tryOnImage || product.images?.[selectedImage] || product.images?.[0]}
             productName={product.name}
             category={tryOnType}
             onClose={() => setTryOnOpen(false)}

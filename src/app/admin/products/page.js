@@ -18,7 +18,7 @@ const EMPTY_FORM = {
   stock: 1, rentalStock: 0,
   isAvailableForRent: false, featured: false,
   images: [], tags: '', weight: '', purity: '',
-  metalType: '', stoneType: '', color: '', usageInstructions: '', isNew: false,
+  metalType: '', stoneType: '', color: '', usageInstructions: '', isNew: false, tryOnImage: '',
 };
 
 function Field({ label, children, required }) {
@@ -84,6 +84,7 @@ export default function AdminProductsPage() {
       color: p.color || '',
       usageInstructions: p.usageInstructions || '',
       isNew: p.isNew || false,
+      tryOnImage: p.tryOnImage || '',
     });
     setEditId(p._id);
     setModalOpen(true);
@@ -401,6 +402,15 @@ export default function AdminProductsPage() {
                 <textarea value={form.usageInstructions} onChange={(e) => upd('usageInstructions', e.target.value)}
                   rows={2} className={`${inp} resize-none`}
                   placeholder="e.g. Avoid water contact. Keep away from perfume. Store in box." />
+              </Field>
+
+              {/* Try-On Image URL */}
+              <Field label="Try-On Image URL (transparent PNG, no background)">
+                <input value={form.tryOnImage} onChange={(e) => upd('tryOnImage', e.target.value)}
+                  className={inp} placeholder="https://… (use Photo Editor → Remove Background to generate this)" />
+                {form.tryOnImage && (
+                  <p className="text-xs text-purple-600 mt-1 font-medium">✓ Try-On image set — Virtual Try-On will use this transparent image</p>
+                )}
               </Field>
 
               {/* Is New Arrival */}

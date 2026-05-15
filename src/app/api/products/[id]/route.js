@@ -44,7 +44,10 @@ export async function DELETE(request, context) {
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const db = getDB();
-    await db.collection('products').doc(id).update({ isActive: false });
+    const ref = db.collection('products').doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) return NextResponse.json({ success: true, message: 'Already deleted' });
+    await ref.delete();
     return NextResponse.json({ success: true, message: 'Product deleted' });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
