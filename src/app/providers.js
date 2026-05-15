@@ -8,19 +8,27 @@ import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import { TrackingProvider } from '@/components/TrackingProvider';
 import { TopProgressBar } from '@/components/ui/TopProgressBar';
+import { usePathname } from 'next/navigation';
 
 export function Providers({ children }) {
+  const pathname = usePathname();
+  const isAdmin = pathname?.startsWith('/admin') || pathname?.startsWith('/admin-portal');
+
   return (
     <SessionProvider refetchOnWindowFocus={false} refetchInterval={0}>
       <CartProvider>
         <WishlistProvider>
           <TrackingProvider>
             <TopProgressBar />
-            <div className="flex flex-col min-h-screen">
-              <Navbar />
-              <main className="flex-1">{children}</main>
-              <Footer />
-            </div>
+            {isAdmin ? (
+              <>{children}</>
+            ) : (
+              <div className="flex flex-col min-h-screen">
+                <Navbar />
+                <main className="flex-1">{children}</main>
+                <Footer />
+              </div>
+            )}
             <Toaster
               position="top-right"
               toastOptions={{
