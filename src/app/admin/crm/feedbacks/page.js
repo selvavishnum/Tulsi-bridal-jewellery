@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { FiStar, FiTrash2, FiRefreshCw, FiX, FiUser, FiPhone, FiMail, FiExternalLink, FiShoppingBag, FiPackage } from 'react-icons/fi';
+import { FiStar, FiRefreshCw, FiX, FiUser, FiPhone, FiMail, FiExternalLink, FiShoppingBag, FiPackage } from 'react-icons/fi';
 import Image from 'next/image';
 import Link from 'next/link';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -94,14 +94,6 @@ export default function FeedbacksPage() {
     finally { setUpdating((p) => ({ ...p, [id]: false })); }
   }
 
-  async function deleteReview(id) {
-    if (!confirm('Delete this review permanently?')) return;
-    const res = await fetch(`/api/admin/feedbacks?id=${id}`, { method: 'DELETE' });
-    if ((await res.json()).success) {
-      setReviews((prev) => prev.filter((r) => r.id !== id));
-      toast.success('Deleted');
-    }
-  }
 
   async function openCustomer(userId, reviewerName, reviewerEmail) {
     setPanelOpen(true);
@@ -127,7 +119,7 @@ export default function FeedbacksPage() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Feedbacks & Ratings</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Manage customer product reviews</p>
+          <p className="text-sm text-gray-400 mt-0.5">All reviews are always visible. Approve = show ✓ Verified Purchase badge. Reject = no badge.</p>
         </div>
         <button onClick={fetchReviews} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition">
           <FiRefreshCw className={`text-sm ${loading ? 'animate-spin' : ''}`} /> Refresh
@@ -227,19 +219,15 @@ export default function FeedbacksPage() {
                   {/* Review text */}
                   {text && <p className="text-sm text-gray-600 leading-relaxed bg-gray-50 rounded-lg px-3 py-2">"{text}"</p>}
 
-                  {/* Actions */}
+                  {/* Actions — controls Verified Purchase badge only, review always stays public */}
                   <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
                     <button disabled={busy || status === 'approved'} onClick={() => updateStatus(id, 'approved')}
                       className="flex-1 py-1.5 text-xs font-semibold rounded-lg bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-40 disabled:cursor-not-allowed transition">
-                      ✓ Approve
+                      ✓ Verified Purchase
                     </button>
                     <button disabled={busy || status === 'rejected'} onClick={() => updateStatus(id, 'rejected')}
-                      className="flex-1 py-1.5 text-xs font-semibold rounded-lg bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed transition">
-                      ✗ Reject
-                    </button>
-                    <button disabled={busy} onClick={() => deleteReview(id)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition disabled:opacity-40" title="Delete">
-                      <FiTrash2 className="text-sm" />
+                      className="flex-1 py-1.5 text-xs font-semibold rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition">
+                      ✗ Remove Badge
                     </button>
                   </div>
                 </div>
