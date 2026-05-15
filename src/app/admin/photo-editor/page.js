@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
-import { FiUploadCloud, FiDownload, FiImage, FiZap, FiSliders, FiCheck } from 'react-icons/fi';
+import { FiUploadCloud, FiDownload, FiImage, FiZap, FiSliders, FiCheck, FiScissors, FiPackage } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
@@ -46,6 +46,9 @@ export default function AdminPhotoEditorPage() {
   const [uploadedUrl, setUploadedUrl] = useState(null);
   const [activePreset, setActivePreset] = useState(null);
   const [adj, setAdj] = useState({ brightness: 100, contrast: 100, saturation: 100, warmth: 100 });
+  const [removingBg, setRemovingBg] = useState(false);
+  const [isTryOnImage, setIsTryOnImage] = useState(false); // true when bg was removed
+  const [tryOnUrl, setTryOnUrl] = useState(null);
 
   const sliders = [
     { key: 'brightness', label: 'Brightness', min: 50,  max: 150 },
@@ -83,6 +86,50 @@ export default function AdminPhotoEditorPage() {
     setPreview(original);
     setAdj({ brightness: 100, contrast: 100, saturation: 100, warmth: 100 });
     setActivePreset(null);
+    setIsTryOnImage(false);
+    setTryOnUrl(null);
+  }
+
+  async function removeBackground() {
+    if (!original) return;
+    setRemovingBg(true);
+    try {
+      // Convert dataURL to blob
+      const blob = await fetch(original).then((r) => r.blob());
+      const fd = new FormData();
+      fd.append('image', blob, 'product.png');
+      const res = await fetch('/api/admin/remove-bg', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message);
+      setPreview(data.dataUrl);
+      setIsTryOnImage(true);
+      setUploadedUrl(null);
+      setTryOnUrl(null);
+      toast.success('Background removed! Upload it to use in Try-On.');
+    } catch (err) {
+      toast.error(err.message || 'Background removal failed');
+    } finally {
+      setRemovingBg(false);
+    }
+  }
+
+  async function uploadTryOnImage() {
+    if (!preview) return;
+    setUploading(true);
+    try {
+      const blob = await fetch(preview).then((r) => r.blob());
+      const fd = new FormData();
+      fd.append('file', blob, 'tryon.png');
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message);
+      setTryOnUrl(data.data.url);
+      toast.success('Try-On image uploaded! Copy the URL and paste it into the product\'s Try-On Image field.');
+    } catch (err) {
+      toast.error(err.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function uploadToCloudinary() {
@@ -184,6 +231,48 @@ export default function AdminPhotoEditorPage() {
                 </button>
               </div>
 
+              {/* Remove Background — for Try-On */}
+              <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                <p className="text-xs font-bold text-purple-800 flex items-center gap-1.5 mb-1">
+                  <FiScissors /> Try-On Background Removal
+                </p>
+                <p className="text-xs text-purple-600 mb-3">
+                  Remove the background to get a transparent product image for the Virtual Try-On feature.
+                </p>
+                <button
+                  onClick={removeBackground}
+                  disabled={removingBg}
+                  className="w-full py-2.5 bg-purple-600 text-white text-sm font-semibold rounded-lg hover:bg-purple-700 disabled:opacity-60 transition flex items-center justify-center gap-2"
+                >
+                  {removingBg ? <><LoadingSpinner size="sm" /> Removing background…</> : <><FiScissors /> Remove Background</>}
+                </button>
+                {isTryOnImage && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs text-purple-700 font-semibold">✓ Background removed! Now upload it:</p>
+                    <button
+                      onClick={uploadTryOnImage}
+                      disabled={uploading}
+                      className="w-full py-2 bg-purple-800 text-white text-xs font-semibold rounded-lg hover:bg-purple-900 disabled:opacity-60 transition flex items-center justify-center gap-2"
+                    >
+                      {uploading ? <LoadingSpinner size="sm" /> : <FiUploadCloud />} Upload as Try-On Image
+                    </button>
+                  </div>
+                )}
+                {tryOnUrl && (
+                  <div className="mt-3 bg-white border border-purple-200 rounded-lg p-3">
+                    <p className="text-xs font-bold text-purple-700 flex items-center gap-1 mb-2"><FiCheck /> Try-On image ready!</p>
+                    <p className="text-xs text-purple-600 mb-2">Copy this URL → go to <strong>Products</strong> → Edit product → paste in <strong>"Try-On Image URL"</strong> field</p>
+                    <div className="flex gap-2">
+                      <input readOnly value={tryOnUrl} className="flex-1 text-xs bg-gray-50 border border-purple-200 rounded-lg px-2 py-1.5 font-mono text-gray-700 outline-none" />
+                      <button onClick={() => { navigator.clipboard.writeText(tryOnUrl); toast.success('Copied!'); }}
+                        className="px-3 py-1.5 bg-purple-600 text-white text-xs font-semibold rounded-lg hover:bg-purple-500 transition flex items-center gap-1">
+                        <FiPackage className="text-xs" /> Copy
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Action buttons */}
               <div className="flex gap-2">
                 <button onClick={reset} className="flex-1 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-lg hover:bg-gray-50 transition">
@@ -226,7 +315,9 @@ export default function AdminPhotoEditorPage() {
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Preview</p>
             {processing && <span className="text-xs text-gold-600 flex items-center gap-1"><LoadingSpinner size="sm" /> Processing…</span>}
           </div>
-          <div className="p-4 min-h-80 flex items-center justify-center bg-gray-50">
+          <div className={`p-4 min-h-80 flex items-center justify-center ${isTryOnImage ? '' : 'bg-gray-50'}`}
+            style={isTryOnImage ? { backgroundImage: 'repeating-conic-gradient(#ccc 0% 25%, #fff 0% 50%)', backgroundSize: '20px 20px' } : {}}>
+            {isTryOnImage && <p className="absolute top-2 left-2 text-[10px] bg-purple-600 text-white px-2 py-0.5 rounded-full font-semibold">Transparent PNG</p>}
             {preview ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img src={preview} alt="Preview" className="max-w-full max-h-[500px] object-contain rounded-lg shadow-md" />
@@ -242,13 +333,12 @@ export default function AdminPhotoEditorPage() {
 
       {/* How to use */}
       <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
-        <p className="text-xs font-bold text-amber-800 mb-2">How to add this image to a product</p>
+        <p className="text-xs font-bold text-amber-800 mb-2">How to use</p>
         <ol className="text-xs text-amber-700 space-y-1 list-decimal list-inside">
-          <li>Upload your photo above → click <strong>Upload</strong></li>
-          <li>Copy the URL that appears</li>
-          <li>Go to <strong>Products</strong> → Add/Edit product → paste the URL in the images field</li>
+          <li><strong>Product image:</strong> Upload photo → click Upload → copy URL → paste in product Images field</li>
+          <li><strong>Try-On image:</strong> Upload photo → click <em>Remove Background</em> → click <em>Upload as Try-On Image</em> → copy URL → paste in product <em>Try-On Image URL</em> field</li>
         </ol>
-        <p className="text-xs text-amber-500 mt-2">Note: Image upload requires Cloudinary to be configured in Vercel environment variables.</p>
+        <p className="text-xs text-amber-500 mt-2">Background removal requires <code className="bg-amber-100 px-1 rounded">REMOVE_BG_API_KEY</code> in Vercel environment variables (free at remove.bg).</p>
       </div>
     </div>
   );
