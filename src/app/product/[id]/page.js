@@ -289,6 +289,7 @@ function ImageZoomModal({ images, startIndex, productName, onClose }) {
 export default function ProductDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const { data: session } = useSession();
   const { dispatch } = useCart();
   const { toggle, isWishlisted } = useWishlist();
 
