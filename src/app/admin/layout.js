@@ -33,7 +33,7 @@ const NAV_GROUPS = [
       { href: '/admin/customers',        label: 'Customer DB',          icon: FiUsers },
       { href: '/admin/coupons',          label: 'Coupons',              icon: FiTag },
       { href: '/admin/crm/feedbacks',    label: 'Feedbacks & Ratings',  icon: FiStar },
-      { href: '/admin/crm/complaints',   label: 'Complaints & Issues',  icon: FiAlertCircle },
+      { href: '/admin/crm/complaints',   label: 'Returns & Refunds',    icon: FiAlertCircle },
     ],
   },
   {

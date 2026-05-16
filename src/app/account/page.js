@@ -7,6 +7,7 @@ import Link from 'next/link';
 import {
   FiUser, FiShoppingBag, FiLogOut, FiMail, FiPackage,
   FiChevronDown, FiChevronUp, FiCheckCircle, FiTruck, FiBox, FiClock, FiXCircle, FiAlertTriangle,
+  FiRotateCcw,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { formatPrice } from '@/lib/utils';
@@ -93,6 +94,11 @@ export default function AccountPage() {
   const [expandedId, setExpandedId]   = useState(null);
   const [cancelling, setCancelling]   = useState(null);
   const [confirmCancel, setConfirmCancel] = useState(null);
+  const [returnModal, setReturnModal] = useState(null); // orderId
+  const [returnReason, setReturnReason] = useState('');
+  const [returnDesc, setReturnDesc]   = useState('');
+  const [submittingReturn, setSubmittingReturn] = useState(false);
+  const [returnedOrders, setReturnedOrders] = useState(new Set());
   const [profile, setProfile]       = useState({ phone: '', city: '', birthday: '', weddingDate: '' });
   const [savingProfile, setSaving]  = useState(false);
   const [loyalty, setLoyalty]       = useState({ points: 0, transactions: [] });
@@ -167,6 +173,40 @@ export default function AccountPage() {
       setCancelling(null);
       setConfirmCancel(null);
     }
+  }
+
+  function withinReturnWindow(order) {
+    const ref = order.deliveredAt || order.updatedAt || order.createdAt;
+    if (!ref) return false;
+    return Date.now() - new Date(ref).getTime() <= 3 * 24 * 60 * 60 * 1000;
+  }
+
+  async function submitReturn(order) {
+    if (!returnReason) { toast.error('Please select a reason'); return; }
+    setSubmittingReturn(true);
+    try {
+      const res = await fetch('/api/returns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: order.id || order._id,
+          reason: returnReason,
+          description: returnDesc,
+          items: order.items,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Return request submitted! We will contact you soon.');
+        setReturnedOrders((prev) => new Set([...prev, order.id || order._id]));
+        setReturnModal(null);
+        setReturnReason('');
+        setReturnDesc('');
+      } else {
+        toast.error(data.message || 'Failed to submit');
+      }
+    } catch { toast.error('Something went wrong'); }
+    finally { setSubmittingReturn(false); }
   }
 
   async function saveProfile(e) {
@@ -420,6 +460,24 @@ export default function AccountPage() {
                         </div>
                       )}
 
+                      {/* Return button — only for delivered orders within 3 days */}
+                      {o.status === 'delivered' && withinReturnWindow(o) && !returnedOrders.has(oid) && (
+                        <div className="px-5 py-4 border-t border-gray-100">
+                          <button
+                            onClick={() => { setReturnModal(oid); setReturnReason(''); setReturnDesc(''); }}
+                            className="w-full py-2.5 border border-amber-300 text-amber-700 bg-amber-50 text-sm font-semibold rounded-xl hover:bg-amber-100 transition flex items-center justify-center gap-2"
+                          >
+                            <FiRotateCcw /> Return / Refund Request
+                          </button>
+                          <p className="text-xs text-gray-400 text-center mt-1.5">Return window closes 3 days after delivery</p>
+                        </div>
+                      )}
+                      {returnedOrders.has(oid) && (
+                        <div className="px-5 py-3 border-t border-gray-100">
+                          <p className="text-xs text-center text-green-600 font-semibold">✓ Return request submitted — we will contact you soon</p>
+                        </div>
+                      )}
+
                       {/* Help link */}
                       <div className="px-5 py-3 border-t border-gray-100 bg-gold-50/50 flex items-center justify-between">
                         <p className="text-xs text-gray-500">Need help with this order?</p>
@@ -432,6 +490,88 @@ export default function AccountPage() {
             })}
           </div>
         )}
+
+        {/* Return Modal */}
+        {returnModal && (() => {
+          const order = orders.find((o) => (o.id || o._id) === returnModal);
+          if (!order) return null;
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                  <div>
+                    <h2 className="font-bold text-gray-800">Return / Refund Request</h2>
+                    <p className="text-xs text-gray-400 mt-0.5">Order #{order.orderNumber}</p>
+                  </div>
+                  <button onClick={() => setReturnModal(null)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition">
+                    <FiXCircle />
+                  </button>
+                </div>
+                <div className="px-6 py-5 space-y-4">
+                  {/* Items summary */}
+                  <div className="bg-gray-50 rounded-xl p-3 space-y-1.5">
+                    {(order.items || []).map((item, i) => (
+                      <div key={i} className="flex justify-between text-sm">
+                        <span className="text-gray-700">{item.name} × {item.quantity}</span>
+                        <span className="font-semibold text-gray-800">{formatPrice((item.price || 0) * item.quantity)}</span>
+                      </div>
+                    ))}
+                    <div className="border-t border-gray-200 pt-1.5 flex justify-between font-bold text-sm">
+                      <span>Refund Amount</span>
+                      <span className="text-maroon-950">{formatPrice(order.total)}</span>
+                    </div>
+                  </div>
+                  {/* Reason */}
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1.5">
+                      Reason for Return <span className="text-red-400">*</span>
+                    </label>
+                    <select
+                      value={returnReason}
+                      onChange={(e) => setReturnReason(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                    >
+                      <option value="">Select reason…</option>
+                      <option value="wrong_item">Wrong Item Received</option>
+                      <option value="damaged">Damaged / Defective</option>
+                      <option value="quality_issue">Quality Issue</option>
+                      <option value="not_as_shown">Not as Shown Online</option>
+                      <option value="size_issue">Size / Fit Issue</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  {/* Description */}
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1.5">Description (optional)</label>
+                    <textarea
+                      value={returnDesc}
+                      onChange={(e) => setReturnDesc(e.target.value)}
+                      rows={3}
+                      placeholder="Describe the issue in detail…"
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400 bg-amber-50 rounded-lg px-3 py-2 border border-amber-100">
+                    After submitting, our team will review your request and contact you within 24 hours.
+                  </p>
+                </div>
+                <div className="px-6 pb-5 flex gap-3">
+                  <button
+                    onClick={() => submitReturn(order)}
+                    disabled={submittingReturn}
+                    className="flex-1 py-2.5 bg-maroon-950 text-white text-sm font-bold rounded-xl hover:bg-maroon-900 disabled:opacity-50 transition flex items-center justify-center gap-2"
+                  >
+                    {submittingReturn ? <LoadingSpinner size="sm" /> : <FiRotateCcw />}
+                    Submit Return Request
+                  </button>
+                  <button onClick={() => setReturnModal(null)} className="px-5 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 transition">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Profile tab */}
         {tab === 'profile' && (
