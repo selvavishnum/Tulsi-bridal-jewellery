@@ -44,6 +44,7 @@ const NAV_GROUPS = [
       { href: '/admin/variants',                label: 'Variants',        icon: FiLayers },
       { href: '/admin/inventory',               label: 'Inventory',       icon: FiGrid },
       { href: '/admin/inventory/stock-checker', label: 'Stock Checker',   icon: FiBarChart2 },
+      { href: '/admin/inventory/lots',          label: 'Stock Lots (FIFO)', icon: FiLayers },
       { href: '/admin/purchase',               label: 'Purchases',       icon: FiShoppingCart },
       { href: '/admin/purchase/indent',        label: '↳ Indent',        icon: FiDownload },
       { href: '/admin/purchase/inward',        label: '↳ Full Invoice',  icon: FiUpload },
