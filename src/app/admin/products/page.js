@@ -12,7 +12,7 @@ const CATEGORIES = ['necklace', 'earrings', 'bangles', 'bracelet', 'ring', 'maan
 const MATERIALS  = ['gold', 'silver', 'gold-plated', 'silver-plated', 'kundan', 'meenakari', 'polki', 'other'];
 
 const EMPTY_FORM = {
-  name: '', slug: '', description: '', shortDescription: '',
+  name: '', slug: '', sku: '', description: '', shortDescription: '',
   price: '', discountPrice: '', rentalPrice: '',
   category: 'necklace', material: 'gold-plated',
   stock: 1, rentalStock: 0,
@@ -61,6 +61,12 @@ export default function AdminProductsPage() {
     }
   }
 
+  function generateSku() {
+    const prefix = form.category ? form.category.slice(0, 3).toUpperCase() : 'PRD';
+    const rand = Math.floor(1000 + Math.random() * 9000);
+    upd('sku', `TBJ-${prefix}-${rand}`);
+  }
+
   function handlePriceChange(val) {
     upd('price', val);
     const price = parseFloat(val) || 0;
@@ -98,6 +104,7 @@ export default function AdminProductsPage() {
     setDiscountAmt(computedAmt);
     setForm({
       ...p,
+      sku: p.sku || '',
       price: p.price?.toString() || '',
       discountPrice: p.discountPrice?.toString() || '',
       rentalPrice: p.rentalPrice?.toString() || '',
@@ -325,6 +332,24 @@ export default function AdminProductsPage() {
               <div className="grid grid-cols-1 gap-4">
                 <Field label="Product Name" required>
                   <input value={form.name} onChange={(e) => upd('name', e.target.value)} className={inp} placeholder="e.g. Kundan Bridal Necklace Set" />
+                </Field>
+                <Field label="SKU (Product Code)">
+                  <div className="flex gap-2">
+                    <input
+                      value={form.sku}
+                      onChange={(e) => upd('sku', e.target.value.toUpperCase())}
+                      className={inp}
+                      placeholder="e.g. TBJ-NCK-1001"
+                    />
+                    <button
+                      type="button"
+                      onClick={generateSku}
+                      className="px-3 py-2 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold rounded-lg hover:bg-amber-100 transition whitespace-nowrap"
+                    >
+                      Auto Generate
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">Unique code to identify this product. Click Auto Generate or type your own.</p>
                 </Field>
                 <Field label="Description" required>
                   <textarea value={form.description} onChange={(e) => upd('description', e.target.value)} rows={3} className={`${inp} resize-none`} placeholder="Describe the product…" />

@@ -80,3 +80,18 @@ export async function PUT(request) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }
 }
+
+export async function DELETE(request) {
+  try {
+    const session = await requireAdmin();
+    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    if (!id) return NextResponse.json({ success: false, message: 'ID required' }, { status: 400 });
+    const db = getDB();
+    await db.collection('purchaseOrders').doc(id).delete();
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    return NextResponse.json({ success: false, message: e.message }, { status: 500 });
+  }
+}
