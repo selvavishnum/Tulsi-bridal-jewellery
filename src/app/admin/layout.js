@@ -10,6 +10,7 @@ import {
   FiDollarSign, FiSettings, FiUserCheck, FiTrendingUp, FiX,
   FiExternalLink, FiChevronRight, FiAlertTriangle, FiCamera, FiMessageSquare,
   FiFolder, FiDownload, FiUpload, FiLayers, FiGrid, FiStar, FiAlertCircle, FiShield,
+  FiShoppingCart,
 } from 'react-icons/fi';
 import { GiQueenCrown } from 'react-icons/gi';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -43,8 +44,9 @@ const NAV_GROUPS = [
       { href: '/admin/variants',                label: 'Variants',        icon: FiLayers },
       { href: '/admin/inventory',               label: 'Inventory',       icon: FiGrid },
       { href: '/admin/inventory/stock-checker', label: 'Stock Checker',   icon: FiBarChart2 },
-      { href: '/admin/purchase/indent',         label: 'Purchase Indent', icon: FiDownload },
-      { href: '/admin/purchase/inward',         label: 'Purchase Inward', icon: FiUpload },
+      { href: '/admin/purchase',               label: 'Purchases',       icon: FiShoppingCart },
+      { href: '/admin/purchase/indent',        label: '↳ Indent',        icon: FiDownload },
+      { href: '/admin/purchase/inward',        label: '↳ Full Invoice',  icon: FiUpload },
       { href: '/admin/barcodes',                label: 'Barcodes',        icon: FiTag },
     ],
   },
