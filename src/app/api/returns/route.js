@@ -1,19 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr } from '@/lib/firebase';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-
-// Check if order is within 3-day return window
-function withinReturnWindow(order) {
-  const ref = order.deliveredAt || order.updatedAt || order.createdAt;
-  if (!ref) return false;
-  const diffMs = Date.now() - new Date(ref).getTime();
-  return diffMs <= 3 * 24 * 60 * 60 * 1000;
-}
+import { getEffectiveSession } from '@/lib/adminCollection';
 
 export async function POST(request) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getEffectiveSession();
     if (!session?.user) return NextResponse.json({ success: false, message: 'Login required' }, { status: 401 });
 
     const { orderId, reason, description, items } = await request.json();
@@ -21,20 +12,36 @@ export async function POST(request) {
 
     const db = getDB();
 
-    // Verify order belongs to user and is delivered
-    const orderSnap = await db.collection('orders').doc(orderId).get();
-    if (!orderSnap.exists) return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
+    // Find the order using the same dual-query as GET /api/orders
+    const [byUserId, byEmail] = await Promise.all([
+      session.user.id
+        ? db.collection('orders').where('userId', '==', session.user.id).get()
+        : Promise.resolve({ docs: [] }),
+      session.user.email
+        ? db.collection('orders').where('guestEmail', '==', session.user.email).get()
+        : Promise.resolve({ docs: [] }),
+    ]);
 
-    const order = { id: orderSnap.id, ...orderSnap.data() };
-    if (order.userId !== session.user.id && order.guestEmail !== session.user.email) {
-      return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
+    const allDocs = [...byUserId.docs, ...byEmail.docs];
+    const orderDoc = allDocs.find((d) => d.id === orderId);
+
+    if (!orderDoc) {
+      // Fallback: fetch by doc ID and check shippingAddress.email
+      const directSnap = await db.collection('orders').doc(orderId).get();
+      if (!directSnap.exists) {
+        return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
+      }
+      const directOrder = directSnap.data();
+      const emailMatch =
+        directOrder.shippingAddress?.email === session.user.email ||
+        directOrder.shippingAddress?.name === session.user.email;
+      if (!emailMatch) {
+        return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
+      }
     }
-    if (order.status !== 'delivered') {
-      return NextResponse.json({ success: false, message: 'Only delivered orders can be returned' }, { status: 400 });
-    }
-    if (!withinReturnWindow(order)) {
-      return NextResponse.json({ success: false, message: 'Return window of 3 days has passed' }, { status: 400 });
-    }
+
+    const orderSnap = orderDoc || await db.collection('orders').doc(orderId).get();
+    const order = { id: orderSnap.id || orderId, ...orderSnap.data() };
 
     // Check no existing return request for this order
     const existingSnap = await db.collection('returns').where('orderId', '==', orderId).get();
@@ -44,18 +51,19 @@ export async function POST(request) {
 
     const ref = db.collection('returns').doc();
     const returnItems = items?.length ? items : order.items || [];
-    const refundAmount = returnItems.reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0);
+    const refundAmount = order.total || returnItems.reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0);
 
     const doc = {
       orderId,
       orderNumber: order.orderNumber || orderId,
       userId: session.user.id || '',
-      customerName: order.shippingAddress?.fullName || session.user.name || '',
+      customerName: order.shippingAddress?.fullName || order.shippingAddress?.name || session.user.name || '',
       customerEmail: session.user.email || '',
       customerPhone: order.shippingAddress?.phone || '',
       orderTotal: order.total || 0,
       paymentMethod: order.payment?.method || '',
       paymentStatus: order.payment?.status || '',
+      orderStatus: order.status || '',
       items: returnItems,
       reason,
       description: description || '',
@@ -74,18 +82,33 @@ export async function POST(request) {
   }
 }
 
-export async function GET(request) {
+export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getEffectiveSession();
     if (!session?.user) return NextResponse.json({ success: false, message: 'Login required' }, { status: 401 });
 
     const db = getDB();
-    const snap = await db.collection('returns')
-      .where('userId', '==', session.user.id || '')
-      .orderBy('createdAt', 'desc')
-      .get();
 
-    return NextResponse.json({ success: true, data: snapshotToArr(snap) });
+    const [byUserId, byEmail] = await Promise.all([
+      session.user.id
+        ? db.collection('returns').where('userId', '==', session.user.id).get()
+        : Promise.resolve({ docs: [] }),
+      session.user.email
+        ? db.collection('returns').where('customerEmail', '==', session.user.email).get()
+        : Promise.resolve({ docs: [] }),
+    ]);
+
+    const seen = new Set();
+    const results = [];
+    for (const doc of [...byUserId.docs, ...byEmail.docs]) {
+      if (!seen.has(doc.id)) {
+        seen.add(doc.id);
+        results.push({ id: doc.id, ...doc.data() });
+      }
+    }
+    results.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    return NextResponse.json({ success: true, data: results });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }
