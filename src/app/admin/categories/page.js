@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react';
 import {
   FiPlus, FiEdit2, FiTrash2, FiChevronDown, FiChevronRight,
   FiEye, FiEyeOff, FiFolder, FiFolderPlus, FiSave, FiX, FiList,
+  FiPackage, FiImage,
 } from 'react-icons/fi';
+import Image from 'next/image';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import Badge from '@/components/ui/Badge';
@@ -25,19 +27,50 @@ function slugify(str) {
   return str.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 }
 
+function ToggleSwitch({ checked, onChange, label }) {
+  return (
+    <label className="flex items-center gap-2.5 cursor-pointer select-none group">
+      <button
+        type="button"
+        onClick={onChange}
+        className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${checked ? 'bg-green-500' : 'bg-gray-300'}`}
+      >
+        <span
+          className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${checked ? 'right-0.5' : 'left-0.5'}`}
+        />
+      </button>
+      <span className={`text-xs font-semibold ${checked ? 'text-green-600' : 'text-gray-400'}`}>
+        {checked ? 'Visible' : 'Hidden'}
+      </span>
+    </label>
+  );
+}
+
 export default function CategoriesPage() {
   const [categories, setCategories] = useState([]);
+  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState({});
   const [form, setForm] = useState(EMPTY_FORM);
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formTitle, setFormTitle] = useState('Add Main Category');
+  const [togglingId, setTogglingId] = useState(null);
 
   const upd = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   const mainCats = categories.filter((c) => !c.parentId);
   const subCats = (parentId) => categories.filter((c) => c.parentId === parentId);
+
+  // Match products to a category by slug or name
+  function catProducts(cat) {
+    const slug = (cat.slug || '').toLowerCase();
+    const name = (cat.name || '').toLowerCase();
+    return products.filter((p) => {
+      const pc = (p.category || '').toLowerCase();
+      return pc === slug || pc === name;
+    });
+  }
 
   async function fetchCategories() {
     setLoading(true);
@@ -49,7 +82,18 @@ export default function CategoriesPage() {
     finally { setLoading(false); }
   }
 
-  useEffect(() => { fetchCategories(); }, []);
+  async function fetchProducts() {
+    try {
+      const res = await fetch('/api/admin/inventory?limit=500');
+      const data = await res.json();
+      if (data.success) setProducts(data.data);
+    } catch {}
+  }
+
+  useEffect(() => {
+    fetchCategories();
+    fetchProducts();
+  }, []);
 
   function openAddMain() {
     setForm({ ...EMPTY_FORM });
@@ -103,6 +147,7 @@ export default function CategoriesPage() {
   }
 
   async function handleToggleVisible(cat) {
+    setTogglingId(cat.id);
     try {
       const res = await fetch('/api/admin/categories', {
         method: 'PUT',
@@ -110,9 +155,14 @@ export default function CategoriesPage() {
         body: JSON.stringify({ id: cat.id, isVisible: !cat.isVisible }),
       });
       const data = await res.json();
-      if (data.success) { fetchCategories(); toast.success('Visibility updated'); }
-      else toast.error(data.message);
+      if (data.success) {
+        setCategories((prev) =>
+          prev.map((c) => c.id === cat.id ? { ...c, isVisible: !cat.isVisible } : c)
+        );
+        toast.success(cat.isVisible ? 'Category hidden from store' : 'Category visible in store');
+      } else { toast.error(data.message); }
     } catch { toast.error('Update failed'); }
+    finally { setTogglingId(null); }
   }
 
   async function handleDelete(cat) {
@@ -140,7 +190,7 @@ export default function CategoriesPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Category Management</h1>
           <p className="text-sm text-gray-400 mt-0.5">
-            {mainCats.length} main categories · {categories.filter((c) => c.parentId).length} subcategories
+            {mainCats.length} main categories · {categories.filter((c) => c.parentId).length} subcategories · {products.length} products
           </p>
         </div>
         <button
@@ -178,6 +228,8 @@ export default function CategoriesPage() {
             mainCats.map((cat) => {
               const subs = subCats(cat.id);
               const isExpanded = expanded[cat.id];
+              const prods = catProducts(cat);
+
               return (
                 <div key={cat.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
                   {/* Main category row */}
@@ -192,7 +244,7 @@ export default function CategoriesPage() {
                       <FiFolder className="text-amber-600 text-sm" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-gray-800 text-sm">{cat.name}</span>
                         {!cat.isVisible && <Badge variant="warning">Hidden</Badge>}
                         {subs.length > 0 && (
@@ -200,9 +252,31 @@ export default function CategoriesPage() {
                             {subs.length} sub
                           </span>
                         )}
+                        {/* Product count badge */}
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          prods.length > 0
+                            ? 'bg-green-50 text-green-700'
+                            : 'bg-gray-100 text-gray-400'
+                        }`}>
+                          <FiPackage className="inline text-[10px] mr-0.5" />
+                          {prods.length} product{prods.length !== 1 ? 's' : ''}
+                        </span>
                       </div>
                       <p className="text-xs text-gray-400 truncate">{cat.slug}</p>
                     </div>
+
+                    {/* Visible toggle switch */}
+                    <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      {togglingId === cat.id ? (
+                        <LoadingSpinner size="sm" />
+                      ) : (
+                        <ToggleSwitch
+                          checked={cat.isVisible !== false}
+                          onChange={() => handleToggleVisible(cat)}
+                        />
+                      )}
+                    </div>
+
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() => openAddSub(cat)}
@@ -210,13 +284,6 @@ export default function CategoriesPage() {
                         className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition"
                       >
                         <FiFolderPlus className="text-sm" />
-                      </button>
-                      <button
-                        onClick={() => handleToggleVisible(cat)}
-                        title={cat.isVisible ? 'Hide' : 'Show'}
-                        className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition"
-                      >
-                        {cat.isVisible ? <FiEye className="text-sm" /> : <FiEyeOff className="text-sm" />}
                       </button>
                       <button
                         onClick={() => openEdit(cat)}
@@ -235,43 +302,123 @@ export default function CategoriesPage() {
                     </div>
                   </div>
 
-                  {/* Subcategories */}
+                  {/* Expanded: subcategories + products */}
                   {isExpanded && (
-                    <div className="border-t border-gray-50">
-                      {subs.length === 0 ? (
-                        <div className="px-12 py-3 text-xs text-gray-400 italic">
-                          No subcategories.{' '}
-                          <button onClick={() => openAddSub(cat)} className="text-amber-600 hover:underline">
-                            Add one
-                          </button>
-                        </div>
-                      ) : (
-                        subs.map((sub) => (
-                          <div key={sub.id} className="flex items-center gap-3 px-4 py-2.5 pl-12 hover:bg-gray-50 transition border-b border-gray-50 last:border-0">
-                            <div className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center flex-shrink-0">
-                              <FiList className="text-gray-400 text-xs" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-gray-700 font-medium">{sub.name}</span>
-                                {!sub.isVisible && <Badge variant="warning">Hidden</Badge>}
+                    <div className="border-t border-gray-100">
+
+                      {/* Subcategories */}
+                      {subs.length > 0 && (
+                        <div className="border-b border-gray-100">
+                          {subs.map((sub) => (
+                            <div key={sub.id} className="flex items-center gap-3 px-4 py-2.5 pl-12 hover:bg-gray-50 transition border-b border-gray-50 last:border-0">
+                              <div className="w-6 h-6 rounded bg-gray-100 flex items-center justify-center flex-shrink-0">
+                                <FiList className="text-gray-400 text-xs" />
                               </div>
-                              <p className="text-xs text-gray-400">{sub.slug}</p>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-gray-700 font-medium">{sub.name}</span>
+                                  {!sub.isVisible && <Badge variant="warning">Hidden</Badge>}
+                                </div>
+                                <p className="text-xs text-gray-400">{sub.slug}</p>
+                              </div>
+                              <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                                {togglingId === sub.id ? (
+                                  <LoadingSpinner size="sm" />
+                                ) : (
+                                  <ToggleSwitch
+                                    checked={sub.isVisible !== false}
+                                    onChange={() => handleToggleVisible(sub)}
+                                  />
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button onClick={() => openEdit(sub)} className="p-1.5 text-amber-500 hover:bg-amber-50 rounded-lg transition">
+                                  <FiEdit2 className="text-xs" />
+                                </button>
+                                <button onClick={() => handleDelete(sub)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition">
+                                  <FiTrash2 className="text-xs" />
+                                </button>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              <button onClick={() => handleToggleVisible(sub)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition">
-                                {sub.isVisible ? <FiEye className="text-xs" /> : <FiEyeOff className="text-xs" />}
-                              </button>
-                              <button onClick={() => openEdit(sub)} className="p-1.5 text-amber-500 hover:bg-amber-50 rounded-lg transition">
-                                <FiEdit2 className="text-xs" />
-                              </button>
-                              <button onClick={() => handleDelete(sub)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition">
-                                <FiTrash2 className="text-xs" />
-                              </button>
-                            </div>
-                          </div>
-                        ))
+                          ))}
+                        </div>
                       )}
+
+                      {/* Products under this category */}
+                      <div className="px-4 py-3">
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                          <FiPackage className="text-amber-500" />
+                          Products in "{cat.name}"
+                          <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            prods.length > 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'
+                          }`}>
+                            {prods.length}
+                          </span>
+                        </p>
+
+                        {prods.length === 0 ? (
+                          <div className="flex items-center gap-2 py-3 px-3 bg-gray-50 rounded-lg">
+                            <FiPackage className="text-gray-300 text-lg flex-shrink-0" />
+                            <p className="text-xs text-gray-400">
+                              No products in this category yet.{' '}
+                              <a href="/admin/products" className="text-amber-600 hover:underline">
+                                Add a product
+                              </a>{' '}
+                              and set category to <span className="font-mono font-semibold">{cat.slug}</span>
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {prods.map((p) => (
+                              <div
+                                key={p.id}
+                                className="flex items-center gap-3 py-2 px-3 bg-gray-50 rounded-lg hover:bg-amber-50 transition"
+                              >
+                                {/* Product thumbnail */}
+                                <div className="w-9 h-9 rounded-lg overflow-hidden bg-gray-200 flex-shrink-0 border border-gray-200">
+                                  {p.images?.[0] ? (
+                                    <img
+                                      src={p.images[0]}
+                                      alt={p.name}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                      <FiImage className="text-gray-400 text-xs" />
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Product info */}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-800 truncate">{p.name}</p>
+                                  <p className="text-xs text-gray-400">{p.sku || '—'}</p>
+                                </div>
+
+                                {/* Stock */}
+                                <div className="text-center flex-shrink-0">
+                                  <p className={`text-xs font-bold ${
+                                    (p.stock || 0) === 0 ? 'text-red-500'
+                                    : (p.stock || 0) <= 5 ? 'text-amber-600'
+                                    : 'text-green-600'
+                                  }`}>
+                                    {p.stock || 0}
+                                  </p>
+                                  <p className="text-[10px] text-gray-400">stock</p>
+                                </div>
+
+                                {/* Visible badge */}
+                                <div className="flex-shrink-0">
+                                  {p.isActive !== false && p.showMe !== false
+                                    ? <Badge variant="success">Visible</Badge>
+                                    : <Badge variant="warning">Hidden</Badge>
+                                  }
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -342,15 +489,16 @@ export default function CategoriesPage() {
                 />
               </div>
 
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => upd('isVisible', !form.isVisible)}
-                  className={`w-10 h-6 rounded-full transition-colors relative flex-shrink-0 ${form.isVisible ? 'bg-amber-500' : 'bg-gray-200'}`}
-                >
-                  <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${form.isVisible ? 'right-0.5' : 'left-0.5'}`} />
-                </button>
-                <span className="text-sm text-gray-600 font-medium">Visible in storefront</span>
+              {/* Prominent visible toggle in form */}
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">Visible in Store</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Show this category on the website</p>
+                </div>
+                <ToggleSwitch
+                  checked={form.isVisible}
+                  onChange={() => upd('isVisible', !form.isVisible)}
+                />
               </div>
 
               {form.parentId && (
