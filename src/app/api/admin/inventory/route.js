@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr, docToObj } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
+import { fifoDeduct } from '@/lib/fifoDeduct';
 
 export async function GET(request) {
   try {
@@ -47,7 +48,14 @@ export async function PATCH(request) {
       updateData.discPct = discPct;
       if (mrp !== undefined) updateData.discountPrice = Math.round(mrp * (1 - discPct / 100));
     }
-    if (inStock !== undefined) updateData.stock = inStock;
+    if (inStock !== undefined) {
+      const currentSnap = await ref.get();
+      const currentStock = currentSnap.data()?.stock || 0;
+      updateData.stock = inStock;
+      if (inStock < currentStock) {
+        await fifoDeduct(db, id, currentStock - inStock);
+      }
+    }
     if (showMe !== undefined) {
       updateData.showMe = showMe;
       updateData.isActive = showMe; // keep in sync so shop pages respect hidden flag
