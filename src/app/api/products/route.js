@@ -56,7 +56,9 @@ export async function GET(request) {
     const start = (page - 1) * limit;
     const data = products.slice(start, start + limit);
 
-    return NextResponse.json({ success: true, data: { products: data, total, page, pages } });
+    const res = NextResponse.json({ success: true, data: { products: data, total, page, pages } });
+    res.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+    return res;
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }

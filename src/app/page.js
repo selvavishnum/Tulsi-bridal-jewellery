@@ -10,7 +10,17 @@ import {
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
+import { cacheGet, cacheSet } from '@/lib/clientCache';
 import toast from 'react-hot-toast';
+
+function getCookie(name) {
+  if (typeof document === 'undefined') return '';
+  const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : '';
+}
+function setCookie(name, val, days) {
+  document.cookie = `${name}=${encodeURIComponent(val)}; max-age=${days * 86400}; path=/; SameSite=Lax`;
+}
 
 const DEFAULT_WA = '917695868787';
 
@@ -306,16 +316,19 @@ export default function HomePage() {
   const waNumber = (siteSettings.whatsapp || siteSettings.phone || DEFAULT_WA).replace(/\D/g, '');
 
   useEffect(() => {
+    function applySettings(d) {
+      setSiteSettings(d);
+      if (Array.isArray(d.heroSlides)) setHeroSlides(d.heroSlides);
+      if (Array.isArray(d.testimonials) && d.testimonials.length > 0) setTestimonials(d.testimonials);
+      if (Array.isArray(d.instagramFeed)) setInstagramFeed(d.instagramFeed);
+      if (d.categoryImages && typeof d.categoryImages === 'object') setCategoryImages(d.categoryImages);
+    }
+    const cached = cacheGet('settings', 60 * 60 * 1000);
+    if (cached) { applySettings(cached); return; }
     fetch('/api/admin/settings')
       .then((r) => r.json())
       .then((d) => {
-        if (d.success && d.data) {
-          setSiteSettings(d.data);
-          if (Array.isArray(d.data.heroSlides)) setHeroSlides(d.data.heroSlides);
-          if (Array.isArray(d.data.testimonials) && d.data.testimonials.length > 0) setTestimonials(d.data.testimonials);
-          if (Array.isArray(d.data.instagramFeed)) setInstagramFeed(d.data.instagramFeed);
-          if (d.data.categoryImages && typeof d.data.categoryImages === 'object') setCategoryImages(d.data.categoryImages);
-        }
+        if (d.success && d.data) { cacheSet('settings', d.data, 60 * 60 * 1000); applySettings(d.data); }
       })
       .catch(() => {});
   }, []);
@@ -340,9 +353,13 @@ export default function HomePage() {
     finally { setBrowseLoading(false); setBrowseInitDone(true); }
   }, [browseLoading]);
 
-  // Initial load
+  // Initial load — restore browse preferences from cookies
   useEffect(() => {
-    fetchBrowse(1, '', 'createdAt:desc', true);
+    const savedCat  = getCookie('tulsi-cat');
+    const savedSort = getCookie('tulsi-sort') || 'createdAt:desc';
+    if (savedCat)  setBrowseCat(savedCat);
+    if (savedSort !== 'createdAt:desc') setBrowseSort(savedSort);
+    fetchBrowse(1, savedCat, savedSort, true);
   }, []);
 
   // Cat / sort change → reset
@@ -353,6 +370,10 @@ export default function HomePage() {
     setBrowseHasMore(true);
     fetchBrowse(1, browseCat, browseSort, true);
   }, [browseCat, browseSort]);
+
+  // Persist browse preferences in cookies (30 days)
+  useEffect(() => { setCookie('tulsi-cat',  browseCat,  30); }, [browseCat]);
+  useEffect(() => { setCookie('tulsi-sort', browseSort, 30); }, [browseSort]);
 
   // IntersectionObserver — load next page when sentinel visible
   useEffect(() => {
