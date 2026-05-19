@@ -461,7 +461,7 @@ export default function AccountPage() {
                       )}
 
                       {/* Return button — only for delivered orders within 3 days */}
-                      {o.status === 'delivered' && withinReturnWindow(o) && !returnedOrders.has(oid) && (
+                      {['delivered', 'shipped'].includes(o.status) && withinReturnWindow(o) && !returnedOrders.has(oid) && (
                         <div className="px-5 py-4 border-t border-gray-100">
                           <button
                             onClick={() => { setReturnModal(oid); setReturnReason(''); setReturnDesc(''); }}
