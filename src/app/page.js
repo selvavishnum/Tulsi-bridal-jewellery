@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import Link from 'next/link';
+import { useState, useEffect, useRef, useCallback } from 'react';import Link from 'next/link';
 import Image from 'next/image';
 import {
   FiHeart, FiShoppingCart, FiShield, FiRefreshCw,
   FiLock, FiStar, FiCalendar, FiArrowRight, FiChevronLeft, FiChevronRight,
-  FiInstagram, FiExternalLink,
+  FiInstagram, FiExternalLink, FiFilter,
 } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
@@ -51,6 +50,31 @@ const CATEGORIES = [
   { key: 'set',        label: 'Bridal Sets', href: '/catalog?category=set',         emoji: '💍', color: 'from-red-50 to-rose-50' },
   { key: 'rentals',    label: 'Rentals',     href: '/rentals',                      emoji: '🗓️', color: 'from-gold-50 to-amber-50' },
 ];
+
+const BROWSE_CATS = [
+  { key: '',              label: 'All' },
+  { key: 'necklace',     label: 'Necklace' },
+  { key: 'earrings',     label: 'Earrings' },
+  { key: 'bangles',      label: 'Bangles' },
+  { key: 'bracelet',     label: 'Bracelet' },
+  { key: 'ring',         label: 'Ring' },
+  { key: 'set',          label: 'Bridal Set' },
+  { key: 'maang-tikka',  label: 'Maang Tikka' },
+  { key: 'jhumka',       label: 'Jhumka' },
+  { key: 'mangalsutra',  label: 'Mangalsutra' },
+  { key: 'anklet',       label: 'Anklet' },
+  { key: 'kada',         label: 'Kada' },
+  { key: 'pendant',      label: 'Pendant' },
+];
+
+const SORT_OPTIONS = [
+  { value: 'createdAt:desc',      label: 'Newest First' },
+  { value: 'price:asc',           label: 'Price: Low to High' },
+  { value: 'price:desc',          label: 'Price: High to Low' },
+  { value: 'ratings.average:desc',label: 'Top Rated' },
+];
+
+const BROWSE_LIMIT = 12;
 
 const TRUST = [
   { icon: FiShield,    title: '100% Authentic',       desc: 'Certified genuine pieces' },
@@ -262,23 +286,26 @@ function ProductCard({ product }) {
 
 /* ── Main Page ── */
 export default function HomePage() {
-  const [products, setProducts] = useState([]);
-  const [loadingProducts, setLoadingProducts] = useState(true);
   const [siteSettings, setSiteSettings] = useState({});
   const [heroSlides, setHeroSlides] = useState([]);
   const [testimonials, setTestimonials] = useState(DEFAULT_TESTIMONIALS);
   const [instagramFeed, setInstagramFeed] = useState([]);
   const [categoryImages, setCategoryImages] = useState({});
 
+  // Infinite scroll state
+  const [browseProducts, setBrowseProducts] = useState([]);
+  const [browsePage, setBrowsePage] = useState(1);
+  const [browseHasMore, setBrowseHasMore] = useState(true);
+  const [browseLoading, setBrowseLoading] = useState(false);
+  const [browseInitDone, setBrowseInitDone] = useState(false);
+  const [browseCat, setBrowseCat] = useState('');
+  const [browseSort, setBrowseSort] = useState('createdAt:desc');
+  const sentinelRef = useRef(null);
+  const browsePageRef = useRef(1);
+
   const waNumber = (siteSettings.whatsapp || siteSettings.phone || DEFAULT_WA).replace(/\D/g, '');
 
   useEffect(() => {
-    fetch('/api/products?limit=8')
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setProducts(d.data.products || []); })
-      .catch(() => {})
-      .finally(() => setLoadingProducts(false));
-
     fetch('/api/admin/settings')
       .then((r) => r.json())
       .then((d) => {
@@ -292,6 +319,58 @@ export default function HomePage() {
       })
       .catch(() => {});
   }, []);
+
+  // Fetch a page of browse products
+  const fetchBrowse = useCallback(async (page, cat, sort, reset = false) => {
+    if (browseLoading) return;
+    setBrowseLoading(true);
+    try {
+      const [sortField, sortDir] = sort.split(':');
+      const params = new URLSearchParams({ page, limit: BROWSE_LIMIT, sort: sortField, order: sortDir });
+      if (cat) params.set('category', cat);
+      const res = await fetch(`/api/products?${params}`);
+      const data = await res.json();
+      if (data.success) {
+        const incoming = data.data.products || [];
+        setBrowseProducts((prev) => reset ? incoming : [...prev, ...incoming]);
+        setBrowseHasMore(page < data.data.pages);
+        browsePageRef.current = page;
+      }
+    } catch {}
+    finally { setBrowseLoading(false); setBrowseInitDone(true); }
+  }, [browseLoading]);
+
+  // Initial load
+  useEffect(() => {
+    fetchBrowse(1, '', 'createdAt:desc', true);
+  }, []);
+
+  // Cat / sort change → reset
+  useEffect(() => {
+    if (!browseInitDone) return;
+    setBrowseProducts([]);
+    setBrowsePage(1);
+    setBrowseHasMore(true);
+    fetchBrowse(1, browseCat, browseSort, true);
+  }, [browseCat, browseSort]);
+
+  // IntersectionObserver — load next page when sentinel visible
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && browseHasMore && !browseLoading) {
+          const next = browsePageRef.current + 1;
+          setBrowsePage(next);
+          fetchBrowse(next, browseCat, browseSort, false);
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [browseHasMore, browseLoading, browseCat, browseSort, fetchBrowse]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -378,22 +457,51 @@ export default function HomePage() {
         );
       })()}
 
-      {/* ── FEATURED PRODUCTS ── */}
-      <section className="py-14 bg-stone-50">
+      {/* ── BROWSE ALL PRODUCTS (Infinite Scroll) ── */}
+      <section className="py-10 bg-stone-50" id="shop">
         <div className="section-container">
-          <div className="flex items-end justify-between mb-10">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
             <div>
-              <p className="text-xs font-bold tracking-[0.35em] uppercase text-wine-700 mb-2">Handpicked for You</p>
-              <h2 className="font-serif text-3xl font-bold text-stone-800">Featured Pieces</h2>
+              <p className="text-xs font-bold tracking-[0.35em] uppercase text-wine-700 mb-1">Our Collection</p>
+              <h2 className="font-serif text-2xl md:text-3xl font-bold text-stone-800">All Products</h2>
             </div>
-            <Link href="/catalog" className="hidden md:flex items-center gap-1.5 text-sm font-semibold text-wine-700 hover:text-wine-800 transition-colors">
-              View All <FiArrowRight />
-            </Link>
+            {/* Sort dropdown */}
+            <div className="relative">
+              <select
+                value={browseSort}
+                onChange={(e) => setBrowseSort(e.target.value)}
+                className="appearance-none pl-3 pr-8 py-2 text-xs font-semibold border border-stone-200 rounded-xl bg-white text-stone-700 outline-none focus:ring-2 focus:ring-wine-300 cursor-pointer"
+              >
+                {SORT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <FiFilter className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 text-xs pointer-events-none" />
+            </div>
           </div>
 
-          {loadingProducts ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5">
-              {Array.from({ length: 8 }).map((_, i) => (
+          {/* Category filter chips — horizontal scroll on mobile */}
+          <div className="flex gap-2 overflow-x-auto pb-3 mb-6 scrollbar-hide snap-x">
+            {BROWSE_CATS.map((c) => (
+              <button
+                key={c.key}
+                onClick={() => setBrowseCat(c.key)}
+                className={`flex-shrink-0 snap-start px-4 py-1.5 rounded-full text-xs font-semibold transition-all border ${
+                  browseCat === c.key
+                    ? 'bg-wine-700 text-white border-wine-700 shadow-sm'
+                    : 'bg-white text-stone-600 border-stone-200 hover:border-wine-400 hover:text-wine-700'
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Product Grid */}
+          {!browseInitDone ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5">
+              {Array.from({ length: BROWSE_LIMIT }).map((_, i) => (
                 <div key={i}>
                   <div className="aspect-square skeleton rounded-2xl mb-3" />
                   <div className="h-2.5 skeleton rounded w-1/3 mb-2" />
@@ -402,22 +510,40 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
-          ) : products.length > 0 ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5">
-              {products.map((p) => <ProductCard key={p._id || p.id} product={p} />)}
+          ) : browseProducts.length === 0 ? (
+            <div className="text-center py-20">
+              <p className="text-5xl mb-4">💍</p>
+              <p className="text-stone-400 text-sm font-medium">No products found in this category.</p>
             </div>
           ) : (
-            <div className="text-center py-20">
-              <p className="text-6xl mb-5">💍</p>
-              <p className="text-stone-400 text-sm font-medium">Products coming soon.</p>
-            </div>
-          )}
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5">
+                {browseProducts.map((p) => (
+                  <ProductCard key={(p._id || p.id) + browseCat} product={p} />
+                ))}
+              </div>
 
-          <div className="text-center mt-12">
-            <Link href="/catalog" className="inline-flex items-center gap-2 px-10 py-3.5 border border-wine-700 text-wine-700 text-sm font-semibold hover:bg-wine-700 hover:text-white transition-all duration-300 tracking-luxury uppercase rounded-xl">
-              View Full Catalogue <FiArrowRight />
-            </Link>
-          </div>
+              {/* Loading skeletons for next batch */}
+              {browseLoading && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mt-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i}>
+                      <div className="aspect-square skeleton rounded-2xl mb-3" />
+                      <div className="h-2.5 skeleton rounded w-1/3 mb-2" />
+                      <div className="h-3.5 skeleton rounded w-3/4" />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Sentinel — IntersectionObserver target */}
+              {browseHasMore && <div ref={sentinelRef} className="h-10" />}
+
+              {!browseHasMore && browseProducts.length > 0 && (
+                <p className="text-center text-stone-400 text-xs mt-8 tracking-widest uppercase">You've seen all products</p>
+              )}
+            </>
+          )}
         </div>
       </section>
 
