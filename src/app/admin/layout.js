@@ -54,8 +54,9 @@ const NAV_GROUPS = [
   {
     label: 'Analytics',
     items: [
-      { href: '/admin/reports', label: 'Reports', icon: FiBarChart2 },
-      { href: '/admin/sales',   label: 'Sales',   icon: FiTrendingUp },
+      { href: '/admin/analytics', label: 'Visitor Analytics', icon: FiUsers },
+      { href: '/admin/reports',   label: 'Reports',           icon: FiBarChart2 },
+      { href: '/admin/sales',     label: 'Sales',             icon: FiTrendingUp },
     ],
   },
   {

@@ -63,8 +63,7 @@ export default function AdminProductsPage() {
 
   function generateSku() {
     const prefix = form.category ? form.category.slice(0, 3).toUpperCase() : 'PRD';
-    const rand = Math.floor(1000 + Math.random() * 9000);
-    upd('sku', `TBJ-${prefix}-${rand}`);
+    upd('sku', `TBJ-${prefix}-${Date.now().toString(36).toUpperCase()}`);
   }
 
   function handlePriceChange(val) {
