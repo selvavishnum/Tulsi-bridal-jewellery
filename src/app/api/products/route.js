@@ -74,6 +74,12 @@ export async function POST(request) {
     if (!body.slug) body.slug = slugify(body.name);
     if (!body.sku) body.sku = `${(body.category || 'PRD').substring(0, 3).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
 
+    // Reject duplicate SKU
+    const skuCheck = await db.collection('products').where('sku', '==', body.sku).limit(1).get();
+    if (!skuCheck.empty) {
+      return NextResponse.json({ success: false, message: `SKU "${body.sku}" already exists. Use a unique SKU.` }, { status: 409 });
+    }
+
     const productRef = db.collection('products').doc();
     const productData = {
       name: body.name,

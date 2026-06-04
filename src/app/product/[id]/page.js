@@ -191,96 +191,124 @@ function ReviewForm({ productId, onSubmitted }) {
 /* ── Image Zoom Modal ── */
 function ImageZoomModal({ images, startIndex, productName, onClose }) {
   const [current, setCurrent] = useState(startIndex);
-  const touchStartX = useRef(null);
+  const [scale, setScale]     = useState(1);
+  const touchStartX   = useRef(null);
+  const lastPinchDist = useRef(null);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
 
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') onClose();
-      if (e.key === 'ArrowRight') setCurrent((c) => Math.min(images.length - 1, c + 1));
-      if (e.key === 'ArrowLeft')  setCurrent((c) => Math.max(0, c - 1));
+      if (e.key === 'ArrowRight') { setScale(1); setCurrent((c) => Math.min(images.length - 1, c + 1)); }
+      if (e.key === 'ArrowLeft')  { setScale(1); setCurrent((c) => Math.max(0, c - 1)); }
     }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [images.length, onClose]);
 
-  function onTouchStart(e) { touchStartX.current = e.touches[0].clientX; }
-  function onTouchEnd(e) {
-    if (touchStartX.current === null) return;
-    const delta = e.changedTouches[0].clientX - touchStartX.current;
-    if (delta < -50) setCurrent((c) => Math.min(images.length - 1, c + 1));
-    if (delta >  50) setCurrent((c) => Math.max(0, c - 1));
-    touchStartX.current = null;
+  function onTouchStart(e) {
+    if (e.touches.length === 1) touchStartX.current = e.touches[0].clientX;
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastPinchDist.current = Math.sqrt(dx * dx + dy * dy);
+    }
   }
+  function onTouchMove(e) {
+    if (e.touches.length === 2 && lastPinchDist.current) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      setScale((s) => Math.min(4, Math.max(1, s * (dist / lastPinchDist.current))));
+      lastPinchDist.current = dist;
+    }
+  }
+  function onTouchEnd(e) {
+    if (scale <= 1 && touchStartX.current !== null && e.changedTouches.length === 1) {
+      const delta = e.changedTouches[0].clientX - touchStartX.current;
+      if (delta < -60) { setScale(1); setCurrent((c) => Math.min(images.length - 1, c + 1)); }
+      if (delta >  60) { setScale(1); setCurrent((c) => Math.max(0, c - 1)); }
+    }
+    touchStartX.current = null;
+    lastPinchDist.current = null;
+  }
+  function onDoubleTap() { setScale((s) => s > 1 ? 1 : 2.5); }
 
-  const prev = () => setCurrent((c) => Math.max(0, c - 1));
-  const next = () => setCurrent((c) => Math.min(images.length - 1, c + 1));
+  const prev = () => { setScale(1); setCurrent((c) => Math.max(0, c - 1)); };
+  const next = () => { setScale(1); setCurrent((c) => Math.min(images.length - 1, c + 1)); };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white" onClick={onClose}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 bg-white z-10" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex flex-col bg-black">
+      {/* Gradient top bar */}
+      <div className="absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/70 to-transparent px-4 pt-4 pb-10 flex items-start justify-between">
         <div>
-          <p className="font-serif font-bold text-stone-800 text-base leading-tight">{productName}</p>
-          <p className="text-xs text-stone-400 mt-0.5">{current + 1} / {images.length}</p>
+          <p className="text-white font-semibold text-sm line-clamp-1">{productName}</p>
+          <p className="text-white/50 text-xs mt-0.5">{current + 1} / {images.length}</p>
         </div>
-        <button onClick={onClose} className="w-10 h-10 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-600 text-lg font-light transition">
+        <button onClick={onClose}
+          className="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-sm flex items-center justify-center text-white text-2xl transition leading-none">
           ×
         </button>
       </div>
 
-      {/* Main image */}
+      {/* Image */}
       <div
-        className="flex-1 relative flex items-center justify-center bg-white px-4"
-        onClick={(e) => e.stopPropagation()}
+        className="flex-1 relative flex items-center justify-center overflow-hidden"
         onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
+        onDoubleClick={onDoubleTap}
       >
-        <div className="relative w-full max-w-lg aspect-square">
-          <Image
-            src={images[current]}
-            alt={`${productName} — image ${current + 1}`}
-            fill
-            className="object-contain"
-            sizes="(max-width: 768px) 100vw, 600px"
-            priority
-          />
-        </div>
+        <img
+          src={images[current]}
+          alt={`${productName} — ${current + 1}`}
+          className="max-w-full max-h-full object-contain select-none transition-transform duration-200"
+          style={{ transform: `scale(${scale})` }}
+          draggable={false}
+        />
 
-        {/* Prev arrow */}
         {current > 0 && (
           <button onClick={prev}
-            className="absolute left-2 top-1/2 -translate-y-1/2 w-11 h-11 bg-white shadow-lg rounded-full flex items-center justify-center text-stone-700 hover:bg-stone-50 border border-stone-100 transition text-xl z-10">
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/15 hover:bg-white/25 backdrop-blur-sm rounded-full flex items-center justify-center text-white text-2xl transition z-10">
             ‹
           </button>
         )}
-        {/* Next arrow */}
         {current < images.length - 1 && (
           <button onClick={next}
-            className="absolute right-2 top-1/2 -translate-y-1/2 w-11 h-11 bg-white shadow-lg rounded-full flex items-center justify-center text-stone-700 hover:bg-stone-50 border border-stone-100 transition text-xl z-10">
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/15 hover:bg-white/25 backdrop-blur-sm rounded-full flex items-center justify-center text-white text-2xl transition z-10">
             ›
           </button>
         )}
+        {scale > 1 && (
+          <p className="absolute bottom-28 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-3 py-1 rounded-full pointer-events-none">
+            Double-tap to reset
+          </p>
+        )}
       </div>
 
-      {/* Thumbnail strip */}
-      {images.length > 1 && (
-        <div className="bg-white border-t border-stone-100 px-4 py-3" onClick={(e) => e.stopPropagation()}>
-          <div className="flex gap-2 overflow-x-auto justify-center">
+      {/* Bottom: dots + thumbnails */}
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-4 pt-10 pb-5">
+        <div className="flex justify-center gap-1.5 mb-3">
+          {images.map((_, i) => (
+            <button key={i} onClick={() => { setScale(1); setCurrent(i); }}
+              className={`rounded-full transition-all duration-300 ${i === current ? 'w-5 h-1.5 bg-white' : 'w-1.5 h-1.5 bg-white/35'}`} />
+          ))}
+        </div>
+        {images.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto justify-center pb-1 scrollbar-hide">
             {images.map((img, i) => (
-              <button key={i} onClick={() => setCurrent(i)}
-                className={`relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${i === current ? 'border-wine-600 shadow-sm scale-105' : 'border-stone-200 opacity-60 hover:opacity-100'}`}>
-                <Image src={img} alt={`Thumb ${i + 1}`} fill className="object-cover" />
+              <button key={i} onClick={() => { setScale(1); setCurrent(i); }}
+                className={`w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${i === current ? 'border-white opacity-100' : 'border-white/20 opacity-45 hover:opacity-75'}`}>
+                <img src={img} alt={`thumb ${i + 1}`} className="w-full h-full object-cover" />
               </button>
             ))}
           </div>
-          {/* Dot indicators */}
-          <div className="flex justify-center gap-1.5 mt-2.5">
-            {images.map((_, i) => (
-              <span key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === current ? 'bg-wine-600 scale-125' : 'bg-stone-300'}`} />
-            ))}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -305,6 +333,17 @@ export default function ProductDetailPage() {
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [tryOnOpen, setTryOnOpen] = useState(false);
+  const mobileSwipeX = useRef(null);
+
+  function onMobileSwipeStart(e) { mobileSwipeX.current = e.touches[0].clientX; }
+  function onMobileSwipeEnd(e) {
+    if (mobileSwipeX.current === null) return;
+    const delta = e.changedTouches[0].clientX - mobileSwipeX.current;
+    const imgs = product?.images || [];
+    if (delta < -50 && selectedImage < imgs.length - 1) setSelectedImage((i) => i + 1);
+    if (delta >  50 && selectedImage > 0)               setSelectedImage((i) => i - 1);
+    mobileSwipeX.current = null;
+  }
 
   useEffect(() => {
     fetch(`/api/products/${id}`)
@@ -415,6 +454,64 @@ export default function ProductDetailPage() {
         </Suspense>
       )}
 
+      {/* ── MOBILE FULL-WIDTH IMAGE GALLERY ── */}
+      {product.images?.length > 0 && (
+        <div className="lg:hidden bg-white">
+          <div
+            className="relative w-full overflow-hidden bg-stone-100 cursor-zoom-in"
+            style={{ aspectRatio: '1 / 1' }}
+            onClick={() => { setZoomIndex(selectedImage); setZoomOpen(true); }}
+            onTouchStart={onMobileSwipeStart}
+            onTouchEnd={onMobileSwipeEnd}
+          >
+            <img
+              src={product.images[selectedImage]}
+              alt={product.name}
+              className="w-full h-full object-cover"
+            />
+            {discount > 0 && (
+              <span className="absolute top-4 left-4 badge-sale text-sm px-3 py-1.5 z-10">-{discount}% OFF</span>
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); share(); }}
+              className="absolute top-4 right-4 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-stone-500 hover:text-wine-700 shadow-sm transition z-10"
+            >
+              <FiShare2 className="text-sm" />
+            </button>
+            <span className="absolute bottom-3 right-3 bg-black/45 text-white text-[10px] px-2.5 py-1 rounded-full pointer-events-none z-10">
+              Tap to zoom
+            </span>
+            {product.images.length > 1 && (
+              <span className="absolute bottom-3 left-3 bg-black/45 text-white text-[10px] px-2.5 py-1 rounded-full pointer-events-none z-10">
+                {selectedImage + 1} / {product.images.length}
+              </span>
+            )}
+          </div>
+          {/* Dot indicators */}
+          {product.images.length > 1 && (
+            <div className="flex items-center gap-3 px-4 py-3 bg-white">
+              <div className="flex gap-1.5 flex-1 justify-center">
+                {product.images.map((_, i) => (
+                  <button key={i} onClick={() => setSelectedImage(i)}
+                    className={`rounded-full transition-all duration-300 ${i === selectedImage ? 'w-5 h-1.5 bg-wine-700' : 'w-1.5 h-1.5 bg-stone-300'}`} />
+                ))}
+              </div>
+            </div>
+          )}
+          {/* Thumbnail strip */}
+          {product.images.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto px-4 pb-3 scrollbar-hide">
+              {product.images.map((img, i) => (
+                <button key={i} onClick={() => setSelectedImage(i)}
+                  className={`w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${selectedImage === i ? 'border-wine-600 shadow-sm' : 'border-transparent opacity-55 hover:opacity-90'}`}>
+                  <img src={img} alt={`View ${i + 1}`} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Breadcrumb */}
       <div className="bg-white border-b border-stone-100">
         <div className="section-container py-3 flex items-center gap-2 text-xs text-stone-400">
@@ -437,8 +534,8 @@ export default function ProductDetailPage() {
         <div className="bg-white rounded-2xl shadow-card overflow-hidden mb-8">
           <div className="grid lg:grid-cols-2">
 
-            {/* ── IMAGE GALLERY ── */}
-            <div className="p-6 lg:p-8 bg-stone-50/60">
+            {/* ── IMAGE GALLERY — desktop only (mobile shown full-width above) ── */}
+            <div className="hidden lg:block p-8 bg-stone-50/60">
               {/* Main image with slide arrows */}
               <div
                 className="relative aspect-square rounded-2xl overflow-hidden bg-white border border-stone-100 mb-3 group cursor-zoom-in"

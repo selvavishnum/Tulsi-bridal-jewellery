@@ -42,7 +42,13 @@ export async function PATCH(request) {
     const db = getDB();
     const ref = db.collection('products').doc(id);
     const updateData = { updatedAt: new Date().toISOString() };
-    if (sku !== undefined) updateData.sku = sku;
+    if (sku !== undefined) {
+      const skuCheck = await db.collection('products').where('sku', '==', sku).limit(1).get();
+      if (!skuCheck.empty && skuCheck.docs[0].id !== id) {
+        return NextResponse.json({ success: false, message: `SKU "${sku}" already exists on another product.` }, { status: 409 });
+      }
+      updateData.sku = sku;
+    }
     if (mrp !== undefined) updateData.price = mrp;
     if (discPct !== undefined) {
       updateData.discPct = discPct;
