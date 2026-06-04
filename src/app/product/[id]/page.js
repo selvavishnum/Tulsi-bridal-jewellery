@@ -6,7 +6,7 @@ import { useSession } from 'next-auth/react';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
-  FiShoppingCart, FiHeart, FiShare2, FiStar, FiArrowLeft,
+  FiShoppingCart, FiHeart, FiShare2, FiStar,
   FiCalendar, FiShield, FiCheckCircle, FiTruck, FiRefreshCw,
   FiUser, FiSend, FiCamera,
 } from 'react-icons/fi';
@@ -458,8 +458,7 @@ export default function ProductDetailPage() {
       {product.images?.length > 0 && (
         <div className="lg:hidden bg-white">
           <div
-            className="relative w-full overflow-hidden bg-stone-100 cursor-zoom-in"
-            style={{ aspectRatio: '1 / 1' }}
+            className="relative w-full overflow-hidden bg-white cursor-zoom-in"
             onClick={() => { setZoomIndex(selectedImage); setZoomOpen(true); }}
             onTouchStart={onMobileSwipeStart}
             onTouchEnd={onMobileSwipeEnd}
@@ -467,7 +466,7 @@ export default function ProductDetailPage() {
             <img
               src={product.images[selectedImage]}
               alt={product.name}
-              className="w-full h-full object-cover"
+              className="w-full h-auto object-contain"
             />
             {discount > 0 && (
               <span className="absolute top-4 left-4 badge-sale text-sm px-3 py-1.5 z-10">-{discount}% OFF</span>
@@ -512,24 +511,7 @@ export default function ProductDetailPage() {
         </div>
       )}
 
-      {/* Breadcrumb */}
-      <div className="bg-white border-b border-stone-100">
-        <div className="section-container py-3 flex items-center gap-2 text-xs text-stone-400">
-          <Link href="/" className="hover:text-wine-700 transition">Home</Link>
-          <span>/</span>
-          <Link href="/shop" className="hover:text-wine-700 transition">Shop</Link>
-          <span>/</span>
-          <span className="text-stone-600 capitalize">{product.category}</span>
-          <span>/</span>
-          <span className="text-stone-400 line-clamp-1">{product.name}</span>
-        </div>
-      </div>
-
       <div className="section-container py-8">
-
-        <button onClick={() => router.back()} className="flex items-center gap-2 text-stone-400 hover:text-wine-700 mb-6 transition text-sm font-medium">
-          <FiArrowLeft /> Back
-        </button>
 
         <div className="bg-white rounded-2xl shadow-card overflow-hidden mb-8">
           <div className="grid lg:grid-cols-2">
