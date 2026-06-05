@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiX, FiUpload, FiImage, FiPackage } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
+import { compressImage } from '@/lib/imageCompress';
 import Badge from '@/components/ui/Badge';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
@@ -126,8 +127,9 @@ export default function AdminProductsPage() {
     if (!file) return;
     setUploading(true);
     try {
+      const compressed = await compressImage(file);
       const fd = new FormData();
-      fd.append('file', file);
+      fd.append('file', compressed);
       const res = await fetch('/api/upload', { method: 'POST', body: fd });
       const data = await res.json();
       if (data.success && data.data?.url) {
@@ -136,8 +138,8 @@ export default function AdminProductsPage() {
       } else {
         toast.error(data.message || 'Upload failed');
       }
-    } catch {
-      toast.error('Upload failed');
+    } catch (e) {
+      toast.error(e.message || 'Upload failed');
     } finally { setUploading(false); }
   }
 

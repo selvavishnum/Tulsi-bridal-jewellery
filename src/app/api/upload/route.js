@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { uploadImage } from '@/lib/cloudinary';
 import { requireAdmin } from '@/lib/adminCollection';
 
+export const maxDuration = 60;
+
 export async function POST(request) {
   try {
     const session = await requireAdmin();
