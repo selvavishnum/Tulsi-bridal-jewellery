@@ -10,7 +10,7 @@ export async function uploadImage(dataUrl, folder = 'tulsi-bridal') {
   const result = await cloudinary.uploader.upload(dataUrl, {
     folder,
     resource_type: 'image',
-    transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+    // No quality transformation — store at full quality so zoom stays sharp
   });
   return { url: result.secure_url, public_id: result.public_id, secure_url: result.secure_url };
 }

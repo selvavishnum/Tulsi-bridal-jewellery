@@ -1,12 +1,13 @@
 /**
  * Compress + resize an image file client-side before upload.
- * Reduces phone camera photos (3–8 MB) to ~200–400 KB.
+ * Keeps high quality for jewellery zoom — resizes only if extremely large,
+ * preserves 94% JPEG quality so zooming stays sharp.
  * @param {File} file - original image file
- * @param {number} maxPx - max width or height in pixels (default 1400)
- * @param {number} quality - JPEG quality 0–1 (default 0.85)
+ * @param {number} maxPx - max width or height in pixels (default 2800)
+ * @param {number} quality - JPEG quality 0–1 (default 0.94)
  * @returns {Promise<File>} compressed JPEG file
  */
-export function compressImage(file, maxPx = 1400, quality = 0.85) {
+export function compressImage(file, maxPx = 2800, quality = 0.94) {
   return new Promise((resolve) => {
     const img = new window.Image();
     const url = URL.createObjectURL(file);
@@ -28,7 +29,7 @@ export function compressImage(file, maxPx = 1400, quality = 0.85) {
         quality
       );
     };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); }; // fallback: use original
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
     img.src = url;
   });
 }
