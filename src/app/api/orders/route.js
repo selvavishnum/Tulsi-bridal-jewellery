@@ -103,6 +103,31 @@ export async function POST(request) {
     };
     await orderRef.set(orderData);
 
+    // Save shipping address to user's saved addresses (max 3, newest first)
+    if (session?.user?.id) {
+      const userRef = db.collection('users').doc(session.user.id);
+      const userDoc = await userRef.get().catch(() => null);
+      if (userDoc) {
+        const existing = userDoc.exists ? (userDoc.data().savedAddresses || []) : [];
+        const isDup = existing.some(
+          (a) => a.street === normalizedAddress.street && a.pincode === normalizedAddress.pincode
+        );
+        if (!isDup) {
+          const newAddr = {
+            id: Date.now().toString(),
+            fullName: normalizedAddress.name || '',
+            phone: normalizedAddress.phone || '',
+            street: normalizedAddress.street || '',
+            city: normalizedAddress.city || '',
+            state: normalizedAddress.state || '',
+            pincode: normalizedAddress.pincode || '',
+            savedAt: new Date().toISOString(),
+          };
+          await userRef.update({ savedAddresses: [newAddr, ...existing].slice(0, 3) }).catch(() => {});
+        }
+      }
+    }
+
     // Award loyalty points — ₹100 = 1 point
     if (session?.user?.id) {
       const pointsEarned = Math.floor(Number(total) / 100);

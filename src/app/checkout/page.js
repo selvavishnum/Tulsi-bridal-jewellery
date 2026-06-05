@@ -17,6 +17,10 @@ export default function CheckoutPage() {
   const [loyaltyEnabled, setLoyaltyEnabled] = useState(false);
   const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
   const [redeemingPoints, setRedeeming] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('razorpay');
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [addrChoice, setAddrChoice] = useState('new');
+  const [pincodeLoading, setPincodeLoading] = useState(false);
   const [form, setForm] = useState({
     fullName: session?.user?.name || '',
     phone: '',
@@ -39,15 +43,62 @@ export default function CheckoutPage() {
     fetch('/api/admin/settings').then((r) => r.json()).then((d) => {
       if (d.success) setLoyaltyEnabled(!!d.data?.loyaltyEnabled);
     }).catch(() => {});
+    fetch('/api/user/address').then((r) => r.json()).then((d) => {
+      if (d.success && d.data.length > 0) {
+        setSavedAddresses(d.data);
+        setAddrChoice('saved-0');
+        const a = d.data[0];
+        setForm((prev) => ({
+          ...prev,
+          fullName: a.fullName || prev.fullName,
+          phone: a.phone || prev.phone,
+          street: a.street,
+          city: a.city,
+          state: a.state,
+          pincode: a.pincode,
+        }));
+      }
+    }).catch(() => {});
   }, [status]);
+
+  useEffect(() => {
+    if (!addrChoice.startsWith('saved-')) return;
+    const idx = parseInt(addrChoice.split('-')[1]);
+    const a = savedAddresses[idx];
+    if (!a) return;
+    setForm((prev) => ({
+      ...prev,
+      fullName: a.fullName || prev.fullName,
+      phone: a.phone || prev.phone,
+      street: a.street,
+      city: a.city,
+      state: a.state,
+      pincode: a.pincode,
+    }));
+  }, [addrChoice, savedAddresses]);
 
   if (status === 'loading' || status === 'unauthenticated') {
     return <div className="min-h-screen flex items-center justify-center"><LoadingSpinner size="lg" /></div>;
   }
-  const [paymentMethod, setPaymentMethod] = useState('razorpay');
 
   function updateForm(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handlePincodeChange(val) {
+    updateForm('pincode', val);
+    if (val.length === 6 && /^\d{6}$/.test(val)) {
+      setPincodeLoading(true);
+      try {
+        const res = await fetch(`https://api.postalpincode.in/pincode/${val}`);
+        const data = await res.json();
+        if (data[0]?.Status === 'Success' && data[0].PostOffice?.length > 0) {
+          const po = data[0].PostOffice[0];
+          setForm((prev) => ({ ...prev, city: po.District, state: po.State }));
+        }
+      } catch {}
+      finally { setPincodeLoading(false); }
+    }
   }
 
   async function redeemLoyaltyPoints() {
@@ -77,7 +128,6 @@ export default function CheckoutPage() {
     setLoading(true);
 
     try {
-      // Create order
       const orderItems = items.map((i) => ({
         product: i._id || i.id,
         name: i.name,
@@ -111,7 +161,6 @@ export default function CheckoutPage() {
         return;
       }
 
-      // Razorpay
       const payRes = await fetch('/api/payments/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -178,6 +227,51 @@ export default function CheckoutPage() {
                 {/* Shipping */}
                 <div className="bg-white rounded-xl p-6 shadow-sm">
                   <h2 className="font-semibold text-gray-700 mb-4">Shipping Details</h2>
+
+                  {/* Saved address cards */}
+                  {savedAddresses.length > 0 && (
+                    <div className="mb-5 space-y-2">
+                      <p className="text-xs text-gray-500 mb-2">Saved addresses</p>
+                      {savedAddresses.map((a, i) => (
+                        <label
+                          key={a.id || i}
+                          className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition ${addrChoice === `saved-${i}` ? 'border-gold-600 bg-gold-50' : 'border-gray-200 hover:border-gray-300'}`}
+                        >
+                          <input
+                            type="radio"
+                            name="addrChoice"
+                            value={`saved-${i}`}
+                            checked={addrChoice === `saved-${i}`}
+                            onChange={() => setAddrChoice(`saved-${i}`)}
+                            className="accent-gold-600 mt-1 flex-shrink-0"
+                          />
+                          <div className="text-sm min-w-0">
+                            <p className="font-semibold text-gray-800">{a.fullName}</p>
+                            <p className="text-gray-600 text-xs mt-0.5">{a.street}, {a.city}, {a.state} — {a.pincode}</p>
+                            {a.phone && <p className="text-gray-400 text-xs">{a.phone}</p>}
+                          </div>
+                        </label>
+                      ))}
+                      <label
+                        className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition ${addrChoice === 'new' ? 'border-gold-600 bg-gold-50' : 'border-gray-200 hover:border-gray-300'}`}
+                      >
+                        <input
+                          type="radio"
+                          name="addrChoice"
+                          value="new"
+                          checked={addrChoice === 'new'}
+                          onChange={() => {
+                            setAddrChoice('new');
+                            setForm((prev) => ({ ...prev, street: '', city: '', state: '', pincode: '', phone: '' }));
+                          }}
+                          className="accent-gold-600 flex-shrink-0"
+                        />
+                        <span className="text-sm font-semibold text-gray-700">+ Use a different address</span>
+                      </label>
+                    </div>
+                  )}
+
+                  {/* Address form */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="col-span-2 md:col-span-1">
                       <label className="text-xs text-gray-500 mb-1 block">Full Name *</label>
@@ -195,17 +289,29 @@ export default function CheckoutPage() {
                       <label className="text-xs text-gray-500 mb-1 block">Street Address *</label>
                       <input required value={form.street} onChange={(e) => updateForm('street', e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
                     </div>
-                    <div>
+                    <div className="col-span-2 md:col-span-1">
+                      <label className="text-xs text-gray-500 mb-1 block">Pincode *</label>
+                      <div className="relative">
+                        <input
+                          required
+                          value={form.pincode}
+                          onChange={(e) => handlePincodeChange(e.target.value)}
+                          maxLength={6}
+                          inputMode="numeric"
+                          className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500"
+                        />
+                        {pincodeLoading && (
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">Loading…</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="col-span-2 md:col-span-1">
                       <label className="text-xs text-gray-500 mb-1 block">City *</label>
                       <input required value={form.city} onChange={(e) => updateForm('city', e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
                     </div>
                     <div>
                       <label className="text-xs text-gray-500 mb-1 block">State *</label>
                       <input required value={form.state} onChange={(e) => updateForm('state', e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Pincode *</label>
-                      <input required value={form.pincode} onChange={(e) => updateForm('pincode', e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
                     </div>
                   </div>
                 </div>
