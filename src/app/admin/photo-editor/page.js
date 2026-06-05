@@ -6,6 +6,22 @@ import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
 /* ── canvas helpers ── */
+function resizeImage(dataUrl, maxPx) {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.round(img.naturalWidth * scale);
+      const h = Math.round(img.naturalHeight * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.92));
+    };
+    img.src = dataUrl;
+  });
+}
+
 function applyAdjustments(src, { brightness, contrast, saturation, warmth, sharpness }) {
   return new Promise((resolve) => {
     const img = new window.Image();
@@ -94,11 +110,17 @@ export default function AdminPhotoEditorPage() {
     if (!original) return;
     setRemovingBg(true);
     try {
-      // Convert dataURL to blob
-      const blob = await fetch(original).then((r) => r.blob());
+      // Resize to max 1200px before sending — keeps payload well under Vercel's 4.5MB limit
+      const resized = await resizeImage(original, 1200);
+      const blob = await fetch(resized).then((r) => r.blob());
       const fd = new FormData();
-      fd.append('image', blob, 'product.png');
+      fd.append('image', blob, 'product.jpg');
       const res = await fetch('/api/admin/remove-bg', { method: 'POST', body: fd });
+      // Handle non-JSON error responses (e.g. 413 Request Entity Too Large)
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(`Server error (${res.status}). Image may be too large.`);
+      }
       const data = await res.json();
       if (!data.success) throw new Error(data.message);
       setPreview(data.dataUrl);
