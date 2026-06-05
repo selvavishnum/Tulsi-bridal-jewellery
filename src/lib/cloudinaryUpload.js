@@ -1,4 +1,4 @@
-const CLOUD_NAME    = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+const CLOUD_NAME    = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'djolb5idc';
 const UPLOAD_PRESET = 'tulsi_products';
 
 /**
@@ -10,8 +10,6 @@ const UPLOAD_PRESET = 'tulsi_products';
  * @returns {{ url: string, public_id: string }}
  */
 export async function uploadToCloudinary(file, folder = 'tulsi-bridal/products', onProgress) {
-  if (!CLOUD_NAME) throw new Error('NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME not set');
-
   const formData = new FormData();
   formData.append('file', file);
   formData.append('upload_preset', UPLOAD_PRESET);
@@ -31,8 +29,12 @@ export async function uploadToCloudinary(file, folder = 'tulsi-bridal/products',
         const data = JSON.parse(xhr.responseText);
         resolve({ url: data.secure_url, public_id: data.public_id });
       } else {
-        const err = JSON.parse(xhr.responseText);
-        reject(new Error(err.error?.message || 'Upload failed'));
+        try {
+          const err = JSON.parse(xhr.responseText);
+          reject(new Error(err.error?.message || 'Upload failed'));
+        } catch {
+          reject(new Error(`Upload failed (${xhr.status})`));
+        }
       }
     });
 
