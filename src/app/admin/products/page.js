@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiX, FiUpload, FiImage, FiPackage } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
-import { compressImage } from '@/lib/imageCompress';
+import { uploadToCloudinary } from '@/lib/cloudinaryUpload';
 import Badge from '@/components/ui/Badge';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
@@ -46,6 +46,7 @@ export default function AdminProductsPage() {
   const [search, setSearch]       = useState('');
   const [catFilter, setCat]       = useState('');
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [discountAmt, setDiscountAmt] = useState('');
   const fileRef = useRef(null);
 
@@ -126,21 +127,14 @@ export default function AdminProductsPage() {
   async function uploadImage(file) {
     if (!file) return;
     setUploading(true);
+    setUploadProgress(0);
     try {
-      const compressed = await compressImage(file);
-      const fd = new FormData();
-      fd.append('file', compressed);
-      const res = await fetch('/api/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (data.success && data.data?.url) {
-        upd('images', [...form.images, data.data.url]);
-        toast.success('Image uploaded!');
-      } else {
-        toast.error(data.message || 'Upload failed');
-      }
+      const { url } = await uploadToCloudinary(file, 'tulsi-bridal/products', setUploadProgress);
+      upd('images', [...form.images, url]);
+      toast.success('Image uploaded — full quality!');
     } catch (e) {
       toast.error(e.message || 'Upload failed');
-    } finally { setUploading(false); }
+    } finally { setUploading(false); setUploadProgress(0); }
   }
 
   async function handleSave() {
@@ -489,11 +483,16 @@ export default function AdminProductsPage() {
                   type="button"
                   onClick={() => fileRef.current?.click()}
                   disabled={uploading}
-                  className="flex items-center gap-2 px-4 py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 hover:border-gold-400 hover:text-gold-600 transition w-full justify-center disabled:opacity-50 mb-3"
+                  className="flex items-center gap-2 px-4 py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 hover:border-gold-400 hover:text-gold-600 transition w-full justify-center disabled:opacity-50 mb-2"
                 >
                   {uploading ? <LoadingSpinner size="sm" /> : <FiUpload />}
-                  {uploading ? 'Uploading…' : 'Upload Image'}
+                  {uploading ? `Uploading… ${uploadProgress}%` : 'Upload Image (Full Quality)'}
                 </button>
+                {uploading && (
+                  <div className="w-full bg-gray-100 rounded-full h-1.5 mb-3 overflow-hidden">
+                    <div className="bg-gold-500 h-full rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                  </div>
+                )}
 
                 {/* Image preview grid */}
                 {form.images.length > 0 && (
