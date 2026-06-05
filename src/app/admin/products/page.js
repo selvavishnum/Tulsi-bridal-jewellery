@@ -120,7 +120,7 @@ export default function AdminProductsPage() {
       isNew: p.isNew || false,
       tryOnImage: p.tryOnImage || '',
     });
-    setEditId(p._id);
+    setEditId(p.id || p._id);
     setModalOpen(true);
   }
 
@@ -245,7 +245,7 @@ export default function AdminProductsPage() {
                     </td>
                   </tr>
                 ) : products.map((p) => (
-                  <tr key={p._id} className="hover:bg-gray-50/70 transition">
+                  <tr key={p.id || p._id} className="hover:bg-gray-50/70 transition">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-11 h-11 rounded-xl overflow-hidden bg-cream-100 flex-shrink-0">
@@ -292,7 +292,7 @@ export default function AdminProductsPage() {
                           <FiEdit2 className="text-sm" />
                         </button>
                         <button
-                          onClick={() => handleDelete(p._id)}
+                          onClick={() => handleDelete(p.id || p._id)}
                           className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition"
                           title="Delete"
                         >
