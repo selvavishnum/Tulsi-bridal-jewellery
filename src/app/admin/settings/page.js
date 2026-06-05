@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { FiSettings, FiSave, FiPlus, FiTrash2, FiImage, FiUpload } from 'react-icons/fi';
 import Image from 'next/image';
 import toast from 'react-hot-toast';
-import { compressImage } from '@/lib/imageCompress';
+import { uploadToCloudinary } from '@/lib/cloudinaryUpload';
 
 /* ─────────────────────────── Toggle component ─────────────────────────── */
 function Toggle({ value, onChange, label, description }) {
@@ -201,13 +201,9 @@ function CategoryImagesPanel({ images, onChange, shape, size, onShapeChange, onS
   async function handleUpload(key, file) {
     setUploading(key);
     try {
-      const compressed = await compressImage(file);
-      const fd = new FormData();
-      fd.append('file', compressed);
-      const res = await fetch('/api/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (data.success) { onChange({ ...images, [key]: data.data.url }); toast.success('Photo uploaded!'); }
-      else toast.error(data.message || 'Upload failed');
+      const { url } = await uploadToCloudinary(file, 'tulsi-bridal/categories');
+      onChange({ ...images, [key]: url });
+      toast.success('Photo uploaded — full quality!');
     } catch (e) { toast.error(e.message || 'Upload failed'); }
     finally { setUploading(null); }
   }
