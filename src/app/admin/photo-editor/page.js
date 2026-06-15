@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from 'react';
 import { FiUploadCloud, FiDownload, FiImage, FiZap, FiSliders, FiCheck, FiScissors, FiPackage } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import { uploadToFirebase } from '@/lib/firebaseStorage';
 
 /* ── canvas helpers ── */
 function resizeImage(dataUrl, maxPx) {
@@ -140,12 +141,9 @@ export default function AdminPhotoEditorPage() {
     setUploading(true);
     try {
       const blob = await fetch(preview).then((r) => r.blob());
-      const fd = new FormData();
-      fd.append('file', blob, 'tryon.png');
-      const res = await fetch('/api/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.message);
-      setTryOnUrl(data.data.url);
+      const file = new File([blob], 'tryon.png', { type: 'image/png' });
+      const { url } = await uploadToFirebase(file, 'tulsi-bridal/tryon');
+      setTryOnUrl(url);
       toast.success('Try-On image uploaded! Copy the URL and paste it into the product\'s Try-On Image field.');
     } catch (err) {
       toast.error(err.message || 'Upload failed');
@@ -154,17 +152,14 @@ export default function AdminPhotoEditorPage() {
     }
   }
 
-  async function uploadToCloudinary() {
+  async function uploadImage() {
     if (!preview) return;
     setUploading(true);
     try {
       const blob = await fetch(preview).then((r) => r.blob());
-      const fd = new FormData();
-      fd.append('file', blob, 'product.jpg');
-      const res = await fetch('/api/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.message);
-      setUploadedUrl(data.data.url);
+      const file = new File([blob], 'product.jpg', { type: 'image/jpeg' });
+      const { url } = await uploadToFirebase(file, 'tulsi-bridal/products');
+      setUploadedUrl(url);
       toast.success('Image uploaded! Copy the URL below to use it in your product.');
     } catch (err) {
       toast.error(err.message || 'Upload failed');
@@ -304,7 +299,7 @@ export default function AdminPhotoEditorPage() {
                   <FiDownload /> Download
                 </button>
                 <button
-                  onClick={uploadToCloudinary}
+                  onClick={uploadImage}
                   disabled={uploading}
                   className="flex-1 py-2.5 bg-maroon-950 text-white text-sm font-semibold rounded-lg hover:bg-maroon-900 disabled:opacity-60 transition flex items-center justify-center gap-2"
                 >

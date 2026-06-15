@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiX, FiUpload, FiImage, FiPackage } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
-import { uploadToCloudinary } from '@/lib/cloudinaryUpload';
+import { uploadToFirebase } from '@/lib/firebaseStorage';
 import Badge from '@/components/ui/Badge';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
@@ -129,7 +129,7 @@ export default function AdminProductsPage() {
     setUploading(true);
     setUploadProgress(0);
     try {
-      const { url } = await uploadToCloudinary(file, 'tulsi-bridal/products', setUploadProgress);
+      const { url } = await uploadToFirebase(file, 'tulsi-bridal/products', setUploadProgress);
       upd('images', [...form.images, url]);
       toast.success('Image uploaded — full quality!');
     } catch (e) {
