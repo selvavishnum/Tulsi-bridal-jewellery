@@ -1,20 +1,17 @@
 const CLOUD_NAME    = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'djolb5idc';
 const UPLOAD_PRESET = 'tulsi_products';
-const MAX_PX        = 3000; // Max dimension — sharp on all screens, ~1.5–2MB JPEG
-const QUALITY       = 0.90;
+const QUALITY = 0.82; // 82% JPEG = ~4–6MB at 6000×4000px, well under 10MB Cloudinary limit
 
-function resizeFile(file) {
+function compressFile(file) {
   return new Promise((resolve) => {
     const img = new window.Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
-      const scale = Math.min(1, MAX_PX / Math.max(img.naturalWidth, img.naturalHeight));
-      const w = Math.round(img.naturalWidth * scale);
-      const h = Math.round(img.naturalHeight * scale);
       const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.width  = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
       canvas.toBlob(
         (blob) => resolve(new File([blob], file.name, { type: 'image/jpeg' })),
         'image/jpeg',
@@ -27,11 +24,11 @@ function resizeFile(file) {
 
 /**
  * Upload image directly from browser → Cloudinary (bypasses server).
- * Resizes to max 3000px before upload — keeps file under 2MB for Cloudinary free plan.
- * Quality remains excellent: 3000px is sharper than any display and zoom-ready.
+ * Keeps full resolution (6000×4000px). Compresses to JPEG 82% = ~4–6MB,
+ * under Cloudinary's 10MB free plan limit with full sharpness for zoom.
  */
 export async function uploadToCloudinary(file, folder = 'tulsi-bridal/products', onProgress) {
-  const resized = await resizeFile(file);
+  const resized = await compressFile(file);
 
   const formData = new FormData();
   formData.append('file', resized);
