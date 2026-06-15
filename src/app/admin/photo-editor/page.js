@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from 'react';
 import { FiUploadCloud, FiDownload, FiImage, FiZap, FiSliders, FiCheck, FiScissors, FiPackage } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
-import { uploadToFirebase } from '@/lib/firebaseStorage';
+import { uploadToCloudinary } from '@/lib/cloudinaryUpload';
 
 /* ── canvas helpers ── */
 function resizeImage(dataUrl, maxPx) {
@@ -142,7 +142,7 @@ export default function AdminPhotoEditorPage() {
     try {
       const blob = await fetch(preview).then((r) => r.blob());
       const file = new File([blob], 'tryon.png', { type: 'image/png' });
-      const { url } = await uploadToFirebase(file, 'tulsi-bridal/tryon');
+      const { url } = await uploadToCloudinary(file, 'tulsi-bridal/tryon');
       setTryOnUrl(url);
       toast.success('Try-On image uploaded! Copy the URL and paste it into the product\'s Try-On Image field.');
     } catch (err) {
@@ -158,7 +158,7 @@ export default function AdminPhotoEditorPage() {
     try {
       const blob = await fetch(preview).then((r) => r.blob());
       const file = new File([blob], 'product.jpg', { type: 'image/jpeg' });
-      const { url } = await uploadToFirebase(file, 'tulsi-bridal/products');
+      const { url } = await uploadToCloudinary(file, 'tulsi-bridal/products');
       setUploadedUrl(url);
       toast.success('Image uploaded! Copy the URL below to use it in your product.');
     } catch (err) {
