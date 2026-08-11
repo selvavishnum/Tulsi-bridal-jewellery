@@ -60,18 +60,19 @@ export async function PUT(request, context) {
       if (status === 'delivered') update.deliveredAt = new Date().toISOString();
       if (status === 'cancelled') update.cancelledAt = new Date().toISOString();
 
-      /* Deduct stock on confirmation */
-      if (status === 'confirmed' && currentDoc.exists) {
+      /* Deduct stock on confirmation — skip if already deducted (e.g. by payment verification) */
+      if (status === 'confirmed' && currentDoc.exists && !currentOrder.stockDeducted) {
         const batch = db.batch();
         for (const item of (currentDoc.data().items || [])) {
           if (!item.product) continue;
           const prodRef = db.collection('products').doc(item.product);
           const prodDoc = await prodRef.get();
           if (prodDoc.exists) {
-            batch.update(prodRef, { stock: (prodDoc.data().stock || 0) - item.quantity });
+            batch.update(prodRef, { stock: Math.max(0, (prodDoc.data().stock || 0) - item.quantity) });
           }
         }
         await batch.commit();
+        update.stockDeducted = true;
       }
     }
     if (trackingNumber !== undefined) update.trackingNumber = trackingNumber;
