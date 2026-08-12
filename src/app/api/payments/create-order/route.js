@@ -25,8 +25,11 @@ export async function POST(request) {
 
     const order = orderDoc.data();
 
-    /* Only the owner (or an admin) may start a payment for this order */
-    const isOwner = order.userId === session.user.id || order.guestEmail === session.user.email;
+    /* Only the owner (or an admin) may start a payment for this order.
+       Guard against nullish values matching each other. */
+    const isOwner =
+      (!!order.userId && order.userId === session.user.id) ||
+      (!!order.guestEmail && order.guestEmail === session.user.email);
     if (!isOwner && session.user.role !== 'admin') {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }

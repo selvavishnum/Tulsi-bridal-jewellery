@@ -128,11 +128,10 @@ export default function CheckoutPage() {
     setLoading(true);
 
     try {
+      /* Prices, discounts and the total are computed server-side from the
+         products collection — only the cart contents are sent. */
       const orderItems = items.map((i) => ({
         product: i._id || i.id,
-        name: i.name,
-        image: i.images?.[0],
-        price: i.discountPrice || i.price,
         quantity: i.quantity,
       }));
 
@@ -142,11 +141,8 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           items: orderItems,
           shippingAddress: { ...form },
-          payment: { method: paymentMethod, status: 'pending' },
-          coupon: coupon?._id,
+          payment: { method: paymentMethod },
           couponCode: coupon?.code,
-          subtotal, shippingCost, discount: discount + loyaltyDiscount, total: total - loyaltyDiscount,
-          loyaltyDiscount,
           guestEmail: !session ? form.email : undefined,
         }),
       });

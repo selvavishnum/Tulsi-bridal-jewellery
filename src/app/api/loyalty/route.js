@@ -54,8 +54,11 @@ export async function POST(request) {
       }
       const finalRedeem = Math.min(redeemAmt, currentPoints);
       const discount = (finalRedeem / 50) * 50;
+      /* Park the discount on the user — order creation reads it from here so the
+         amount cannot be inflated by the browser. */
       await db.collection('users').doc(session.user.id).update({
         loyaltyPoints: FieldValue.increment(-finalRedeem),
+        pendingLoyaltyDiscount: FieldValue.increment(discount),
       });
       await db.collection('loyaltyTransactions').add({
         userId: session.user.id,

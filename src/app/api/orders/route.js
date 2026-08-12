@@ -4,6 +4,11 @@ import { getEffectiveSession } from '@/lib/adminCollection';
 import { sendOrderConfirmation, sendOrderNotificationToAdmin } from '@/lib/email';
 import { sendOrderWhatsAppToAdmin, sendOrderWhatsAppToCustomer } from '@/lib/whatsapp';
 
+/* Shipping rules — must match the cart display in src/context/CartContext.js */
+const FREE_SHIPPING_ABOVE = 2000;
+const SHIPPING_FEE = 99;
+const PAYMENT_METHODS = ['razorpay', 'cod'];
+
 export async function GET(request) {
   try {
     const session = await getEffectiveSession();
@@ -59,7 +64,9 @@ export async function POST(request) {
     const session = await getEffectiveSession();
     const db = getDB();
     const body = await request.json();
-    const { items, shippingAddress, payment, coupon, couponCode, subtotal, shippingCost, discount, total, guestEmail } = body;
+    /* Money fields (subtotal/shippingCost/discount/total) and item prices are
+       deliberately NOT read from the body — they are recomputed below. */
+    const { items, shippingAddress, payment, couponCode, guestEmail } = body;
 
     if (!items?.length || !shippingAddress) {
       return NextResponse.json({ success: false, message: 'Items and shipping address are required' }, { status: 400 });
@@ -75,13 +82,66 @@ export async function POST(request) {
       item.quantity = qty;
     }
 
+    /* Price the order from the products collection. Anything money-related that
+       the browser sent is discarded — otherwise a caller could post total: 1
+       for a high-value cart and pay ₹1 for it. */
+    let computedSubtotal = 0;
     for (const item of items) {
-      if (!item.product) continue;
+      if (!item.product) {
+        return NextResponse.json({ success: false, message: 'Each item must reference a product' }, { status: 400 });
+      }
       const prodDoc = await db.collection('products').doc(item.product).get();
-      if (!prodDoc.exists || prodDoc.data().stock < item.quantity) {
-        return NextResponse.json({ success: false, message: `Insufficient stock for ${item.name}` }, { status: 400 });
+      if (!prodDoc.exists) {
+        return NextResponse.json({ success: false, message: `Product not found: ${item.name || item.product}` }, { status: 400 });
+      }
+      const prod = prodDoc.data();
+      if ((Number(prod.stock) || 0) < item.quantity) {
+        return NextResponse.json({ success: false, message: `Insufficient stock for ${prod.name || item.name}` }, { status: 400 });
+      }
+      const unitPrice = Number(prod.discountPrice) || Number(prod.price) || 0;
+      computedSubtotal += unitPrice * item.quantity;
+      /* Store the authoritative values, not the client's copy */
+      item.price = unitPrice;
+      item.name  = prod.name || item.name || '';
+      item.image = prod.images?.[0] || item.image || null;
+    }
+
+    const computedShipping = computedSubtotal >= FREE_SHIPPING_ABOVE ? 0 : SHIPPING_FEE;
+
+    /* Re-validate the coupon against the server-computed subtotal */
+    let couponDiscount = 0;
+    let resolvedCouponId = null;
+    let resolvedCouponCode = null;
+    if (couponCode) {
+      const cSnap = await db.collection('coupons')
+        .where('code', '==', String(couponCode).toUpperCase()).limit(1).get();
+      if (!cSnap.empty) {
+        const c = cSnap.docs[0].data();
+        const usable =
+          c.isActive &&
+          (!c.expiresAt || new Date(c.expiresAt) >= new Date()) &&
+          (Number(c.usedCount) || 0) < Number(c.maxUses) &&
+          computedSubtotal >= (Number(c.minOrderAmount) || 0);
+        if (usable) {
+          couponDiscount = c.type === 'percentage'
+            ? Math.round((computedSubtotal * Number(c.value)) / 100)
+            : Math.min(Number(c.value), computedSubtotal);
+          resolvedCouponId = cSnap.docs[0].id;
+          resolvedCouponCode = c.code;
+        }
       }
     }
+
+    /* Loyalty points are debited by /api/loyalty at redeem time, which parks the
+       resulting discount on the user. Read it from there rather than from the body. */
+    let loyaltyDiscount = 0;
+    if (session?.user?.id) {
+      const uDoc = await db.collection('users').doc(session.user.id).get().catch(() => null);
+      loyaltyDiscount = Math.max(0, Number(uDoc?.exists ? uDoc.data().pendingLoyaltyDiscount : 0) || 0);
+    }
+
+    const computedDiscount = Math.min(couponDiscount + loyaltyDiscount, computedSubtotal);
+    const computedTotal = Math.max(0, computedSubtotal - computedDiscount + computedShipping);
 
     const orderRef = db.collection('orders').doc();
     const orderNumber = `TBJ${Date.now()}`;
@@ -100,13 +160,19 @@ export async function POST(request) {
       guestEmail: resolvedEmail,
       items,
       shippingAddress: normalizedAddress,
-      payment: payment || { method: 'razorpay', status: 'pending' },
-      coupon: coupon || null,
-      couponCode: couponCode || null,
-      subtotal: Number(subtotal) || 0,
-      shippingCost: Number(shippingCost) || 0,
-      discount: Number(discount) || 0,
-      total: Number(total) || 0,
+      /* Built server-side — a client-supplied payment object could otherwise
+         pre-seed razorpayOrderId/amountDue and defeat payment verification. */
+      payment: {
+        method: PAYMENT_METHODS.includes(payment?.method) ? payment.method : 'razorpay',
+        status: 'pending',
+      },
+      coupon: resolvedCouponId,
+      couponCode: resolvedCouponCode,
+      subtotal: computedSubtotal,
+      shippingCost: computedShipping,
+      discount: computedDiscount,
+      loyaltyDiscount,
+      total: computedTotal,
       status: 'pending',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -138,14 +204,20 @@ export async function POST(request) {
       }
     }
 
+    /* Consume the parked loyalty discount so it can only be spent once */
+    if (session?.user?.id && loyaltyDiscount > 0) {
+      await db.collection('users').doc(session.user.id)
+        .update({ pendingLoyaltyDiscount: 0 }).catch(() => {});
+    }
+
     // Award loyalty points — ₹100 = 1 point
     if (session?.user?.id) {
-      const pointsEarned = Math.floor(Number(total) / 100);
+      const pointsEarned = Math.floor(computedTotal / 100);
       if (pointsEarned > 0) {
         await db.collection('users').doc(session.user.id).update({
           loyaltyPoints: FieldValue.increment(pointsEarned),
           totalOrders: FieldValue.increment(1),
-          totalSpent: FieldValue.increment(Number(total)),
+          totalSpent: FieldValue.increment(computedTotal),
           lastSeen: new Date().toISOString(),
         }).catch(() => {});
         await db.collection('loyaltyTransactions').add({
@@ -153,7 +225,7 @@ export async function POST(request) {
           type: 'earn',
           points: pointsEarned,
           orderId: orderRef.id,
-          description: `Earned for order ₹${total}`,
+          description: `Earned for order ₹${computedTotal}`,
           createdAt: new Date().toISOString(),
         }).catch(() => {});
       }

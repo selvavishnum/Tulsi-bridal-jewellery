@@ -74,7 +74,11 @@ export async function POST(request) {
       returnCharge,
       total,
       customerDetails: customerDetails || {},
-      payment: payment || { method: 'cod', status: 'pending' },
+      /* Built server-side — never persist a client-supplied payment object */
+      payment: {
+        method: ['razorpay', 'cod'].includes(payment?.method) ? payment.method : 'cod',
+        status: 'pending',
+      },
       status: 'pending',
       deliveryStatus: 'not_dispatched',
       returnStatus: 'not_scheduled',

@@ -41,8 +41,11 @@ export async function POST(request) {
 
     const order = orderDoc.data();
 
-    /* Only the owner (or an admin) may settle this order */
-    const isOwner = order.userId === session.user.id || order.guestEmail === session.user.email;
+    /* Only the owner (or an admin) may settle this order.
+       Guard against nullish values matching each other. */
+    const isOwner =
+      (!!order.userId && order.userId === session.user.id) ||
+      (!!order.guestEmail && order.guestEmail === session.user.email);
     if (!isOwner && session.user.role !== 'admin') {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }
@@ -53,8 +56,9 @@ export async function POST(request) {
     }
 
     /* The signature proves a payment happened, but not that it was for THIS order.
-       Bind it to the Razorpay order id recorded at create-order time. */
-    if (order.payment?.razorpayOrderId !== razorpayOrderId) {
+       Bind it to the Razorpay order id recorded at create-order time. The id must
+       be present — its absence means create-order never ran for this order. */
+    if (!order.payment?.razorpayOrderId || order.payment.razorpayOrderId !== razorpayOrderId) {
       return NextResponse.json(
         { success: false, message: 'Payment does not belong to this order' },
         { status: 400 }
