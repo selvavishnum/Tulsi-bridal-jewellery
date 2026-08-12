@@ -25,25 +25,13 @@ export async function POST(request) {
   try {
     const session = await getEffectiveSession();
     if (!session) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
-    const { action, orderId, orderTotal, pointsToRedeem } = await request.json();
+    const { action, pointsToRedeem } = await request.json();
     const db = getDB();
 
-    if (action === 'earn') {
-      const pointsEarned = Math.floor((orderTotal || 0) / 100);
-      if (pointsEarned <= 0) return NextResponse.json({ success: true, data: { pointsEarned: 0 } });
-      await db.collection('users').doc(session.user.id).update({
-        loyaltyPoints: FieldValue.increment(pointsEarned),
-      });
-      await db.collection('loyaltyTransactions').add({
-        userId: session.user.id,
-        type: 'earn',
-        points: pointsEarned,
-        orderId: orderId || null,
-        description: `Earned for order ₹${orderTotal}`,
-        createdAt: new Date().toISOString(),
-      });
-      return NextResponse.json({ success: true, data: { pointsEarned } });
-    }
+    /* There is deliberately no 'earn' action here. Points are awarded by
+       /api/orders from the server-computed order total. An endpoint that took
+       the amount from the request body would let a caller mint unlimited
+       points, and those points are real money via pendingLoyaltyDiscount. */
 
     if (action === 'redeem') {
       const userDoc = await db.collection('users').doc(session.user.id).get();

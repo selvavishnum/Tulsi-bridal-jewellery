@@ -8,6 +8,9 @@ import { sendOrderWhatsAppToAdmin, sendOrderWhatsAppToCustomer } from '@/lib/wha
 const FREE_SHIPPING_ABOVE = 2000;
 const SHIPPING_FEE = 99;
 const PAYMENT_METHODS = ['razorpay', 'cod'];
+/* Loyalty may cover at most this share of an order, so a large parked balance
+   can never bring the amount payable to zero. */
+const MAX_LOYALTY_SHARE = 0.2;
 
 export async function GET(request) {
   try {
@@ -132,17 +135,6 @@ export async function POST(request) {
       }
     }
 
-    /* Loyalty points are debited by /api/loyalty at redeem time, which parks the
-       resulting discount on the user. Read it from there rather than from the body. */
-    let loyaltyDiscount = 0;
-    if (session?.user?.id) {
-      const uDoc = await db.collection('users').doc(session.user.id).get().catch(() => null);
-      loyaltyDiscount = Math.max(0, Number(uDoc?.exists ? uDoc.data().pendingLoyaltyDiscount : 0) || 0);
-    }
-
-    const computedDiscount = Math.min(couponDiscount + loyaltyDiscount, computedSubtotal);
-    const computedTotal = Math.max(0, computedSubtotal - computedDiscount + computedShipping);
-
     const orderRef = db.collection('orders').doc();
     const orderNumber = `TBJ${Date.now()}`;
     const resolvedEmail = guestEmail || session?.user?.email || shippingAddress?.email || null;
@@ -154,7 +146,7 @@ export async function POST(request) {
       email: shippingAddress.email || resolvedEmail || '',
     };
 
-    const orderData = {
+    const baseOrder = {
       orderNumber,
       userId: session?.user?.id || null,
       guestEmail: resolvedEmail,
@@ -170,14 +162,37 @@ export async function POST(request) {
       couponCode: resolvedCouponCode,
       subtotal: computedSubtotal,
       shippingCost: computedShipping,
-      discount: computedDiscount,
-      loyaltyDiscount,
-      total: computedTotal,
       status: 'pending',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    await orderRef.set(orderData);
+
+    /* Read the parked loyalty discount, apply it and debit it in one commit.
+       Reading it outside a transaction would let concurrent orders each spend
+       the same balance. */
+    const userRef = session?.user?.id ? db.collection('users').doc(session.user.id) : null;
+
+    const orderData = await db.runTransaction(async (tx) => {
+      let loyaltyDiscount = 0;
+      if (userRef) {
+        const uDoc = await tx.get(userRef);
+        const parked = Math.max(0, Number(uDoc.exists ? uDoc.data().pendingLoyaltyDiscount : 0) || 0);
+        /* Cap the loyalty contribution so no single balance can zero an order */
+        loyaltyDiscount = Math.min(parked, Math.floor(computedSubtotal * MAX_LOYALTY_SHARE));
+      }
+
+      const discount = Math.min(couponDiscount + loyaltyDiscount, computedSubtotal);
+      const total = Math.max(0, computedSubtotal - discount + computedShipping);
+      const data = { ...baseOrder, discount, loyaltyDiscount, total };
+
+      tx.set(orderRef, data);
+      if (userRef && loyaltyDiscount > 0) {
+        tx.update(userRef, { pendingLoyaltyDiscount: FieldValue.increment(-loyaltyDiscount) });
+      }
+      return data;
+    });
+
+    const computedTotal = orderData.total;
 
     // Save shipping address to user's saved addresses (max 3, newest first)
     if (session?.user?.id) {
@@ -202,12 +217,6 @@ export async function POST(request) {
           await userRef.update({ savedAddresses: [newAddr, ...existing].slice(0, 3) }).catch(() => {});
         }
       }
-    }
-
-    /* Consume the parked loyalty discount so it can only be spent once */
-    if (session?.user?.id && loyaltyDiscount > 0) {
-      await db.collection('users').doc(session.user.id)
-        .update({ pendingLoyaltyDiscount: 0 }).catch(() => {});
     }
 
     // Award loyalty points — ₹100 = 1 point
