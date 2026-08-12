@@ -65,6 +65,16 @@ export async function POST(request) {
       return NextResponse.json({ success: false, message: 'Items and shipping address are required' }, { status: 400 });
     }
 
+    /* Quantities must be positive whole numbers — a negative or non-numeric value
+       would slip past the stock check below and later inflate/corrupt stock. */
+    for (const item of items) {
+      const qty = Number(item.quantity);
+      if (!Number.isInteger(qty) || qty < 1 || qty > 999) {
+        return NextResponse.json({ success: false, message: `Invalid quantity for ${item.name || 'item'}` }, { status: 400 });
+      }
+      item.quantity = qty;
+    }
+
     for (const item of items) {
       if (!item.product) continue;
       const prodDoc = await db.collection('products').doc(item.product).get();

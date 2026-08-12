@@ -164,7 +164,7 @@ export default function CheckoutPage() {
       const payRes = await fetch('/api/payments/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: total, receipt: orderId }),
+        body: JSON.stringify({ orderId }),
       });
       const payData = await payRes.json();
       if (!payData.success) throw new Error(payData.message);
