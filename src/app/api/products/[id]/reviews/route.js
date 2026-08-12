@@ -9,8 +9,10 @@ export async function GET(request, context) {
     const { id } = await context.params;
     const db = getDB();
     const snap = await db.collection('reviews').where('productId', '==', id).get();
-    // All reviews always show publicly — admin approve/reject only controls the verified badge
+    // All reviews always show publicly — admin approve/reject only controls the verified badge.
+    // reviewerEmail is deliberately omitted: this endpoint is unauthenticated.
     const reviews = snapshotToArr(snap)
+      .map(({ reviewerEmail, ...r }) => r)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     const count = reviews.length;
