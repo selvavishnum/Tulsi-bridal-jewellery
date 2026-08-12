@@ -219,26 +219,10 @@ export async function POST(request) {
       }
     }
 
-    // Award loyalty points — ₹100 = 1 point
-    if (session?.user?.id) {
-      const pointsEarned = Math.floor(computedTotal / 100);
-      if (pointsEarned > 0) {
-        await db.collection('users').doc(session.user.id).update({
-          loyaltyPoints: FieldValue.increment(pointsEarned),
-          totalOrders: FieldValue.increment(1),
-          totalSpent: FieldValue.increment(computedTotal),
-          lastSeen: new Date().toISOString(),
-        }).catch(() => {});
-        await db.collection('loyaltyTransactions').add({
-          userId: session.user.id,
-          type: 'earn',
-          points: pointsEarned,
-          orderId: orderRef.id,
-          description: `Earned for order ₹${computedTotal}`,
-          createdAt: new Date().toISOString(),
-        }).catch(() => {});
-      }
-    }
+    /* Loyalty points are NOT awarded here. An unpaid order costs the caller
+       nothing, so awarding on creation let anyone farm points by placing and
+       abandoning orders — and points are spendable money. They are granted in
+       awardLoyaltyPoints() once the order is actually paid. */
 
     const fullOrder = { id: orderRef.id, _id: orderRef.id, ...orderData };
 

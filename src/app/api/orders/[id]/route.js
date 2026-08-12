@@ -57,7 +57,14 @@ export async function PUT(request, context) {
 
     if (status) {
       update.status = status;
-      if (status === 'delivered') update.deliveredAt = new Date().toISOString();
+      if (status === 'delivered') {
+        update.deliveredAt = new Date().toISOString();
+        /* COD is collected on delivery — mark it paid so points can be awarded */
+        if (currentOrder.payment?.method === 'cod' && currentOrder.payment?.status !== 'paid') {
+          update['payment.status'] = 'paid';
+          update['payment.paidAt'] = new Date().toISOString();
+        }
+      }
       if (status === 'cancelled') update.cancelledAt = new Date().toISOString();
 
       /* Deduct stock on confirmation — skip if already deducted (e.g. by payment verification) */
@@ -80,6 +87,12 @@ export async function PUT(request, context) {
     if (notes !== undefined) update.notes = notes;
 
     await ref.update(update);
+
+    /* Awarded only for a paid order, and only once (guarded by pointsAwarded) */
+    if (status === 'delivered') {
+      await awardLoyaltyPoints(ref).catch((e) => console.error('[Loyalty] award failed:', e.message));
+    }
+
     const updated = await ref.get();
     const updatedOrder = docToObj(updated);
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDB, docToObj } from '@/lib/firebase';
+import { getDB, docToObj, toPublicProduct } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
 
 export async function GET(request, context) {
@@ -12,7 +12,7 @@ export async function GET(request, context) {
     if (product.isActive === false || product.showMe === false) {
       return NextResponse.json({ success: false, message: 'Product not found' }, { status: 404 });
     }
-    return NextResponse.json({ success: true, data: product });
+    return NextResponse.json({ success: true, data: toPublicProduct(product) });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }

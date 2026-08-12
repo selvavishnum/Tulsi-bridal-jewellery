@@ -1,5 +1,17 @@
 import nodemailer from 'nodemailer';
 
+/* Escape anything customer-supplied before it goes into an email body.
+   Reviews and the contact form are unauthenticated, so their text would
+   otherwise render as markup in the shop's own branded mail. */
+export function esc(v) {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 /* ── SMTP Transporter ── */
 function createTransporter() {
   return nodemailer.createTransport({
@@ -19,6 +31,25 @@ const BRAND = {
   gold:    '#c9973a',
   site:    process.env.NEXT_PUBLIC_SITE_URL || 'https://www.tulsibridal.com',
 };
+
+/* ── Login OTP ── */
+export async function sendOTPEmail(to, code) {
+  if (!to || !process.env.SMTP_USER) return false;
+  const transporter = createTransporter();
+  await transporter.sendMail({
+    from: `"${BRAND.name}" <${process.env.SMTP_USER}>`,
+    to,
+    subject: `${code} is your ${BRAND.name} login code`,
+    text: `Your login code is ${code}. It expires in 10 minutes. If you did not request it, ignore this email.`,
+    html: emailWrapper(`
+      <h2 style="color:${BRAND.primary};margin:0 0 12px">Your login code</h2>
+      <p style="font-size:32px;letter-spacing:8px;font-weight:700;color:${BRAND.primary};margin:16px 0">${code}</p>
+      <p style="color:#666;font-size:14px">This code expires in 10 minutes.</p>
+      <p style="color:#999;font-size:12px">If you did not request this, you can safely ignore this email.</p>
+    `),
+  });
+  return true;
+}
 
 /* ── Shared email wrapper ── */
 function emailWrapper(content) {
@@ -131,9 +162,9 @@ export async function sendOrderConfirmation(order) {
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px;background:#f9f9f8;border-radius:10px;">
       <tr><td style="padding:18px 20px;">
         <p style="margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.15em;color:#78716c;font-weight:700;">Delivering To</p>
-        <p style="margin:0;font-size:14px;color:#292524;font-weight:600;">${addr.name || ''}</p>
-        <p style="margin:2px 0 0;font-size:13px;color:#57534e;line-height:1.6;">${[addr.street, addr.city, addr.state, addr.pincode].filter(Boolean).join(', ')}</p>
-        ${addr.phone ? `<p style="margin:4px 0 0;font-size:13px;color:#78716c;">${addr.phone}</p>` : ''}
+        <p style="margin:0;font-size:14px;color:#292524;font-weight:600;">${esc(addr.name || '')}</p>
+        <p style="margin:2px 0 0;font-size:13px;color:#57534e;line-height:1.6;">${esc([addr.street, addr.city, addr.state, addr.pincode].filter(Boolean).join(', '))}</p>
+        ${addr.phone ? `<p style="margin:4px 0 0;font-size:13px;color:#78716c;">${esc(addr.phone)}</p>` : ''}
       </td></tr>
     </table>
 
@@ -305,11 +336,11 @@ export async function sendReviewNotification(review) {
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#fdf9ee;border:1px solid #e4dfc8;border-radius:12px;">
       <tr><td style="padding:20px 24px;">
         <p style="margin:0 0 4px;font-size:20px;color:#c9973a;letter-spacing:2px;">${stars}</p>
-        <p style="margin:8px 0 0;font-size:13px;color:#78716c;"><strong style="color:#44403c;">Reviewer:</strong> ${review.reviewerName || 'Anonymous'}</p>
-        ${review.reviewerEmail ? `<p style="margin:4px 0 0;font-size:13px;color:#78716c;"><strong style="color:#44403c;">Email:</strong> ${review.reviewerEmail}</p>` : ''}
-        <p style="margin:4px 0 0;font-size:13px;color:#78716c;"><strong style="color:#44403c;">Product:</strong> ${review.productName || review.productId}</p>
+        <p style="margin:8px 0 0;font-size:13px;color:#78716c;"><strong style="color:#44403c;">Reviewer:</strong> ${esc(review.reviewerName || 'Anonymous')}</p>
+        ${review.reviewerEmail ? `<p style="margin:4px 0 0;font-size:13px;color:#78716c;"><strong style="color:#44403c;">Email:</strong> ${esc(review.reviewerEmail)}</p>` : ''}
+        <p style="margin:4px 0 0;font-size:13px;color:#78716c;"><strong style="color:#44403c;">Product:</strong> ${esc(review.productName || review.productId)}</p>
         <p style="margin:4px 0 0;font-size:13px;color:#78716c;"><strong style="color:#44403c;">Rating:</strong> ${review.rating}/5</p>
-        <p style="margin:12px 0 0;font-size:14px;color:#292524;font-style:italic;border-left:3px solid #c9973a;padding-left:12px;">"${review.comment}"</p>
+        <p style="margin:12px 0 0;font-size:14px;color:#292524;font-style:italic;border-left:3px solid #c9973a;padding-left:12px;">"${esc(review.comment)}"</p>
       </td></tr>
     </table>
 
@@ -349,20 +380,20 @@ export async function sendContactNotification(msg) {
         <table width="100%" cellpadding="0" cellspacing="0">
           <tr>
             <td width="100" style="font-size:13px;color:#78716c;padding:4px 0;font-weight:600;">Name:</td>
-            <td style="font-size:13px;color:#292524;padding:4px 0;">${msg.name}</td>
+            <td style="font-size:13px;color:#292524;padding:4px 0;">${esc(msg.name)}</td>
           </tr>
           <tr>
             <td style="font-size:13px;color:#78716c;padding:4px 0;font-weight:600;">Email:</td>
-            <td style="font-size:13px;padding:4px 0;"><a href="mailto:${msg.email}" style="color:#8b1a4a;">${msg.email}</a></td>
+            <td style="font-size:13px;padding:4px 0;"><a href="mailto:${encodeURIComponent(msg.email)}" style="color:#8b1a4a;">${esc(msg.email)}</a></td>
           </tr>
-          ${msg.phone ? `<tr><td style="font-size:13px;color:#78716c;padding:4px 0;font-weight:600;">Phone:</td><td style="font-size:13px;color:#292524;padding:4px 0;">${msg.phone}</td></tr>` : ''}
-          ${msg.subject ? `<tr><td style="font-size:13px;color:#78716c;padding:4px 0;font-weight:600;">Subject:</td><td style="font-size:13px;color:#292524;padding:4px 0;">${msg.subject}</td></tr>` : ''}
+          ${msg.phone ? `<tr><td style="font-size:13px;color:#78716c;padding:4px 0;font-weight:600;">Phone:</td><td style="font-size:13px;color:#292524;padding:4px 0;">${esc(msg.phone)}</td></tr>` : ''}
+          ${msg.subject ? `<tr><td style="font-size:13px;color:#78716c;padding:4px 0;font-weight:600;">Subject:</td><td style="font-size:13px;color:#292524;padding:4px 0;">${esc(msg.subject)}</td></tr>` : ''}
         </table>
-        <p style="margin:16px 0 0;font-size:14px;color:#292524;line-height:1.6;border-top:1px solid #e7e5e4;padding-top:16px;">${msg.message.replace(/\n/g, '<br/>')}</p>
+        <p style="margin:16px 0 0;font-size:14px;color:#292524;line-height:1.6;border-top:1px solid #e7e5e4;padding-top:16px;">${esc(msg.message).replace(/\n/g, '<br/>')}</p>
       </td></tr>
     </table>
 
-    <a href="mailto:${msg.email}?subject=Re: ${encodeURIComponent(msg.subject || 'Your enquiry')}" style="display:inline-block;margin-top:24px;padding:12px 28px;background:#16a34a;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:700;font-size:14px;">Reply to ${msg.name} →</a>
+    <a href="mailto:${encodeURIComponent(msg.email)}?subject=Re: ${encodeURIComponent(msg.subject || 'Your enquiry')}" style="display:inline-block;margin-top:24px;padding:12px 28px;background:#16a34a;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:700;font-size:14px;">Reply to ${esc(msg.name)} →</a>
     ${ctaBtn('View in Admin →', `${BRAND.site}/admin/messages`)}
   `);
 

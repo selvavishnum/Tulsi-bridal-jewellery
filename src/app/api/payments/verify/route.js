@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import Razorpay from 'razorpay';
 import { getDB } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
+import { awardLoyaltyPoints } from '@/lib/loyalty';
 
 /* Timing-safe hex digest comparison */
 function signatureMatches(expected, received) {
@@ -119,6 +120,9 @@ export async function POST(request) {
         });
       }
     });
+
+    /* Points are granted only now that the money has actually arrived */
+    await awardLoyaltyPoints(orderRef).catch((e) => console.error('[Loyalty] award failed:', e.message));
 
     return NextResponse.json({ success: true, message: 'Payment verified successfully' });
   } catch (error) {

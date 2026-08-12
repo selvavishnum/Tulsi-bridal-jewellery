@@ -85,3 +85,15 @@ export async function paginate(query, page = 1, limit = 12) {
 export function newId() {
   return getDB().collection('_').doc().id;
 }
+
+/** Strip internal/commercial fields before serving a product publicly. */
+const PRODUCT_PRIVATE_FIELDS = [
+  'purchasePrice', 'costPrice', 'cost', 'margin', 'supplier', 'supplierId',
+  'warehouse', 'warehouseId', 'lots', 'stockLots', 'internalNotes',
+];
+export function toPublicProduct(p) {
+  if (!p) return p;
+  const out = { ...p };
+  for (const f of PRODUCT_PRIVATE_FIELDS) delete out[f];
+  return out;
+}

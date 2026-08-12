@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getDB, FieldValue } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
 
+const REFERRAL_POINTS = 20;
+
 export async function POST(request) {
   try {
     const session = await getEffectiveSession();
@@ -24,23 +26,35 @@ export async function POST(request) {
       return NextResponse.json({ success: false, message: 'You cannot use your own referral code' });
     }
 
-    const batch = db.batch();
-    batch.update(db.collection('users').doc(referrerDoc.id), { loyaltyPoints: FieldValue.increment(20) });
-    batch.update(db.collection('users').doc(session.user.id), { loyaltyPoints: FieldValue.increment(20), referredBy: referrerDoc.id });
-    await batch.commit();
+    /* Record the link and pay both sides in one transaction. A batch is atomic
+       but not conditional, so concurrent calls would each re-observe an unset
+       referredBy and pay out repeatedly. */
+    const applied = await db.runTransaction(async (tx) => {
+      const meRef = db.collection('users').doc(session.user.id);
+      const me = await tx.get(meRef);
+      if (me.data()?.referredBy) return false;
+
+      tx.update(db.collection('users').doc(referrerDoc.id), { loyaltyPoints: FieldValue.increment(REFERRAL_POINTS) });
+      tx.update(meRef, { loyaltyPoints: FieldValue.increment(REFERRAL_POINTS), referredBy: referrerDoc.id });
+      return true;
+    });
+
+    if (!applied) {
+      return NextResponse.json({ success: false, message: 'You have already used a referral code' });
+    }
 
     await Promise.all([
       db.collection('loyaltyTransactions').add({
-        userId: referrerDoc.id, type: 'referral_reward', points: 20,
+        userId: referrerDoc.id, type: 'referral_reward', points: REFERRAL_POINTS,
         description: 'Referral reward — friend joined', createdAt: new Date().toISOString(),
       }),
       db.collection('loyaltyTransactions').add({
-        userId: session.user.id, type: 'referral_bonus', points: 20,
+        userId: session.user.id, type: 'referral_bonus', points: REFERRAL_POINTS,
         description: 'Welcome bonus — joined via referral', createdAt: new Date().toISOString(),
       }),
     ]);
 
-    return NextResponse.json({ success: true, message: 'Referral applied! You and your friend each earned 20 points!', data: { points: 20 } });
+    return NextResponse.json({ success: true, message: `Referral applied! You and your friend each earned ${REFERRAL_POINTS} points!`, data: { points: REFERRAL_POINTS } });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }
