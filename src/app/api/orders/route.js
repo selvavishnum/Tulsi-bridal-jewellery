@@ -236,6 +236,8 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true, data: fullOrder }, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    const message = error?.error?.description || error?.message || 'Could not place order. Please try again.';
+    console.error('[orders POST] failed:', error?.error || error);
+    return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }

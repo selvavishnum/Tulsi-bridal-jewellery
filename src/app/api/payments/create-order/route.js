@@ -64,6 +64,11 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true, data: rzpOrder });
   } catch (error) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    /* The razorpay SDK throws { statusCode, error: { description } } on API
+       errors — that shape has no .message, so the real reason was being lost
+       and the client only ever saw a blank/generic failure. */
+    const message = error?.error?.description || error?.message || 'Payment setup failed. Please try again.';
+    console.error('[create-order] failed:', error?.error || error);
+    return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }

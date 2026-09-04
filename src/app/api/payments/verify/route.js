@@ -126,6 +126,8 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true, message: 'Payment verified successfully' });
   } catch (error) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    const message = error?.error?.description || error?.message || 'Payment verification failed. Please try again.';
+    console.error('[verify] failed:', error?.error || error);
+    return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }

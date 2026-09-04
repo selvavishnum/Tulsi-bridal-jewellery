@@ -147,7 +147,7 @@ export default function CheckoutPage() {
         }),
       });
       const orderData = await orderRes.json();
-      if (!orderData.success) throw new Error(orderData.message);
+      if (!orderData.success) throw new Error(orderData.message || 'Could not place order. Please try again.');
       const orderId = orderData.data.id || orderData.data._id;
       const orderNumber = orderData.data.orderNumber;
 
@@ -163,7 +163,7 @@ export default function CheckoutPage() {
         body: JSON.stringify({ orderId }),
       });
       const payData = await payRes.json();
-      if (!payData.success) throw new Error(payData.message);
+      if (!payData.success) throw new Error(payData.message || 'Payment setup failed. Please try again.');
 
       const options = {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
