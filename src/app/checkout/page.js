@@ -198,7 +198,9 @@ export default function CheckoutPage() {
       const rzp = new window.Razorpay(options);
       rzp.open();
     } catch (error) {
-      toast.error(error.message || 'Checkout failed');
+      /* Stays on screen until dismissed — the default toast duration was too
+         short to read on a phone, let alone screenshot. */
+      toast.error(error.message || 'Checkout failed', { duration: 15000 });
     } finally {
       setLoading(false);
     }
