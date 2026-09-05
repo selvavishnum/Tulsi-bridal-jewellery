@@ -7,6 +7,7 @@ import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import { loadRazorpayScript } from '@/lib/loadRazorpay';
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -36,6 +37,10 @@ export default function CheckoutPage() {
       router.replace('/login?callbackUrl=/checkout');
     }
   }, [status, router]);
+
+  /* Start loading Razorpay as soon as the page mounts, so it's already
+     ready by the time the customer reaches "Place Order". */
+  useEffect(() => { loadRazorpayScript().catch(() => {}); }, []);
 
   useEffect(() => {
     if (status !== 'authenticated') return;
@@ -157,6 +162,9 @@ export default function CheckoutPage() {
         return;
       }
 
+      /* In case the earlier mount-time load hasn't finished (or failed) yet */
+      await loadRazorpayScript();
+
       const payRes = await fetch('/api/payments/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -214,7 +222,6 @@ export default function CheckoutPage() {
 
   return (
     <>
-      <script src="https://checkout.razorpay.com/v1/checkout.js" async />
       <div className="min-h-screen bg-gray-50 py-8">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="font-serif text-3xl font-bold text-maroon-950 mb-6">Checkout</h1>
