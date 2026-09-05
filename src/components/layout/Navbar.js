@@ -76,16 +76,16 @@ export default function Navbar() {
   };
 
   return (
-    <header className={`sticky top-0 z-50 transition-all duration-300 ${scrolled ? 'bg-white shadow-md' : 'bg-white/95 backdrop-blur-sm shadow-sm'}`}>
+    <header className={`sticky top-0 z-50 transition-all duration-500 ${scrolled ? 'bg-white/97 backdrop-blur-md shadow-luxury border-b border-stone-100/80' : 'bg-white/95 backdrop-blur-sm shadow-sm'}`}>
       {/* Top announcement bar */}
-      <div className="bg-wine-800 text-white py-2">
+      <div className="bg-velvet-950 text-white py-2">
         <div className="section-container flex items-center justify-between">
-          <p className="text-xs tracking-wider text-wine-100 hidden sm:block">
+          <p className="text-xs tracking-wider text-gold-300/80 hidden sm:block">
             ✦ Handcrafted Bridal Jewellery — Made with Love ✦
           </p>
-          <p className="text-xs tracking-wide text-center sm:text-right w-full sm:w-auto">
+          <p className="text-xs tracking-wide text-center sm:text-right w-full sm:w-auto text-gold-300/70">
             Free delivery above ₹2000 &nbsp;·&nbsp;
-            <a href={`tel:${sitePhone.replace(/\s/g, '')}`} className="inline-flex items-center gap-1 font-medium hover:text-gold-300 transition-colors">
+            <a href={`tel:${sitePhone.replace(/\s/g, '')}`} className="inline-flex items-center gap-1 font-medium hover:text-gold-300 transition-colors text-gold-300/90">
               <FiPhone className="text-[10px]" /> {sitePhone}
             </a>
           </p>
@@ -98,16 +98,23 @@ export default function Navbar() {
 
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 group flex-shrink-0">
-            <div className="w-9 h-9 flex items-center justify-center">
+            <div className="w-9 h-9 flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
               <svg width="36" height="30" viewBox="0 0 52 44" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M26 2L32 16L44 8L38 24H14L8 8L20 16L26 2Z" fill="#c9973a" stroke="#b87d2a" strokeWidth="1.5"/>
-                <rect x="10" y="26" width="32" height="6" rx="1" fill="#c9973a"/>
+                <path d="M26 2L32 16L44 8L38 24H14L8 8L20 16L26 2Z" fill="url(#logoGold)" stroke="#b87d2a" strokeWidth="1.5"/>
+                <rect x="10" y="26" width="32" height="6" rx="1" fill="url(#logoGold)"/>
                 <rect x="12" y="34" width="28" height="5" rx="1" fill="#b87d2a"/>
+                <defs>
+                  <linearGradient id="logoGold" x1="8" y1="2" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stopColor="#f4dfa0"/>
+                    <stop offset="50%" stopColor="#c9973a"/>
+                    <stop offset="100%" stopColor="#9a6220"/>
+                  </linearGradient>
+                </defs>
               </svg>
             </div>
             <div>
-              <p className="font-serif text-lg font-bold tracking-[0.12em] text-stone-900 leading-none group-hover:text-wine-700 transition-colors">TULSI</p>
-              <p className="text-[8px] tracking-[0.28em] text-gold-600 uppercase leading-none font-medium mt-0.5">Bridal Jewellery</p>
+              <p className="font-serif text-lg font-bold tracking-[0.14em] leading-none text-gold-shimmer">TULSI</p>
+              <p className="text-[8px] tracking-[0.3em] text-gold-600 uppercase leading-none font-medium mt-0.5">Bridal Jewellery</p>
             </div>
           </Link>
 
@@ -140,7 +147,7 @@ export default function Navbar() {
               </div>
             </div>
 
-            <Link href="/rentals" className="text-sm font-semibold text-gold-600 hover:text-gold-700 transition-colors">Rentals</Link>
+            <Link href="/rentals" className="text-sm font-semibold text-gold-500 hover:text-gold-600 transition-colors relative after:absolute after:-bottom-0.5 after:left-0 after:h-px after:w-full after:bg-gradient-to-r after:from-gold-400 after:to-transparent">Rentals</Link>
             <Link href="/about" className="nav-link">About</Link>
             <Link href="/contact" className="nav-link">Contact</Link>
             <Link href="/track-order" className="nav-link">Track Order</Link>

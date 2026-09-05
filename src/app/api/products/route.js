@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDB, snapshotToArr } from '@/lib/firebase';
+import { getDB, snapshotToArr, toPublicProduct } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
 import { slugify } from '@/lib/utils';
 
@@ -22,7 +22,9 @@ export async function GET(request) {
 
     // Simple query — no composite index needed
     const snap = await db.collection('products').orderBy('createdAt', 'desc').get();
-    let products = snapshotToArr(snap).filter((p) => p.isActive !== false && p.showMe !== false);
+    let products = snapshotToArr(snap)
+      .filter((p) => p.isActive !== false && p.showMe !== false)
+      .map(toPublicProduct); // never serve purchase price / supplier publicly
 
     // Filter in JS (avoids Firestore composite index requirement)
     if (category) products = products.filter((p) => p.category === category);

@@ -4,6 +4,14 @@ import { getEffectiveSession } from '@/lib/adminCollection';
 import { sendOrderConfirmation, sendOrderNotificationToAdmin } from '@/lib/email';
 import { sendOrderWhatsAppToAdmin, sendOrderWhatsAppToCustomer } from '@/lib/whatsapp';
 
+/* Shipping rules — must match the cart display in src/context/CartContext.js */
+const FREE_SHIPPING_ABOVE = 2000;
+const SHIPPING_FEE = 99;
+const PAYMENT_METHODS = ['razorpay', 'cod'];
+/* Loyalty may cover at most this share of an order, so a large parked balance
+   can never bring the amount payable to zero. */
+const MAX_LOYALTY_SHARE = 0.2;
+
 export async function GET(request) {
   try {
     const session = await getEffectiveSession();
@@ -59,17 +67,71 @@ export async function POST(request) {
     const session = await getEffectiveSession();
     const db = getDB();
     const body = await request.json();
-    const { items, shippingAddress, payment, coupon, couponCode, subtotal, shippingCost, discount, total, guestEmail } = body;
+    /* Money fields (subtotal/shippingCost/discount/total) and item prices are
+       deliberately NOT read from the body — they are recomputed below. */
+    const { items, shippingAddress, payment, couponCode, guestEmail } = body;
 
     if (!items?.length || !shippingAddress) {
       return NextResponse.json({ success: false, message: 'Items and shipping address are required' }, { status: 400 });
     }
 
+    /* Quantities must be positive whole numbers — a negative or non-numeric value
+       would slip past the stock check below and later inflate/corrupt stock. */
     for (const item of items) {
-      if (!item.product) continue;
+      const qty = Number(item.quantity);
+      if (!Number.isInteger(qty) || qty < 1 || qty > 999) {
+        return NextResponse.json({ success: false, message: `Invalid quantity for ${item.name || 'item'}` }, { status: 400 });
+      }
+      item.quantity = qty;
+    }
+
+    /* Price the order from the products collection. Anything money-related that
+       the browser sent is discarded — otherwise a caller could post total: 1
+       for a high-value cart and pay ₹1 for it. */
+    let computedSubtotal = 0;
+    for (const item of items) {
+      if (!item.product) {
+        return NextResponse.json({ success: false, message: 'Each item must reference a product' }, { status: 400 });
+      }
       const prodDoc = await db.collection('products').doc(item.product).get();
-      if (!prodDoc.exists || prodDoc.data().stock < item.quantity) {
-        return NextResponse.json({ success: false, message: `Insufficient stock for ${item.name}` }, { status: 400 });
+      if (!prodDoc.exists) {
+        return NextResponse.json({ success: false, message: `Product not found: ${item.name || item.product}` }, { status: 400 });
+      }
+      const prod = prodDoc.data();
+      if ((Number(prod.stock) || 0) < item.quantity) {
+        return NextResponse.json({ success: false, message: `Insufficient stock for ${prod.name || item.name}` }, { status: 400 });
+      }
+      const unitPrice = Number(prod.discountPrice) || Number(prod.price) || 0;
+      computedSubtotal += unitPrice * item.quantity;
+      /* Store the authoritative values, not the client's copy */
+      item.price = unitPrice;
+      item.name  = prod.name || item.name || '';
+      item.image = prod.images?.[0] || item.image || null;
+    }
+
+    const computedShipping = computedSubtotal >= FREE_SHIPPING_ABOVE ? 0 : SHIPPING_FEE;
+
+    /* Re-validate the coupon against the server-computed subtotal */
+    let couponDiscount = 0;
+    let resolvedCouponId = null;
+    let resolvedCouponCode = null;
+    if (couponCode) {
+      const cSnap = await db.collection('coupons')
+        .where('code', '==', String(couponCode).toUpperCase()).limit(1).get();
+      if (!cSnap.empty) {
+        const c = cSnap.docs[0].data();
+        const usable =
+          c.isActive &&
+          (!c.expiresAt || new Date(c.expiresAt) >= new Date()) &&
+          (Number(c.usedCount) || 0) < Number(c.maxUses) &&
+          computedSubtotal >= (Number(c.minOrderAmount) || 0);
+        if (usable) {
+          couponDiscount = c.type === 'percentage'
+            ? Math.round((computedSubtotal * Number(c.value)) / 100)
+            : Math.min(Number(c.value), computedSubtotal);
+          resolvedCouponId = cSnap.docs[0].id;
+          resolvedCouponCode = c.code;
+        }
       }
     }
 
@@ -84,24 +146,53 @@ export async function POST(request) {
       email: shippingAddress.email || resolvedEmail || '',
     };
 
-    const orderData = {
+    const baseOrder = {
       orderNumber,
       userId: session?.user?.id || null,
       guestEmail: resolvedEmail,
       items,
       shippingAddress: normalizedAddress,
-      payment: payment || { method: 'razorpay', status: 'pending' },
-      coupon: coupon || null,
-      couponCode: couponCode || null,
-      subtotal: Number(subtotal) || 0,
-      shippingCost: Number(shippingCost) || 0,
-      discount: Number(discount) || 0,
-      total: Number(total) || 0,
+      /* Built server-side — a client-supplied payment object could otherwise
+         pre-seed razorpayOrderId/amountDue and defeat payment verification. */
+      payment: {
+        method: PAYMENT_METHODS.includes(payment?.method) ? payment.method : 'razorpay',
+        status: 'pending',
+      },
+      coupon: resolvedCouponId,
+      couponCode: resolvedCouponCode,
+      subtotal: computedSubtotal,
+      shippingCost: computedShipping,
       status: 'pending',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    await orderRef.set(orderData);
+
+    /* Read the parked loyalty discount, apply it and debit it in one commit.
+       Reading it outside a transaction would let concurrent orders each spend
+       the same balance. */
+    const userRef = session?.user?.id ? db.collection('users').doc(session.user.id) : null;
+
+    const orderData = await db.runTransaction(async (tx) => {
+      let loyaltyDiscount = 0;
+      if (userRef) {
+        const uDoc = await tx.get(userRef);
+        const parked = Math.max(0, Number(uDoc.exists ? uDoc.data().pendingLoyaltyDiscount : 0) || 0);
+        /* Cap the loyalty contribution so no single balance can zero an order */
+        loyaltyDiscount = Math.min(parked, Math.floor(computedSubtotal * MAX_LOYALTY_SHARE));
+      }
+
+      const discount = Math.min(couponDiscount + loyaltyDiscount, computedSubtotal);
+      const total = Math.max(0, computedSubtotal - discount + computedShipping);
+      const data = { ...baseOrder, discount, loyaltyDiscount, total };
+
+      tx.set(orderRef, data);
+      if (userRef && loyaltyDiscount > 0) {
+        tx.update(userRef, { pendingLoyaltyDiscount: FieldValue.increment(-loyaltyDiscount) });
+      }
+      return data;
+    });
+
+    const computedTotal = orderData.total;
 
     // Save shipping address to user's saved addresses (max 3, newest first)
     if (session?.user?.id) {
@@ -128,26 +219,10 @@ export async function POST(request) {
       }
     }
 
-    // Award loyalty points — ₹100 = 1 point
-    if (session?.user?.id) {
-      const pointsEarned = Math.floor(Number(total) / 100);
-      if (pointsEarned > 0) {
-        await db.collection('users').doc(session.user.id).update({
-          loyaltyPoints: FieldValue.increment(pointsEarned),
-          totalOrders: FieldValue.increment(1),
-          totalSpent: FieldValue.increment(Number(total)),
-          lastSeen: new Date().toISOString(),
-        }).catch(() => {});
-        await db.collection('loyaltyTransactions').add({
-          userId: session.user.id,
-          type: 'earn',
-          points: pointsEarned,
-          orderId: orderRef.id,
-          description: `Earned for order ₹${total}`,
-          createdAt: new Date().toISOString(),
-        }).catch(() => {});
-      }
-    }
+    /* Loyalty points are NOT awarded here. An unpaid order costs the caller
+       nothing, so awarding on creation let anyone farm points by placing and
+       abandoning orders — and points are spendable money. They are granted in
+       awardLoyaltyPoints() once the order is actually paid. */
 
     const fullOrder = { id: orderRef.id, _id: orderRef.id, ...orderData };
 
@@ -161,6 +236,8 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true, data: fullOrder }, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    const message = error?.error?.description || error?.message || 'Could not place order. Please try again.';
+    console.error('[orders POST] failed:', error?.error || error);
+    return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }

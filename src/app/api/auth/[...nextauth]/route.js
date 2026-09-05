@@ -176,7 +176,9 @@ export const authOptions = {
   },
   pages: { signIn: '/login', error: '/auth-error' },
   session: { strategy: 'jwt', maxAge: 30 * 24 * 60 * 60 },
-  secret: process.env.NEXTAUTH_SECRET || 'tulsi-bridal-dev-secret-testing-only',
+  /* No fallback on purpose. A hardcoded default would sign every session token
+     with a value that is public in this repo, letting anyone mint an admin JWT. */
+  secret: process.env.NEXTAUTH_SECRET,
 };
 
 const handler = NextAuth(authOptions);

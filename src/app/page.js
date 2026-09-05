@@ -99,6 +99,59 @@ const DEFAULT_TESTIMONIALS = [
   { name: 'Anitha Rajan', location: 'Madurai', rating: 5, review: "Best quality imitation jewellery I've seen. The stone work is so detailed. Great value for money!", photo: '' },
 ];
 
+/* ── Gold Particle Canvas ── */
+function HeroParticles() {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const setSize = () => {
+      canvas.width  = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+    };
+    setSize();
+    window.addEventListener('resize', setSize);
+
+    const ctx = canvas.getContext('2d');
+    const GOLD = [[228,176,64],[201,151,58],[244,223,160]];
+    const pts = Array.from({ length: 55 }, () => ({
+      x:   Math.random() * canvas.width,
+      y:   Math.random() * canvas.height,
+      r:   Math.random() * 1.6 + 0.4,
+      vy:  -(Math.random() * 0.45 + 0.15),
+      vx:  (Math.random() - 0.5) * 0.22,
+      a:   Math.random() * 0.55 + 0.08,
+      c:   GOLD[Math.floor(Math.random() * GOLD.length)],
+    }));
+
+    let raf;
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      pts.forEach((p) => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${p.c[0]},${p.c[1]},${p.c[2]},${p.a})`;
+        ctx.fill();
+        p.x += p.vx;
+        p.y += p.vy;
+        p.a -= 0.0004;
+        if (p.y < -8 || p.a <= 0.01) {
+          p.x = Math.random() * canvas.width;
+          p.y = canvas.height + 8;
+          p.a = Math.random() * 0.55 + 0.08;
+          p.r = Math.random() * 1.6 + 0.4;
+        }
+      });
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', setSize); };
+  }, []);
+  return <canvas ref={canvasRef} className="hero-canvas" />;
+}
+
 /* ── Hero Slider ── */
 function HeroSlider({ slides }) {
   const [current, setCurrent] = useState(0);
@@ -158,37 +211,40 @@ function HeroSlider({ slides }) {
         )}
 
         {/* Overlay gradient for text readability */}
-        {slide.imageUrl && (
-          <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/20 to-transparent md:via-black/10" />
+        {slide.imageUrl ? (
+          <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/25 to-transparent" />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
         )}
       </div>
+
+      {/* Gold dust particles */}
+      <HeroParticles />
 
       {/* Slide text content */}
       <div className={`relative z-10 h-full flex items-center transition-opacity duration-500 ${transitioning ? 'opacity-0' : 'opacity-100'}`}>
         <div className="section-container w-full">
-          <div className={`max-w-lg ${slide.imageUrl ? 'text-white' : 'text-white'}`}>
+          <div className="max-w-xl text-white">
             {slide.tag && (
-              <span className="inline-block text-xs tracking-[0.35em] uppercase font-semibold text-gold-400 mb-4 border border-gold-400/40 px-3 py-1 rounded-full">
-                {slide.tag}
-              </span>
+              <div className="luxury-label mb-5 text-gold-400">{slide.tag}</div>
             )}
-            <h1 className="font-serif font-bold text-white leading-tight mb-4 whitespace-pre-line"
-              style={{ fontSize: 'clamp(2.4rem, 6vw, 5rem)', textShadow: slide.imageUrl ? '0 2px 20px rgba(0,0,0,0.4)' : 'none' }}>
+            <h1 className="font-serif font-bold text-white leading-[1.05] mb-5 whitespace-pre-line text-balance"
+              style={{ fontSize: 'clamp(2.8rem, 7vw, 5.5rem)', textShadow: '0 2px 32px rgba(0,0,0,0.35)', letterSpacing: '-0.01em' }}>
               {slide.title}
             </h1>
             {slide.subtitle && (
-              <p className="text-white/70 text-base md:text-lg mb-8 font-light tracking-wide">
+              <p className="text-white/65 text-sm md:text-base mb-9 font-light tracking-widest uppercase" style={{ letterSpacing: '0.14em' }}>
                 {slide.subtitle}
               </p>
             )}
             <div className="flex gap-3 flex-wrap">
               {slide.ctaText && (
-                <Link href={slide.ctaLink || '/shop'} className="inline-flex items-center gap-2 px-7 py-3.5 bg-gold-500 hover:bg-gold-400 text-white font-semibold text-sm tracking-luxury uppercase transition-all duration-300 shadow-gold group">
-                  {slide.ctaText} <FiArrowRight className="group-hover:translate-x-1 transition-transform" />
+                <Link href={slide.ctaLink || '/shop'} className="inline-flex items-center gap-2.5 px-8 py-3.5 bg-gold-gradient text-white font-semibold text-xs tracking-[0.18em] uppercase transition-all duration-300 shadow-gold hover:shadow-lg hover:-translate-y-0.5 group">
+                  {slide.ctaText} <FiArrowRight className="group-hover:translate-x-1 transition-transform duration-200" />
                 </Link>
               )}
               {slide.cta2Text && (
-                <Link href={slide.cta2Link || '/rentals'} className="inline-flex items-center gap-2 px-7 py-3.5 border border-white/40 hover:border-gold-400 text-white hover:text-gold-400 font-semibold text-sm tracking-luxury uppercase transition-all duration-300">
+                <Link href={slide.cta2Link || '/rentals'} className="inline-flex items-center gap-2.5 px-8 py-3.5 border border-white/30 hover:border-gold-400/70 text-white/80 hover:text-gold-300 font-semibold text-xs tracking-[0.18em] uppercase transition-all duration-300 backdrop-blur-sm">
                   <FiCalendar className="text-sm" /> {slide.cta2Text}
                 </Link>
               )}
@@ -229,6 +285,7 @@ function HeroSlider({ slides }) {
 function ProductCard({ product }) {
   const { dispatch } = useCart();
   const { toggle, isWishlisted } = useWishlist();
+  const wrapRef = useRef(null);
   const discount = getDiscountPercentage(product.price, product.discountPrice);
   const displayPrice = product.discountPrice || product.price;
   const id = product._id || product.id;
@@ -247,9 +304,31 @@ function ProductCard({ product }) {
     toggle(product);
   }
 
+  function handleMouseMove(e) {
+    const el = wrapRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width  - 0.5) * 14;
+    const y = ((e.clientY - r.top)  / r.height - 0.5) * -10;
+    el.style.transition = 'transform 0.08s ease';
+    el.style.transform  = `perspective(900px) rotateY(${x}deg) rotateX(${y}deg) translateZ(6px)`;
+  }
+  function handleMouseLeave() {
+    const el = wrapRef.current;
+    if (!el) return;
+    el.style.transition = 'transform 0.55s cubic-bezier(0.22,1,0.36,1)';
+    el.style.transform  = '';
+  }
+
   return (
     <Link href={`/product/${id}`} className="group block">
-      <div className="relative overflow-hidden bg-white aspect-square rounded-t-2xl border border-stone-100">
+      <div
+        ref={wrapRef}
+        className="card-3d"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+      >
+      <div className="relative overflow-hidden bg-white aspect-square rounded-t-2xl border border-stone-100 group-hover:border-gold-200/60 transition-colors duration-300">
         {product.images?.[0] ? (
           <Image
             src={product.images[0]}
@@ -282,13 +361,14 @@ function ProductCard({ product }) {
         )}
       </div>
 
-      <div className="pt-3 pb-4 px-0.5">
+      <div className="pt-3 pb-1 px-0.5">
         <p className="text-2xs text-gold-600 uppercase tracking-widest font-semibold mb-1 capitalize">{product.category}</p>
         <p className="font-serif text-base text-stone-800 font-semibold leading-snug line-clamp-2 group-hover:text-wine-700 transition-colors">{product.name}</p>
-        <div className="flex items-baseline gap-2 mt-2">
+        <div className="flex items-baseline gap-2 mt-2 pb-3">
           <span className="font-serif font-bold text-wine-700 text-base">{formatPrice(displayPrice)}</span>
           {discount > 0 && <span className="text-xs text-stone-400 line-through">{formatPrice(product.price)}</span>}
         </div>
+      </div>
       </div>
     </Link>
   );
@@ -400,10 +480,13 @@ export default function HomePage() {
       <HeroSlider slides={heroSlides} />
 
       {/* ── ANNOUNCEMENT STRIP ── */}
-      <div className="bg-stone-50 border-b border-stone-100 py-3">
-        <div className="flex items-center justify-center gap-4 md:gap-8 flex-wrap px-4">
-          {['✦ New Arrivals Every Week', 'Free Delivery Above ₹2,000', 'Cash on Delivery', '100% Authentic Jewellery ✦'].map((item) => (
-            <span key={item} className="text-xs text-stone-500 tracking-wider font-medium whitespace-nowrap">{item}</span>
+      <div className="bg-velvet-950 border-b border-gold-900/30 py-2.5">
+        <div className="flex items-center justify-center gap-6 md:gap-10 flex-wrap px-4">
+          {['New Arrivals Every Week', 'Free Delivery Above ₹2,000', 'Cash on Delivery', '100% Authentic Jewellery'].map((item, i) => (
+            <span key={item} className="flex items-center gap-6 text-[10px] text-gold-400/70 tracking-[0.22em] font-semibold uppercase whitespace-nowrap">
+              {i > 0 && <span className="w-px h-3 bg-gold-700/50 hidden md:block" />}
+              <span>✦ {item}</span>
+            </span>
           ))}
         </div>
       </div>
@@ -419,25 +502,30 @@ export default function HomePage() {
           const aspect = size === 'small' ? 'aspect-square' : size === 'medium' ? 'aspect-[3/4]' : 'aspect-[4/5]';
           const radius = 'rounded-2xl';
           return (
-            <section className="py-12 bg-white">
+            <section className="py-14 bg-white">
               <div className="section-container">
-                <h2 className="text-center text-xs font-bold tracking-[0.35em] uppercase text-wine-700 mb-8">Top Categories</h2>
+                <div className="text-center mb-8">
+                  <div className="luxury-label justify-center mb-3">Shop by Category</div>
+                  <h2 className="font-serif text-2xl md:text-3xl font-bold text-stone-800">Discover Our Collections</h2>
+                </div>
                 <div className={`grid ${cols} gap-3 md:gap-4`}>
                   {CATEGORIES.map((cat) => {
                     const photo = categoryImages[cat.key];
                     return (
                       <Link key={cat.href} href={cat.href}
-                        className={`group relative ${aspect} overflow-hidden ${radius} bg-gradient-to-br ${cat.color} border border-stone-100 hover:shadow-lg transition-all duration-300`}>
+                        className={`group relative ${aspect} overflow-hidden ${radius} bg-gradient-to-br ${cat.color} border border-stone-100 hover:border-gold-300/60 hover:shadow-luxury transition-all duration-400`}>
                         {photo ? (
-                          <img src={photo} alt={cat.label} className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                          <img src={photo} alt={cat.label} className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out" />
                         ) : (
                           <div className="absolute inset-0 flex items-center justify-center">
                             <span className={size === 'small' ? 'text-3xl' : size === 'medium' ? 'text-5xl' : 'text-6xl'}>{cat.emoji}</span>
                           </div>
                         )}
+                        {/* Gold shimmer overlay on hover */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-gold-600/0 to-transparent group-hover:from-gold-600/10 transition-all duration-400" />
                         {/* Bottom name overlay */}
-                        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/65 via-black/20 to-transparent pt-10 pb-3 px-3">
-                          <span className={`text-white font-bold drop-shadow ${size === 'small' ? 'text-xs' : size === 'medium' ? 'text-sm' : 'text-base'}`}>{cat.label}</span>
+                        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent pt-12 pb-3 px-3">
+                          <span className={`text-white font-bold drop-shadow-md tracking-wide ${size === 'small' ? 'text-xs' : size === 'medium' ? 'text-sm' : 'text-base'}`}>{cat.label}</span>
                         </div>
                       </Link>
                     );
@@ -453,20 +541,26 @@ export default function HomePage() {
         const imgSz  = size === 'small' ? 'w-20 h-20' : size === 'medium' ? 'w-24 h-24 md:w-28 md:h-28' : 'w-28 h-28 md:w-36 md:h-36';
         const txtSz  = size === 'small' ? 'text-xs' : size === 'medium' ? 'text-xs' : 'text-sm';
         return (
-          <section className="py-12 bg-white">
+          <section className="py-14 bg-white">
             <div className="section-container">
-              <h2 className="text-center text-xs font-bold tracking-[0.35em] uppercase text-wine-700 mb-8">Top Categories</h2>
+              <div className="text-center mb-8">
+                <div className="luxury-label justify-center mb-3">Shop by Category</div>
+                <h2 className="font-serif text-2xl md:text-3xl font-bold text-stone-800">Discover Our Collections</h2>
+              </div>
               <div className={`grid ${cols} gap-4 md:gap-6`}>
                 {CATEGORIES.map((cat) => {
                   const photo = categoryImages[cat.key];
                   return (
                     <Link key={cat.href} href={cat.href} className="group flex flex-col items-center gap-3">
-                      <div className={`${imgSz} rounded-full overflow-hidden border-2 border-gold-200 group-hover:border-gold-500 group-hover:shadow-md flex items-center justify-center bg-gradient-to-br ${cat.color} transition-all duration-300`}>
-                        {photo ? (
-                          <img src={photo} alt={cat.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                        ) : (
-                          <span className={size === 'small' ? 'text-2xl' : size === 'medium' ? 'text-3xl' : 'text-4xl'}>{cat.emoji}</span>
-                        )}
+                      <div className="relative">
+                        {/* Gold glow ring on hover */}
+                        <div className={`${imgSz} rounded-full overflow-hidden border-2 border-gold-200 group-hover:border-gold-400 group-hover:shadow-gold flex items-center justify-center bg-gradient-to-br ${cat.color} transition-all duration-400`}>
+                          {photo ? (
+                            <img src={photo} alt={cat.label} className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-500" />
+                          ) : (
+                            <span className={size === 'small' ? 'text-2xl' : size === 'medium' ? 'text-3xl' : 'text-4xl'}>{cat.emoji}</span>
+                          )}
+                        </div>
                       </div>
                       <span className={`${txtSz} font-semibold text-stone-700 group-hover:text-wine-700 transition-colors leading-tight text-center`}>{cat.label}</span>
                     </Link>
@@ -479,12 +573,12 @@ export default function HomePage() {
       })()}
 
       {/* ── BROWSE ALL PRODUCTS (Infinite Scroll) ── */}
-      <section className="py-10 bg-stone-50" id="shop">
+      <section className="py-12 bg-ivory-50" id="shop">
         <div className="section-container">
           {/* Header */}
           <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
             <div>
-              <p className="text-xs font-bold tracking-[0.35em] uppercase text-wine-700 mb-1">Our Collection</p>
+              <div className="luxury-label mb-2">Our Collection</div>
               <h2 className="font-serif text-2xl md:text-3xl font-bold text-stone-800">All Products</h2>
             </div>
             {/* Sort dropdown */}
@@ -608,11 +702,12 @@ export default function HomePage() {
       {/* ── TRUST SIGNALS ── */}
       <section className="py-14 bg-white border-b border-stone-100">
         <div className="section-container">
+          <div className="luxury-label justify-center mb-8">Why Brides Choose Us</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {TRUST.map(({ icon: Icon, title, desc }) => (
-              <div key={title} className="text-center">
-                <div className="w-14 h-14 rounded-2xl bg-stone-50 border border-stone-100 flex items-center justify-center mx-auto mb-4">
-                  <Icon className="text-gold-600 text-xl" />
+              <div key={title} className="text-center group">
+                <div className="trust-icon-ring w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
+                  <Icon className="text-velvet-800 text-xl" />
                 </div>
                 <p className="font-serif font-semibold text-stone-800 text-base mb-1">{title}</p>
                 <p className="text-stone-400 text-xs">{desc}</p>
@@ -623,40 +718,39 @@ export default function HomePage() {
       </section>
 
       {/* ── HAPPY CUSTOMERS ── */}
-      <section className="py-16 bg-stone-50">
+      <section className="py-16 bg-velvet-950">
         <div className="section-container">
           <div className="text-center mb-10">
-            <p className="text-xs font-bold tracking-[0.35em] uppercase text-wine-700 mb-3">What Our Brides Say</p>
-            <h2 className="font-serif text-3xl font-bold text-stone-800">Happy Customers</h2>
+            <div className="luxury-label justify-center mb-3 text-gold-400">What Our Brides Say</div>
+            <h2 className="font-serif text-3xl font-bold text-white">Happy Customers</h2>
           </div>
           {/* Mobile: horizontal scroll; Desktop: 3-column grid */}
           <div className="flex gap-5 overflow-x-auto pb-3 md:overflow-visible md:grid md:grid-cols-3 md:pb-0 snap-x snap-mandatory md:snap-none scrollbar-hide">
             {testimonials.map((t, i) => (
-              <div key={i} className="bg-white rounded-2xl p-6 shadow-card border border-stone-100 flex-shrink-0 w-[80vw] max-w-xs md:w-auto md:max-w-none snap-start flex flex-col">
+              <div key={i} className="bg-velvet-900/60 border border-gold-800/30 rounded-2xl p-6 backdrop-blur-sm flex-shrink-0 w-[80vw] max-w-xs md:w-auto md:max-w-none snap-start flex flex-col hover:border-gold-600/50 transition-colors duration-300">
                 {/* Customer photo + info at top */}
                 <div className="flex items-center gap-3 mb-4">
                   {t.photo ? (
-                    <div className="relative w-14 h-14 rounded-full overflow-hidden flex-shrink-0 border-2 border-gold-300 shadow-sm">
+                    <div className="relative w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border-2 border-gold-500/60 shadow-sm">
                       <Image src={t.photo} alt={t.name} fill className="object-cover" />
                     </div>
                   ) : (
-                    <div className="w-14 h-14 rounded-full bg-wine-100 flex items-center justify-center flex-shrink-0 border-2 border-gold-300 shadow-sm">
-                      <span className="text-wine-700 font-serif font-bold text-xl">{(t.name || 'C')[0].toUpperCase()}</span>
+                    <div className="w-12 h-12 rounded-full bg-wine-900 flex items-center justify-center flex-shrink-0 border-2 border-gold-500/50 shadow-sm">
+                      <span className="text-gold-400 font-serif font-bold text-lg">{(t.name || 'C')[0].toUpperCase()}</span>
                     </div>
                   )}
                   <div>
-                    <p className="font-semibold text-stone-800 text-sm">{t.name}</p>
-                    {t.location && <p className="text-gold-600 text-xs font-medium">{t.location}</p>}
-                    {/* Star rating */}
+                    <p className="font-semibold text-white/90 text-sm">{t.name}</p>
+                    {t.location && <p className="text-gold-500 text-xs font-medium">{t.location}</p>}
                     <div className="flex gap-0.5 mt-1">
                       {Array.from({ length: 5 }).map((_, si) => (
-                        <FiStar key={si} className={`text-xs ${si < (t.rating || 5) ? 'text-gold-400 fill-current' : 'text-stone-200 fill-current'}`} />
+                        <FiStar key={si} className={`text-xs ${si < (t.rating || 5) ? 'text-gold-400 fill-current' : 'text-velvet-700 fill-current'}`} />
                       ))}
                     </div>
                   </div>
                 </div>
                 {/* Review text */}
-                <p className="font-serif text-stone-500 text-sm leading-relaxed italic flex-1">"{t.review || t.text}"</p>
+                <p className="font-serif text-white/50 text-sm leading-relaxed italic flex-1">"{t.review || t.text}"</p>
               </div>
             ))}
           </div>
@@ -667,9 +761,9 @@ export default function HomePage() {
       <section className="py-16 bg-white border-t border-stone-100">
         <div className="section-container">
           <div className="text-center mb-10">
-            <p className="text-xs font-bold tracking-[0.35em] uppercase text-wine-700 mb-3">
+            <div className="luxury-label justify-center mb-3">
               {siteSettings.instagram ? `@${siteSettings.instagram.replace(/^https?:\/\/(www\.)?instagram\.com\/?/, '').replace(/\/$/, '')}` : '@tulsibridal'}
-            </p>
+            </div>
             <h2 className="font-serif text-3xl font-bold text-stone-800">Follow Us on Instagram</h2>
           </div>
 

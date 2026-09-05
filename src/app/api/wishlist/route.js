@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDB, snapshotToArr } from '@/lib/firebase';
+import { getDB, snapshotToArr, toPublicProduct } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
 
 export async function GET() {
@@ -17,7 +17,7 @@ export async function GET() {
     );
     const result = products
       .filter((d) => d.exists)
-      .map((d) => ({ id: d.id, _id: d.id, ...d.data() }));
+      .map((d) => toPublicProduct({ id: d.id, _id: d.id, ...d.data() }));
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });

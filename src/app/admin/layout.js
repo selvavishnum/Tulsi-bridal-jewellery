@@ -13,7 +13,13 @@ import {
   FiShoppingCart,
 } from 'react-icons/fi';
 import { GiQueenCrown } from 'react-icons/gi';
+import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import { playOrderChime } from '@/lib/notifySound';
+import { formatPrice } from '@/lib/utils';
+
+const ORDERS_POLL_MS = 20000;
+const ORDERS_LAST_SEEN_KEY = 'admin_orders_last_seen';
 
 const DEV_BYPASS = process.env.NEXT_PUBLIC_ADMIN_BYPASS === 'true';
 
@@ -22,8 +28,8 @@ const NAV_GROUPS = [
     label: 'Operations',
     items: [
       { href: '/admin',           label: 'Dashboard',   icon: FiHome,         exact: true },
-      { href: '/admin/orders',    label: 'Orders',      icon: FiShoppingBag },
-      { href: '/admin/messages',  label: 'Messages',    icon: FiMessageSquare, badge: true },
+      { href: '/admin/orders',    label: 'Orders',      icon: FiShoppingBag, badgeKey: 'orders' },
+      { href: '/admin/messages',  label: 'Messages',    icon: FiMessageSquare, badgeKey: 'messages' },
       { href: '/admin/rentals',   label: 'Rentals',     icon: FiCalendar },
     ],
   },
@@ -100,7 +106,7 @@ function NavItem({ href, label, icon: Icon, exact, pathname, onClick, unread }) 
   );
 }
 
-function Sidebar({ session, pathname, onClose, unreadMessages }) {
+function Sidebar({ session, pathname, onClose, badges }) {
   return (
     <div className="flex flex-col h-full bg-[#0d1117] border-r border-white/[0.06]">
       <div className="px-4 py-4 flex items-center justify-between flex-shrink-0 border-b border-white/[0.06]">
@@ -129,7 +135,7 @@ function Sidebar({ session, pathname, onClose, unreadMessages }) {
             <div className="space-y-0.5">
               {group.items.map((item) => (
                 <NavItem key={item.href} {...item} pathname={pathname} onClick={onClose}
-                  unread={item.badge ? unreadMessages : 0} />
+                  unread={item.badgeKey ? (badges[item.badgeKey] || 0) : 0} />
               ))}
             </div>
           </div>
@@ -163,6 +169,7 @@ export default function AdminLayout({ children }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [newOrders, setNewOrders] = useState(0);
 
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
 
@@ -176,6 +183,64 @@ export default function AdminLayout({ children }) {
     const t = setInterval(fetchUnread, 60000);
     return () => clearInterval(t);
   }, []);
+
+  /* New-order alert — polls a cheap count endpoint, chimes + toasts on arrival,
+     and clears itself once the admin opens the Orders page. */
+  useEffect(() => {
+    if (!localStorage.getItem(ORDERS_LAST_SEEN_KEY)) {
+      localStorage.setItem(ORDERS_LAST_SEEN_KEY, new Date().toISOString());
+    }
+    let alertedCount = 0;
+    let cancelled = false;
+
+    function poll() {
+      const since = localStorage.getItem(ORDERS_LAST_SEEN_KEY);
+      fetch(`/api/admin/orders/poll?since=${encodeURIComponent(since)}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (cancelled || !d.success) return;
+          setNewOrders(d.data.count);
+          if (d.data.count > alertedCount && !pathname.startsWith('/admin/orders')) {
+            playOrderChime();
+            if (d.data.latest) {
+              toast.success(
+                `New order #${d.data.latest.orderNumber} — ${formatPrice(d.data.latest.total)} from ${d.data.latest.name}`,
+                { duration: 6000, icon: '🛍️' }
+              );
+            }
+          }
+          alertedCount = d.data.count;
+        })
+        .catch(() => {});
+    }
+
+    poll();
+    const t = setInterval(poll, ORDERS_POLL_MS);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [pathname]);
+
+  /* Landing on the Orders page marks everything seen so far as read */
+  useEffect(() => {
+    if (pathname.startsWith('/admin/orders')) {
+      localStorage.setItem(ORDERS_LAST_SEEN_KEY, new Date().toISOString());
+      setNewOrders(0);
+    }
+  }, [pathname]);
+
+  /* Flash the browser tab title while there's an unseen order */
+  useEffect(() => {
+    const base = 'Tulsi Admin';
+    if (newOrders <= 0) { document.title = base; return; }
+    let on = false;
+    document.title = `(${newOrders}) New Order!`;
+    const t = setInterval(() => {
+      on = !on;
+      document.title = on ? base : `(${newOrders}) New Order!`;
+    }, 1200);
+    return () => { clearInterval(t); document.title = base; };
+  }, [newOrders]);
+
+  const badges = { messages: unreadMessages, orders: newOrders };
 
   if (!DEV_BYPASS) {
     if (status === 'loading') {
@@ -225,7 +290,7 @@ export default function AdminLayout({ children }) {
   return (
     <div className="flex h-screen bg-[#f0f2f5] overflow-hidden">
       <aside className="hidden md:flex md:w-56 lg:w-60 flex-shrink-0 flex-col">
-        <Sidebar session={activeSession} pathname={pathname} unreadMessages={unreadMessages} />
+        <Sidebar session={activeSession} pathname={pathname} badges={badges} />
       </aside>
 
       {sidebarOpen && (
@@ -235,7 +300,7 @@ export default function AdminLayout({ children }) {
             onClick={() => setSidebarOpen(false)}
           />
           <aside className="relative w-64 h-full z-10 shadow-2xl">
-            <Sidebar session={activeSession} pathname={pathname} onClose={() => setSidebarOpen(false)} unreadMessages={unreadMessages} />
+            <Sidebar session={activeSession} pathname={pathname} onClose={() => setSidebarOpen(false)} badges={badges} />
           </aside>
         </div>
       )}

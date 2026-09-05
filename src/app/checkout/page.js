@@ -7,6 +7,7 @@ import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import { loadRazorpayScript } from '@/lib/loadRazorpay';
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -36,6 +37,10 @@ export default function CheckoutPage() {
       router.replace('/login?callbackUrl=/checkout');
     }
   }, [status, router]);
+
+  /* Start loading Razorpay as soon as the page mounts, so it's already
+     ready by the time the customer reaches "Place Order". */
+  useEffect(() => { loadRazorpayScript().catch(() => {}); }, []);
 
   useEffect(() => {
     if (status !== 'authenticated') return;
@@ -128,11 +133,10 @@ export default function CheckoutPage() {
     setLoading(true);
 
     try {
+      /* Prices, discounts and the total are computed server-side from the
+         products collection — only the cart contents are sent. */
       const orderItems = items.map((i) => ({
         product: i._id || i.id,
-        name: i.name,
-        image: i.images?.[0],
-        price: i.discountPrice || i.price,
         quantity: i.quantity,
       }));
 
@@ -142,16 +146,13 @@ export default function CheckoutPage() {
         body: JSON.stringify({
           items: orderItems,
           shippingAddress: { ...form },
-          payment: { method: paymentMethod, status: 'pending' },
-          coupon: coupon?._id,
+          payment: { method: paymentMethod },
           couponCode: coupon?.code,
-          subtotal, shippingCost, discount: discount + loyaltyDiscount, total: total - loyaltyDiscount,
-          loyaltyDiscount,
           guestEmail: !session ? form.email : undefined,
         }),
       });
       const orderData = await orderRes.json();
-      if (!orderData.success) throw new Error(orderData.message);
+      if (!orderData.success) throw new Error(orderData.message || 'Could not place order. Please try again.');
       const orderId = orderData.data.id || orderData.data._id;
       const orderNumber = orderData.data.orderNumber;
 
@@ -161,13 +162,16 @@ export default function CheckoutPage() {
         return;
       }
 
+      /* In case the earlier mount-time load hasn't finished (or failed) yet */
+      await loadRazorpayScript();
+
       const payRes = await fetch('/api/payments/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: total, receipt: orderId }),
+        body: JSON.stringify({ orderId }),
       });
       const payData = await payRes.json();
-      if (!payData.success) throw new Error(payData.message);
+      if (!payData.success) throw new Error(payData.message || 'Payment setup failed. Please try again.');
 
       const options = {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
@@ -202,7 +206,9 @@ export default function CheckoutPage() {
       const rzp = new window.Razorpay(options);
       rzp.open();
     } catch (error) {
-      toast.error(error.message || 'Checkout failed');
+      /* Stays on screen until dismissed — the default toast duration was too
+         short to read on a phone, let alone screenshot. */
+      toast.error(error.message || 'Checkout failed', { duration: 15000 });
     } finally {
       setLoading(false);
     }
@@ -216,7 +222,6 @@ export default function CheckoutPage() {
 
   return (
     <>
-      <script src="https://checkout.razorpay.com/v1/checkout.js" async />
       <div className="min-h-screen bg-gray-50 py-8">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="font-serif text-3xl font-bold text-maroon-950 mb-6">Checkout</h1>

@@ -5,6 +5,17 @@ import { calculateRentalDays } from '@/lib/utils';
 import { sendRentalConfirmation, sendRentalNotificationToAdmin } from '@/lib/email';
 import { sendRentalWhatsAppToAdmin, sendRentalWhatsAppToCustomer } from '@/lib/whatsapp';
 
+/* Rental delivery/return rates — must match DELIVERY_OPTIONS in
+   src/app/rental-booking/[id]/page.js. Server-side so the client cannot price it. */
+const DELIVERY_RATES = { self: 0, delivery: 99, courier: 199 };
+
+/* Own-property lookup only — `in` would also match inherited keys like
+   "constructor", which would return a function instead of a rate. */
+function rateFor(method) {
+  return Object.prototype.hasOwnProperty.call(DELIVERY_RATES, method) ? method : 'self';
+}
+
+
 export async function GET(request) {
   try {
     const session = await getEffectiveSession();
@@ -48,9 +59,13 @@ export async function POST(request) {
     const pricePerDay = product.rentalPrice || 0;
     const totalRentalCost = pricePerDay * rentalDays;
     const securityDeposit = Math.round((product.price || 0) * 0.3);
-    const deliveryCharge = delivery?.charge || 0;
-    const returnCharge = returnMethod?.charge || 0;
-    const total = totalRentalCost + securityDeposit + deliveryCharge + returnCharge;
+    /* Charges come from a server-side rate table, never from the body — a
+       negative charge would otherwise wipe out the rental fee and deposit. */
+    const deliveryMethod = rateFor(delivery?.method);
+    const returnMethodName = rateFor(returnMethod?.method);
+    const deliveryCharge = DELIVERY_RATES[deliveryMethod];
+    const returnCharge   = DELIVERY_RATES[returnMethodName];
+    const total = Math.max(0, totalRentalCost + securityDeposit + deliveryCharge + returnCharge);
 
     const resolvedEmail = guestEmail || session?.user?.email || customerDetails?.email || null;
 
@@ -68,13 +83,17 @@ export async function POST(request) {
       pricePerDay,
       securityDeposit,
       totalRentalCost,
-      delivery: delivery || { method: 'self', charge: 0 },
-      returnMethod: returnMethod || { method: 'self', charge: 0 },
+      delivery:     { method: deliveryMethod,   charge: deliveryCharge },
+      returnMethod: { method: returnMethodName, charge: returnCharge },
       deliveryCharge,
       returnCharge,
       total,
       customerDetails: customerDetails || {},
-      payment: payment || { method: 'cod', status: 'pending' },
+      /* Built server-side — never persist a client-supplied payment object */
+      payment: {
+        method: ['razorpay', 'cod'].includes(payment?.method) ? payment.method : 'cod',
+        status: 'pending',
+      },
       status: 'pending',
       deliveryStatus: 'not_dispatched',
       returnStatus: 'not_scheduled',

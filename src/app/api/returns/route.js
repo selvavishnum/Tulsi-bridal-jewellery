@@ -43,6 +43,15 @@ export async function POST(request) {
     const orderSnap = orderDoc || await db.collection('orders').doc(orderId).get();
     const order = { id: orderSnap.id || orderId, ...orderSnap.data() };
 
+    /* Only a paid order can be refunded — otherwise a return could be opened
+       against an unpaid order and approved for money that never came in. */
+    if (order.payment?.status !== 'paid') {
+      return NextResponse.json(
+        { success: false, message: 'This order has not been paid for yet.' },
+        { status: 400 }
+      );
+    }
+
     // Check no existing return request for this order
     const existingSnap = await db.collection('returns').where('orderId', '==', orderId).get();
     if (!existingSnap.empty) {
@@ -50,8 +59,9 @@ export async function POST(request) {
     }
 
     const ref = db.collection('returns').doc();
-    const returnItems = items?.length ? items : order.items || [];
-    const refundAmount = order.total || returnItems.reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0);
+    /* Refund value comes from the stored order, never from the request body */
+    const returnItems = order.items || [];
+    const refundAmount = Number(order.total) || 0;
 
     const doc = {
       orderId,

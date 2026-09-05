@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDB, docToObj } from '@/lib/firebase';
+import { esc } from '@/lib/email';
 import { requireAdmin } from '@/lib/adminCollection';
 import { sendRentalConfirmation, sendRentalNotificationToAdmin } from '@/lib/email';
 import nodemailer from 'nodemailer';
@@ -100,7 +101,7 @@ export async function POST(request) {
   <tr><td style="padding:32px 40px;">
     ${type === 'customer'
       ? `<h2 style="margin:0 0 8px;font-family:Georgia,serif;font-size:22px;color:#292524;">Your Order is Confirmed! 🎉</h2>
-         <p style="margin:0 0 20px;font-size:14px;color:#78716c;">Thank you ${addr.name}! We are preparing your order.</p>`
+         <p style="margin:0 0 20px;font-size:14px;color:#78716c;">Thank you ${esc(addr.name)}! We are preparing your order.</p>`
       : `<h2 style="margin:0 0 8px;font-family:Georgia,serif;font-size:22px;color:#292524;">New Order Received 🛍️</h2>
          <p style="margin:0 0 20px;font-size:14px;color:#78716c;">A new order has been placed.</p>`
     }
@@ -109,7 +110,7 @@ export async function POST(request) {
       <tr><td style="padding:18px 22px;">
         <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#78716c;">Order Number</p>
         <p style="margin:0;font-family:monospace;font-size:22px;font-weight:700;color:#8b1a4a;">#${order.orderNumber}</p>
-        <p style="margin:6px 0 0;font-size:13px;color:#78716c;">Customer: <strong style="color:#44403c;">${addr.name}</strong></p>
+        <p style="margin:6px 0 0;font-size:13px;color:#78716c;">Customer: <strong style="color:#44403c;">${esc(addr.name)}</strong></p>
         <p style="margin:3px 0 0;font-size:13px;color:#78716c;">Email: <strong style="color:#44403c;">${customerEmail || '—'}</strong></p>
         <p style="margin:3px 0 0;font-size:13px;color:#78716c;">Phone: <strong style="color:#44403c;">${addr.phone || '—'}</strong></p>
         <p style="margin:3px 0 0;font-size:13px;color:#78716c;">Payment: <strong style="color:#44403c;">${order.payment?.method || '—'} — ${order.payment?.status || '—'}</strong></p>

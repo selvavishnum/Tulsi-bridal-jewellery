@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { getDB } from '@/lib/firebase';
+import { sendOTPEmail } from '@/lib/email';
 
+/* Must be a CSPRNG — this code is a full authentication factor.
+   Math.random() is predictable and would let an observer derive live codes. */
 function generateOTP() {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
 }
 
 function friendlyError(err) {
@@ -37,8 +41,20 @@ export async function POST(request) {
     batch.set(newRef, { email: email.toLowerCase(), code, expiresAt, createdAt: new Date().toISOString() });
     await batch.commit();
 
-    console.log(`[OTP] ${email} → ${code}`); // visible in Vercel → Functions → Logs
-    return NextResponse.json({ success: true, message: `OTP sent! Check Vercel logs for the code (${email})` });
+    /* Deliver over email only. The code must never reach the logs — anyone with
+       log access could otherwise sign in as any user, including an admin. */
+    const sent = await sendOTPEmail(email, code).catch((e) => {
+      console.error('[send-otp] delivery failed:', e.message);
+      return false;
+    });
+    if (!sent) {
+      return NextResponse.json(
+        { success: false, message: 'Could not send the code right now. Please try again shortly.' },
+        { status: 502 }
+      );
+    }
+
+    return NextResponse.json({ success: true, message: `OTP sent to ${email}. It expires in 10 minutes.` });
   } catch (error) {
     console.error('[send-otp error]', error.message);
     return NextResponse.json({ success: false, message: friendlyError(error) }, { status: 500 });
