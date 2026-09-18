@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
   FiSearch, FiX, FiUsers, FiRefreshCw, FiDownload,
-  FiShoppingBag, FiEye,
+  FiShoppingBag, FiEye, FiGlobe, FiCalendar, FiTrendingUp,
 } from 'react-icons/fi';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { format, parseISO } from 'date-fns';
@@ -24,6 +24,8 @@ export default function AdminCustomersPage() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [search, setSearch]       = useState('');
+  const [siteVisits, setSiteVisits] = useState(null);
+  const [visitsLoading, setVisitsLoading] = useState(true);
 
   function fetchCustomers() {
     setLoading(true);
@@ -34,7 +36,16 @@ export default function AdminCustomersPage() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => { fetchCustomers(); }, []);
+  function fetchSiteVisits() {
+    setVisitsLoading(true);
+    fetch('/api/admin/site-visits')
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setSiteVisits(d.data); })
+      .catch(() => {})
+      .finally(() => setVisitsLoading(false));
+  }
+
+  useEffect(() => { fetchCustomers(); fetchSiteVisits(); }, []);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return customers;
@@ -94,10 +105,10 @@ export default function AdminCustomersPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={fetchCustomers}
+            onClick={() => { fetchCustomers(); fetchSiteVisits(); }}
             className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition"
           >
-            <FiRefreshCw className={`text-sm ${loading ? 'animate-spin' : ''}`} />
+            <FiRefreshCw className={`text-sm ${loading || visitsLoading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
           <button
@@ -121,6 +132,30 @@ export default function AdminCustomersPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Website Visitors — everyone who reaches the public site, logged in or not */}
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+          <FiGlobe className="text-gray-400" /> Website Visitors
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: "Today's Visitors",  icon: FiEye,        value: siteVisits?.today.uniqueVisitors,    color: 'bg-indigo-50 text-indigo-700' },
+            { label: "Today's Page Views", icon: FiTrendingUp, value: siteVisits?.today.pageViews,          color: 'bg-sky-50 text-sky-700' },
+            { label: 'Visitors (7 Days)',  icon: FiCalendar,   value: siteVisits?.last7Days.uniqueVisitors, color: 'bg-violet-50 text-violet-700' },
+            { label: 'All-Time Visitors',  icon: FiGlobe,      value: siteVisits?.allTime.uniqueVisitors,   color: 'bg-emerald-50 text-emerald-700' },
+          ].map((s) => (
+            <div key={s.label} className={`rounded-xl px-4 py-3 flex items-center gap-3 ${s.color}`}>
+              <s.icon className="text-xl flex-shrink-0 opacity-60" />
+              <div>
+                <p className="text-2xl font-bold leading-none">{visitsLoading ? '—' : (s.value ?? 0)}</p>
+                <p className="text-xs font-medium opacity-70 mt-0.5">{s.label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="text-2xs text-gray-400 mt-1.5">Counts unique devices/browsers per day (IST), across the whole public site.</p>
       </div>
 
       {/* Search */}

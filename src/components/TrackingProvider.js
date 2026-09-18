@@ -68,11 +68,29 @@ export function TrackingProvider({ children }) {
     };
   }, [userId]);
 
-  // Page view tracking
+  // Page view tracking (logged-in customers — feeds the per-customer interest data)
   useEffect(() => {
     if (!userId || !pathname) return;
     trackFetch('/api/track/pageview', { path: pathname, category: extractCategory(pathname) });
   }, [userId, pathname]);
+
+  // Site-wide visit tracking — every visitor, logged in or not. This is what
+  // answers "how many people visit the website"; the effect above only ever
+  // counted customers who were signed in.
+  useEffect(() => {
+    if (!pathname || pathname.startsWith('/admin')) return; // don't count your own admin usage
+    let visitorId;
+    try {
+      visitorId = localStorage.getItem('tulsi_visitor_id');
+      if (!visitorId) {
+        visitorId = (crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        localStorage.setItem('tulsi_visitor_id', visitorId);
+      }
+    } catch {
+      return; // storage unavailable (private mode, etc.) — skip rather than double count
+    }
+    trackFetch('/api/track/visit', { visitorId });
+  }, [pathname]);
 
   // Cart sync — debounced 2 seconds
   useEffect(() => {
