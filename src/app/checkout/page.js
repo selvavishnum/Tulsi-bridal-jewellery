@@ -182,6 +182,13 @@ export default function CheckoutPage() {
         order_id: payData.data.id,
         prefill: { name: form.fullName, email: form.email, contact: form.phone },
         theme: { color: '#800020' },
+        /* User closed the modal without paying — the order stays pending in
+           Firestore, but they need to know nothing was charged. */
+        modal: {
+          ondismiss: () => {
+            toast('Payment cancelled. Your order was not placed.', { icon: 'ℹ️' });
+          },
+        },
         handler: async (response) => {
           const verifyRes = await fetch('/api/payments/verify', {
             method: 'POST',
@@ -204,6 +211,14 @@ export default function CheckoutPage() {
       };
 
       const rzp = new window.Razorpay(options);
+      /* Card declined, bank timeout, etc. — Razorpay shows its own message
+         inside the modal, but the merchant page should reflect it too. */
+      rzp.on('payment.failed', (response) => {
+        toast.error(
+          response.error?.description || 'Payment failed. Please try again.',
+          { duration: 15000 }
+        );
+      });
       rzp.open();
     } catch (error) {
       /* Stays on screen until dismissed — the default toast duration was too
