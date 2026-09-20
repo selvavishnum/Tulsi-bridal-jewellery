@@ -3,6 +3,7 @@ import { getDB, FieldValue, snapshotToArr } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
 import { sendOrderConfirmation, sendOrderNotificationToAdmin } from '@/lib/email';
 import { sendOrderWhatsAppToAdmin, sendOrderWhatsAppToCustomer } from '@/lib/whatsapp';
+import { getAvailableCouriers, isConfigured as shiprocketConfigured } from '@/lib/shiprocket';
 
 /* Shipping rules — must match the cart display in src/context/CartContext.js */
 const FREE_SHIPPING_ABOVE = 2000;
@@ -11,6 +12,11 @@ const PAYMENT_METHODS = ['razorpay', 'cod'];
 /* Loyalty may cover at most this share of an order, so a large parked balance
    can never bring the amount payable to zero. */
 const MAX_LOYALTY_SHARE = 0.2;
+/* COD rules — mirrored on the client (checkout page) for display only; this
+   is the enforced copy. Keep both in sync if these change. */
+const COD_MAX_ORDER_VALUE = 20000;
+const COD_FEE = 49;
+const COD_FEE_BELOW = 500;
 
 export async function GET(request) {
   try {
@@ -135,6 +141,50 @@ export async function POST(request) {
       }
     }
 
+    const resolvedPaymentMethod = PAYMENT_METHODS.includes(payment?.method) ? payment.method : 'razorpay';
+
+    /* Admin can pause online payment site-wide (e.g. while Razorpay KYC is
+       pending) — re-checked here so a stale/cached checkout page can't place
+       a "razorpay" order while it's off. COD stays available either way. */
+    if (resolvedPaymentMethod === 'razorpay') {
+      const settingsDoc = await db.collection('settings').doc('site').get();
+      if (settingsDoc.data()?.onlinePaymentEnabled === false) {
+        return NextResponse.json(
+          { success: false, message: 'Online payment is temporarily unavailable. Please choose Cash on Delivery.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    const isCod = resolvedPaymentMethod === 'cod';
+    const codFee = isCod && computedSubtotal < COD_FEE_BELOW ? COD_FEE : 0;
+
+    if (isCod) {
+      /* Pre-loyalty total — loyalty only ever reduces it further, so this is
+         a safe (conservative) figure to cap against. */
+      const preliminaryTotal = Math.max(0, computedSubtotal - couponDiscount + computedShipping + codFee);
+      if (preliminaryTotal > COD_MAX_ORDER_VALUE) {
+        return NextResponse.json({
+          success: false,
+          message: `Cash on Delivery is available only for orders up to ₹${COD_MAX_ORDER_VALUE.toLocaleString('en-IN')}. Please choose online payment for this order.`,
+        }, { status: 400 });
+      }
+
+      /* Fails open — a Shiprocket outage or missing config shouldn't block a
+         sale over data we don't actually have. */
+      if (shiprocketConfigured()) {
+        try {
+          const couriers = await getAvailableCouriers(shippingAddress.pincode, true);
+          if (Array.isArray(couriers) && couriers.length === 0) {
+            return NextResponse.json({
+              success: false,
+              message: `Cash on Delivery is not available for pincode ${shippingAddress.pincode}. Please choose online payment.`,
+            }, { status: 400 });
+          }
+        } catch {}
+      }
+    }
+
     const orderRef = db.collection('orders').doc();
     const orderNumber = `TBJ${Date.now()}`;
     const resolvedEmail = guestEmail || session?.user?.email || shippingAddress?.email || null;
@@ -155,13 +205,14 @@ export async function POST(request) {
       /* Built server-side — a client-supplied payment object could otherwise
          pre-seed razorpayOrderId/amountDue and defeat payment verification. */
       payment: {
-        method: PAYMENT_METHODS.includes(payment?.method) ? payment.method : 'razorpay',
+        method: resolvedPaymentMethod,
         status: 'pending',
       },
       coupon: resolvedCouponId,
       couponCode: resolvedCouponCode,
       subtotal: computedSubtotal,
       shippingCost: computedShipping,
+      codFee,
       status: 'pending',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -182,7 +233,7 @@ export async function POST(request) {
       }
 
       const discount = Math.min(couponDiscount + loyaltyDiscount, computedSubtotal);
-      const total = Math.max(0, computedSubtotal - discount + computedShipping);
+      const total = Math.max(0, computedSubtotal - discount + computedShipping + codFee);
       const data = { ...baseOrder, discount, loyaltyDiscount, total };
 
       tx.set(orderRef, data);

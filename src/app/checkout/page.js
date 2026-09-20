@@ -9,6 +9,12 @@ import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { loadRazorpayScript } from '@/lib/loadRazorpay';
 
+/* Mirrors the enforced rules in src/app/api/orders/route.js — shown here only
+   for the customer's benefit before they submit. The server is authoritative. */
+const COD_MAX_ORDER_VALUE = 20000;
+const COD_FEE = 49;
+const COD_FEE_BELOW = 500;
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -22,6 +28,8 @@ export default function CheckoutPage() {
   const [savedAddresses, setSavedAddresses] = useState([]);
   const [addrChoice, setAddrChoice] = useState('new');
   const [pincodeLoading, setPincodeLoading] = useState(false);
+  const [codAvailable, setCodAvailable] = useState(true); // optimistic until checked
+  const [onlinePaymentEnabled, setOnlinePaymentEnabled] = useState(true);
   const [form, setForm] = useState({
     fullName: session?.user?.name || '',
     phone: '',
@@ -31,6 +39,17 @@ export default function CheckoutPage() {
     state: '',
     pincode: '',
   });
+
+  const codFeeIfSelected = subtotal < COD_FEE_BELOW ? COD_FEE : 0;
+  const codBlockedByValue = (total - loyaltyDiscount) > COD_MAX_ORDER_VALUE;
+  const codBlocked = codBlockedByValue || !codAvailable;
+  const payableTotal = total - loyaltyDiscount + (paymentMethod === 'cod' ? codFeeIfSelected : 0);
+
+  /* Never let a disabled option sit selected. */
+  useEffect(() => {
+    if (paymentMethod === 'cod' && codBlocked && onlinePaymentEnabled) setPaymentMethod('razorpay');
+    if (paymentMethod === 'razorpay' && !onlinePaymentEnabled) setPaymentMethod('cod');
+  }, [paymentMethod, codBlocked, onlinePaymentEnabled]);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -46,7 +65,10 @@ export default function CheckoutPage() {
     if (status !== 'authenticated') return;
     fetch('/api/loyalty').then((r) => r.json()).then((d) => { if (d.success) setLoyalty(d.data); }).catch(() => {});
     fetch('/api/admin/settings').then((r) => r.json()).then((d) => {
-      if (d.success) setLoyaltyEnabled(!!d.data?.loyaltyEnabled);
+      if (d.success) {
+        setLoyaltyEnabled(!!d.data?.loyaltyEnabled);
+        setOnlinePaymentEnabled(d.data?.onlinePaymentEnabled !== false);
+      }
     }).catch(() => {});
     fetch('/api/user/address').then((r) => r.json()).then((d) => {
       if (d.success && d.data.length > 0) {
@@ -92,6 +114,7 @@ export default function CheckoutPage() {
 
   async function handlePincodeChange(val) {
     updateForm('pincode', val);
+    setCodAvailable(true); // reset to optimistic until re-checked for the new pincode
     if (val.length === 6 && /^\d{6}$/.test(val)) {
       setPincodeLoading(true);
       try {
@@ -103,6 +126,11 @@ export default function CheckoutPage() {
         }
       } catch {}
       finally { setPincodeLoading(false); }
+
+      fetch(`/api/cod-availability?pincode=${val}`)
+        .then((r) => r.json())
+        .then((d) => { if (d.success) setCodAvailable(d.data.available); })
+        .catch(() => {});
     }
   }
 
@@ -182,6 +210,13 @@ export default function CheckoutPage() {
         order_id: payData.data.id,
         prefill: { name: form.fullName, email: form.email, contact: form.phone },
         theme: { color: '#800020' },
+        /* User closed the modal without paying — the order stays pending in
+           Firestore, but they need to know nothing was charged. */
+        modal: {
+          ondismiss: () => {
+            toast('Payment cancelled. Your order was not placed.', { icon: 'ℹ️' });
+          },
+        },
         handler: async (response) => {
           const verifyRes = await fetch('/api/payments/verify', {
             method: 'POST',
@@ -204,6 +239,14 @@ export default function CheckoutPage() {
       };
 
       const rzp = new window.Razorpay(options);
+      /* Card declined, bank timeout, etc. — Razorpay shows its own message
+         inside the modal, but the merchant page should reflect it too. */
+      rzp.on('payment.failed', (response) => {
+        toast.error(
+          response.error?.description || 'Payment failed. Please try again.',
+          { duration: 15000 }
+        );
+      });
       rzp.open();
     } catch (error) {
       /* Stays on screen until dismissed — the default toast duration was too
@@ -325,15 +368,39 @@ export default function CheckoutPage() {
                 <div className="bg-white rounded-xl p-6 shadow-sm">
                   <h2 className="font-semibold text-gray-700 mb-4">Payment Method</h2>
                   <div className="space-y-3">
-                    {[{ value: 'razorpay', label: 'Pay Online (Razorpay)', desc: 'Cards, UPI, Net Banking, Wallets' }, { value: 'cod', label: 'Cash on Delivery', desc: 'Pay when you receive' }].map((p) => (
-                      <label key={p.value} className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition ${paymentMethod === p.value ? 'border-gold-600 bg-gold-50' : 'border-gray-200 hover:border-gray-300'}`}>
-                        <input type="radio" name="payment" value={p.value} checked={paymentMethod === p.value} onChange={() => setPaymentMethod(p.value)} className="accent-gold-600" />
-                        <div>
-                          <p className="font-semibold text-sm text-gray-800">{p.label}</p>
-                          <p className="text-xs text-gray-500">{p.desc}</p>
-                        </div>
-                      </label>
-                    ))}
+                    <label className={`flex items-center gap-3 p-3 rounded-xl border-2 transition ${!onlinePaymentEnabled ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed' : paymentMethod === 'razorpay' ? 'border-gold-600 bg-gold-50 cursor-pointer' : 'border-gray-200 hover:border-gray-300 cursor-pointer'}`}>
+                      <input
+                        type="radio" name="payment" value="razorpay" checked={paymentMethod === 'razorpay'} disabled={!onlinePaymentEnabled}
+                        onChange={() => setPaymentMethod('razorpay')} className="accent-gold-600"
+                      />
+                      <div>
+                        <p className="font-semibold text-sm text-gray-800">Pay Online (Razorpay)</p>
+                        {onlinePaymentEnabled ? (
+                          <p className="text-xs text-gray-500">Cards, UPI, Net Banking, Wallets</p>
+                        ) : (
+                          <p className="text-xs text-amber-600 font-medium">Coming Soon</p>
+                        )}
+                      </div>
+                    </label>
+
+                    <label className={`flex items-center gap-3 p-3 rounded-xl border-2 transition ${codBlocked ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed' : paymentMethod === 'cod' ? 'border-gold-600 bg-gold-50 cursor-pointer' : 'border-gray-200 hover:border-gray-300 cursor-pointer'}`}>
+                      <input
+                        type="radio" name="payment" value="cod" checked={paymentMethod === 'cod'} disabled={codBlocked}
+                        onChange={() => setPaymentMethod('cod')} className="accent-gold-600"
+                      />
+                      <div>
+                        <p className="font-semibold text-sm text-gray-800">Cash on Delivery</p>
+                        {codBlockedByValue ? (
+                          <p className="text-xs text-red-500">Not available above {formatPrice(COD_MAX_ORDER_VALUE)}</p>
+                        ) : !codAvailable ? (
+                          <p className="text-xs text-red-500">Not available for this pincode</p>
+                        ) : codFeeIfSelected > 0 ? (
+                          <p className="text-xs text-gray-500">Pay when you receive · +{formatPrice(COD_FEE)} fee for orders under {formatPrice(COD_FEE_BELOW)}</p>
+                        ) : (
+                          <p className="text-xs text-gray-500">Pay when you receive</p>
+                        )}
+                      </div>
+                    </label>
                   </div>
                 </div>
               </div>
@@ -372,12 +439,15 @@ export default function CheckoutPage() {
                         <span className="font-semibold">-{formatPrice(loyaltyDiscount)}</span>
                       </div>
                     )}
+                    {paymentMethod === 'cod' && codFeeIfSelected > 0 && (
+                      <div className="flex justify-between"><span>COD Fee</span><span>{formatPrice(codFeeIfSelected)}</span></div>
+                    )}
                     <div className="flex justify-between font-bold text-gray-800 text-base border-t pt-2">
-                      <span>Total</span><span>{formatPrice(total - loyaltyDiscount)}</span>
+                      <span>Total</span><span>{formatPrice(payableTotal)}</span>
                     </div>
                   </div>
                   <button type="submit" disabled={loading} className="w-full mt-4 py-3 bg-maroon-950 text-white font-bold rounded-xl hover:bg-maroon-900 disabled:opacity-60 transition flex items-center justify-center gap-2">
-                    {loading ? <><LoadingSpinner size="sm" /> Processing...</> : `Place Order · ${formatPrice(total - loyaltyDiscount)}`}
+                    {loading ? <><LoadingSpinner size="sm" /> Processing...</> : `Place Order · ${formatPrice(payableTotal)}`}
                   </button>
                 </div>
               </div>
