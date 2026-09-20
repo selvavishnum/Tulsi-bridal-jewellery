@@ -687,8 +687,15 @@ export default function AdminOrdersPage() {
                                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Items Ordered</p>
                                 <div className="space-y-1.5">
                                   {(o.items || []).map((item, i) => (
-                                    <div key={i} className="flex justify-between text-sm">
-                                      <span className="text-gray-700 truncate flex-1 pr-2">{item.name} × {item.quantity}</span>
+                                    <div key={i} className="flex items-center justify-between text-sm gap-2">
+                                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                                        {item.image ? (
+                                          <img src={item.image} alt={item.name} className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-gray-200" />
+                                        ) : (
+                                          <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 text-gray-300 text-lg">💍</div>
+                                        )}
+                                        <span className="text-gray-700 truncate">{item.name} × {item.quantity}</span>
+                                      </div>
                                       <span className="font-semibold text-gray-900 flex-shrink-0">{formatPrice((item.price || 0) * item.quantity)}</span>
                                     </div>
                                   ))}

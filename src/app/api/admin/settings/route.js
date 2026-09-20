@@ -7,8 +7,11 @@ export async function GET() {
     // Public — anyone can read site settings (phone, address, email shown on website)
     const db = getDB();
     const doc = await db.collection('settings').doc('site').get();
+    /* No caching — this doc now also gates live behavior (payment methods,
+       loyalty/referral toggles), so an admin flipping a switch must take
+       effect immediately, not up to an hour later from a stale edge cache. */
     const res = NextResponse.json({ success: true, data: doc.exists ? docToObj(doc) : {} });
-    res.headers.set('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=7200');
+    res.headers.set('Cache-Control', 'no-store');
     return res;
   } catch (e) { return NextResponse.json({ success: false, message: e.message }, { status: 500 }); }
 }
