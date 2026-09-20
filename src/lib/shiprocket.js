@@ -129,8 +129,10 @@ export async function trackShiprocketAWB(awb) {
 
 /* ── Get available couriers for a pincode ── */
 export async function getAvailableCouriers(pincode, cod = false) {
+  const pickupPincode = process.env.SHIPROCKET_PICKUP_PINCODE;
+  if (!pickupPincode) throw new Error('SHIPROCKET_PICKUP_PINCODE not configured');
   const data = await srFetch(
-    `/courier/serviceability/?pickup_postcode=000000&delivery_postcode=${pincode}&cod=${cod ? 1 : 0}&weight=0.5`,
+    `/courier/serviceability/?pickup_postcode=${pickupPincode}&delivery_postcode=${pincode}&cod=${cod ? 1 : 0}&weight=0.5`,
   );
   return data?.data?.available_courier_companies || [];
 }
