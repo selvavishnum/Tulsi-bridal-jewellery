@@ -354,6 +354,7 @@ export default function SettingsPage() {
     emailNotify: '',
     loyaltyEnabled: false,
     referralEnabled: false,
+    onlinePaymentEnabled: true,
     /* Website */
     bizOnline: true,
     openTime: '',
@@ -494,6 +495,24 @@ export default function SettingsPage() {
             </Field>
           </div>
         </SectionCard>
+
+        {/* Payment Settings */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <h2 className="font-bold text-gray-800 mb-1">Payment Settings</h2>
+          <p className="text-xs text-gray-400 mb-5">Control which payment methods customers can choose at checkout.</p>
+          <div className="flex items-start justify-between gap-4 p-4 bg-blue-50 border border-blue-100 rounded-xl">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1"><span className="text-lg">💳</span><p className="font-semibold text-gray-800 text-sm">Online Payment (Razorpay)</p></div>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                When OFF, "Pay Online" is hidden at checkout and shows as "Coming Soon" — customers can only pay Cash on Delivery. Turn this back on once your Razorpay account is approved for live payments.
+              </p>
+            </div>
+            <button type="button" onClick={() => upd('onlinePaymentEnabled', !settings.onlinePaymentEnabled)}
+              className={`relative flex-shrink-0 w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${settings.onlinePaymentEnabled ? 'bg-amber-500' : 'bg-gray-300'}`}>
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${settings.onlinePaymentEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+            </button>
+          </div>
+        </div>
 
         {/* Marketing Features */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">

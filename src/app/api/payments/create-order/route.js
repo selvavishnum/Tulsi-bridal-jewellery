@@ -38,6 +38,17 @@ export async function POST(request) {
       return NextResponse.json({ success: false, message: 'Order is already paid' }, { status: 400 });
     }
 
+    /* Admin can pause online payment site-wide (e.g. while Razorpay KYC is
+       pending). Re-checked here so a stale/cached checkout page can't bypass
+       the toggle by calling this route directly. */
+    const settingsDoc = await db.collection('settings').doc('site').get();
+    if (settingsDoc.data()?.onlinePaymentEnabled === false) {
+      return NextResponse.json(
+        { success: false, message: 'Online payment is temporarily unavailable. Please choose Cash on Delivery.' },
+        { status: 400 }
+      );
+    }
+
     /* Amount comes from the stored order, never from the client */
     const amountPaise = Math.round(Number(order.total) * 100);
     if (!Number.isFinite(amountPaise) || amountPaise < 100) {

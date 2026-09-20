@@ -29,6 +29,7 @@ export default function CheckoutPage() {
   const [addrChoice, setAddrChoice] = useState('new');
   const [pincodeLoading, setPincodeLoading] = useState(false);
   const [codAvailable, setCodAvailable] = useState(true); // optimistic until checked
+  const [onlinePaymentEnabled, setOnlinePaymentEnabled] = useState(true);
   const [form, setForm] = useState({
     fullName: session?.user?.name || '',
     phone: '',
@@ -44,11 +45,11 @@ export default function CheckoutPage() {
   const codBlocked = codBlockedByValue || !codAvailable;
   const payableTotal = total - loyaltyDiscount + (paymentMethod === 'cod' ? codFeeIfSelected : 0);
 
-  /* Never let a disabled option sit selected — switch back to online payment
-     if the cart total grows past the cap or the pincode turns out unserviceable. */
+  /* Never let a disabled option sit selected. */
   useEffect(() => {
-    if (paymentMethod === 'cod' && codBlocked) setPaymentMethod('razorpay');
-  }, [paymentMethod, codBlocked]);
+    if (paymentMethod === 'cod' && codBlocked && onlinePaymentEnabled) setPaymentMethod('razorpay');
+    if (paymentMethod === 'razorpay' && !onlinePaymentEnabled) setPaymentMethod('cod');
+  }, [paymentMethod, codBlocked, onlinePaymentEnabled]);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -64,7 +65,10 @@ export default function CheckoutPage() {
     if (status !== 'authenticated') return;
     fetch('/api/loyalty').then((r) => r.json()).then((d) => { if (d.success) setLoyalty(d.data); }).catch(() => {});
     fetch('/api/admin/settings').then((r) => r.json()).then((d) => {
-      if (d.success) setLoyaltyEnabled(!!d.data?.loyaltyEnabled);
+      if (d.success) {
+        setLoyaltyEnabled(!!d.data?.loyaltyEnabled);
+        setOnlinePaymentEnabled(d.data?.onlinePaymentEnabled !== false);
+      }
     }).catch(() => {});
     fetch('/api/user/address').then((r) => r.json()).then((d) => {
       if (d.success && d.data.length > 0) {
@@ -364,11 +368,18 @@ export default function CheckoutPage() {
                 <div className="bg-white rounded-xl p-6 shadow-sm">
                   <h2 className="font-semibold text-gray-700 mb-4">Payment Method</h2>
                   <div className="space-y-3">
-                    <label className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition ${paymentMethod === 'razorpay' ? 'border-gold-600 bg-gold-50' : 'border-gray-200 hover:border-gray-300'}`}>
-                      <input type="radio" name="payment" value="razorpay" checked={paymentMethod === 'razorpay'} onChange={() => setPaymentMethod('razorpay')} className="accent-gold-600" />
+                    <label className={`flex items-center gap-3 p-3 rounded-xl border-2 transition ${!onlinePaymentEnabled ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed' : paymentMethod === 'razorpay' ? 'border-gold-600 bg-gold-50 cursor-pointer' : 'border-gray-200 hover:border-gray-300 cursor-pointer'}`}>
+                      <input
+                        type="radio" name="payment" value="razorpay" checked={paymentMethod === 'razorpay'} disabled={!onlinePaymentEnabled}
+                        onChange={() => setPaymentMethod('razorpay')} className="accent-gold-600"
+                      />
                       <div>
                         <p className="font-semibold text-sm text-gray-800">Pay Online (Razorpay)</p>
-                        <p className="text-xs text-gray-500">Cards, UPI, Net Banking, Wallets</p>
+                        {onlinePaymentEnabled ? (
+                          <p className="text-xs text-gray-500">Cards, UPI, Net Banking, Wallets</p>
+                        ) : (
+                          <p className="text-xs text-amber-600 font-medium">Coming Soon</p>
+                        )}
                       </div>
                     </label>
 

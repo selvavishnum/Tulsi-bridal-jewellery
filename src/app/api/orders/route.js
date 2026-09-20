@@ -142,6 +142,20 @@ export async function POST(request) {
     }
 
     const resolvedPaymentMethod = PAYMENT_METHODS.includes(payment?.method) ? payment.method : 'razorpay';
+
+    /* Admin can pause online payment site-wide (e.g. while Razorpay KYC is
+       pending) — re-checked here so a stale/cached checkout page can't place
+       a "razorpay" order while it's off. COD stays available either way. */
+    if (resolvedPaymentMethod === 'razorpay') {
+      const settingsDoc = await db.collection('settings').doc('site').get();
+      if (settingsDoc.data()?.onlinePaymentEnabled === false) {
+        return NextResponse.json(
+          { success: false, message: 'Online payment is temporarily unavailable. Please choose Cash on Delivery.' },
+          { status: 400 }
+        );
+      }
+    }
+
     const isCod = resolvedPaymentMethod === 'cod';
     const codFee = isCod && computedSubtotal < COD_FEE_BELOW ? COD_FEE : 0;
 
