@@ -196,10 +196,12 @@ function ShipmentModal({ order, onClose, onShipped }) {
         onShipped();
         onClose();
       } else {
-        toast.error(data.message || 'Failed');
+        /* Stays on screen long enough to actually read/screenshot */
+        toast.error(data.message || 'Failed to create Shiprocket shipment', { duration: 15000 });
+        console.error('[Shiprocket] create shipment failed:', data);
       }
-    } catch {
-      toast.error('Network error');
+    } catch (err) {
+      toast.error(err.message || 'Network error', { duration: 15000 });
     } finally {
       setSaving(false);
     }

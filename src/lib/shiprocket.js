@@ -87,7 +87,15 @@ export async function createShiprocketOrder(order, courier_id = null) {
   };
 
   const created = await srFetch('/orders/create/adhoc', { method: 'POST', body: JSON.stringify(payload) });
-  if (!created.order_id) return { success: false, message: created.message || 'Failed to create Shiprocket order', data: created };
+  if (!created.order_id) {
+    /* Shiprocket puts the actually-useful reason (e.g. "pickup_location
+       invalid") inside errors{}, not the generic top-level message. */
+    const fieldErrors = created.errors
+      ? Object.values(created.errors).flat().join(' ')
+      : '';
+    const message = [created.message, fieldErrors].filter(Boolean).join(' — ') || 'Failed to create Shiprocket order';
+    return { success: false, message, data: created };
+  }
 
   /* Auto-assign courier if not specified */
   const shipPayload = {

@@ -32,13 +32,14 @@ export async function POST(request) {
     if (!isConfigured()) {
       return NextResponse.json({
         success: false,
-        message: 'Shiprocket not configured. Set SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD in your .env.local file.',
+        message: 'Shiprocket is not configured. Set SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD in Vercel → Settings → Environment Variables, then redeploy.',
       }, { status: 400 });
     }
 
     const order = orderDoc.data();
     const result = await createShiprocketOrder(order, courierId);
     if (!result.success) {
+      console.error('[Shiprocket] createShiprocketOrder failed:', JSON.stringify(result.data));
       return NextResponse.json({ success: false, message: result.message, details: result.data }, { status: 400 });
     }
 
