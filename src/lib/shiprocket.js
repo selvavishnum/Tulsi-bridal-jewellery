@@ -49,7 +49,9 @@ export async function createShiprocketOrder(order, courier_id = null) {
   const payload = {
     order_id:           order.orderNumber,
     order_date:         new Date(order.createdAt).toISOString().slice(0, 19),
-    pickup_location:    'Primary',
+    /* Must exactly match the pickup address "nickname" set in Shiprocket
+       (Settings → Pickup Addresses) — not whether it's marked PRIMARY there. */
+    pickup_location:    process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary',
     channel_id:         '',
     comment:            'Tulsi Bridal Jewellery',
     billing_customer_name:  addr.name || 'Customer',
