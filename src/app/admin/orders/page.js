@@ -699,8 +699,23 @@ export default function AdminOrdersPage() {
                                       <span className="font-semibold text-gray-900 flex-shrink-0">{formatPrice((item.price || 0) * item.quantity)}</span>
                                     </div>
                                   ))}
-                                  <div className="border-t border-amber-200 pt-1.5 flex justify-between text-sm font-bold">
-                                    <span>Total</span><span className="text-maroon-950">{formatPrice(o.total)}</span>
+                                  <div className="border-t border-amber-200 pt-1.5 space-y-1">
+                                    <div className="flex justify-between text-xs text-gray-500">
+                                      <span>Shipping</span><span>{o.shippingCost === 0 ? 'FREE' : formatPrice(o.shippingCost)}</span>
+                                    </div>
+                                    {o.codFee > 0 && (
+                                      <div className="flex justify-between text-xs text-gray-500">
+                                        <span>COD Fee</span><span>{formatPrice(o.codFee)}</span>
+                                      </div>
+                                    )}
+                                    {o.discount > 0 && (
+                                      <div className="flex justify-between text-xs text-green-600">
+                                        <span>Discount</span><span>-{formatPrice(o.discount)}</span>
+                                      </div>
+                                    )}
+                                    <div className="flex justify-between text-sm font-bold">
+                                      <span>Total</span><span className="text-maroon-950">{formatPrice(o.total)}</span>
+                                    </div>
                                   </div>
                                 </div>
                               </div>

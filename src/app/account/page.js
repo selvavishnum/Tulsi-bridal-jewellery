@@ -395,6 +395,11 @@ export default function AccountPage() {
                             <span>Shipping</span>
                             <span>{o.shippingCost === 0 ? 'FREE' : formatPrice(o.shippingCost)}</span>
                           </div>
+                          {o.codFee > 0 && (
+                            <div className="flex justify-between text-gray-500">
+                              <span>COD Fee</span><span>{formatPrice(o.codFee)}</span>
+                            </div>
+                          )}
                           <div className="flex justify-between font-bold text-gray-800">
                             <span>Total</span><span>{formatPrice(o.total)}</span>
                           </div>

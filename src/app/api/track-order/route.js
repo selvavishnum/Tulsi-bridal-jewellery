@@ -43,6 +43,7 @@ export async function GET(request) {
         subtotal: order.subtotal || 0,
         total: order.total,
         shippingCost: order.shippingCost,
+        codFee: order.codFee || 0,
         discount: order.discount || 0,
         payment: { method: order.payment?.method, status: order.payment?.status },
         shippingAddress: {
