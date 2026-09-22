@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
+import { getDB } from '@/lib/firebase';
 import { getAvailableCouriers, isConfigured } from '@/lib/shiprocket';
 
-/* Fails open — if Shiprocket isn't configured or the lookup errors, we don't
-   have real serviceability data, so we don't use it to block a sale. The
+/* Fails open — if Shiprocket isn't configured, the admin has switched the
+   check off, or the lookup errors, we don't use it to block a sale. The
    authoritative checks (this + value cap) are re-run server-side in
    POST /api/orders regardless of what this endpoint says. */
 export async function GET(request) {
@@ -12,6 +13,11 @@ export async function GET(request) {
   }
 
   if (!isConfigured()) {
+    return NextResponse.json({ success: true, data: { available: true, checked: false } });
+  }
+
+  const settingsDoc = await getDB().collection('settings').doc('site').get().catch(() => null);
+  if (settingsDoc?.data()?.codPincodeCheckEnabled === false) {
     return NextResponse.json({ success: true, data: { available: true, checked: false } });
   }
 

@@ -121,6 +121,12 @@ function OrderSuccessContent() {
                 <span>Shipping</span>
                 <span>{order.shippingCost === 0 ? 'FREE' : fmt(order.shippingCost)}</span>
               </div>
+              {order.codFee > 0 && (
+                <div className="flex justify-between text-sm text-stone-500">
+                  <span>COD Fee</span>
+                  <span>{fmt(order.codFee)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold text-stone-800 text-base border-t border-stone-100 pt-2 mt-1">
                 <span>Total Paid</span>
                 <span className="text-wine-700">{fmt(order.total)}</span>

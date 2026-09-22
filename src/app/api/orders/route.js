@@ -142,18 +142,17 @@ export async function POST(request) {
     }
 
     const resolvedPaymentMethod = PAYMENT_METHODS.includes(payment?.method) ? payment.method : 'razorpay';
+    const settingsDoc = await db.collection('settings').doc('site').get().catch(() => null);
+    const siteSettings = settingsDoc?.data() || {};
 
     /* Admin can pause online payment site-wide (e.g. while Razorpay KYC is
        pending) — re-checked here so a stale/cached checkout page can't place
        a "razorpay" order while it's off. COD stays available either way. */
-    if (resolvedPaymentMethod === 'razorpay') {
-      const settingsDoc = await db.collection('settings').doc('site').get();
-      if (settingsDoc.data()?.onlinePaymentEnabled === false) {
-        return NextResponse.json(
-          { success: false, message: 'Online payment is temporarily unavailable. Please choose Cash on Delivery.' },
-          { status: 400 }
-        );
-      }
+    if (resolvedPaymentMethod === 'razorpay' && siteSettings.onlinePaymentEnabled === false) {
+      return NextResponse.json(
+        { success: false, message: 'Online payment is temporarily unavailable. Please choose Cash on Delivery.' },
+        { status: 400 }
+      );
     }
 
     const isCod = resolvedPaymentMethod === 'cod';
@@ -170,9 +169,9 @@ export async function POST(request) {
         }, { status: 400 });
       }
 
-      /* Fails open — a Shiprocket outage or missing config shouldn't block a
-         sale over data we don't actually have. */
-      if (shiprocketConfigured()) {
+      /* Fails open — a Shiprocket outage, missing config, or the admin having
+         switched this check off shouldn't block a sale. */
+      if (shiprocketConfigured() && siteSettings.codPincodeCheckEnabled !== false) {
         try {
           const couriers = await getAvailableCouriers(shippingAddress.pincode, true);
           if (Array.isArray(couriers) && couriers.length === 0) {

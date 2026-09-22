@@ -355,6 +355,7 @@ export default function SettingsPage() {
     loyaltyEnabled: false,
     referralEnabled: false,
     onlinePaymentEnabled: true,
+    codPincodeCheckEnabled: true,
     /* Website */
     bizOnline: true,
     openTime: '',
@@ -510,6 +511,19 @@ export default function SettingsPage() {
             <button type="button" onClick={() => upd('onlinePaymentEnabled', !settings.onlinePaymentEnabled)}
               className={`relative flex-shrink-0 w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${settings.onlinePaymentEnabled ? 'bg-amber-500' : 'bg-gray-300'}`}>
               <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${settings.onlinePaymentEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+            </button>
+          </div>
+
+          <div className="flex items-start justify-between gap-4 p-4 bg-purple-50 border border-purple-100 rounded-xl mt-3">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1"><span className="text-lg">📍</span><p className="font-semibold text-gray-800 text-sm">COD Pincode Availability Check</p></div>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                When ON, Cash on Delivery is only offered where Shiprocket reports a COD-capable courier. If your Shiprocket pickup address isn't fully set up yet, this can block COD everywhere — turn it OFF to offer COD to every pincode until that's sorted out.
+              </p>
+            </div>
+            <button type="button" onClick={() => upd('codPincodeCheckEnabled', !settings.codPincodeCheckEnabled)}
+              className={`relative flex-shrink-0 w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none ${settings.codPincodeCheckEnabled ? 'bg-amber-500' : 'bg-gray-300'}`}>
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${settings.codPincodeCheckEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
             </button>
           </div>
         </div>

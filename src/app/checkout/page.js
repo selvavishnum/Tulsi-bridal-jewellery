@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useCart } from '@/context/CartContext';
@@ -19,6 +19,11 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const { items, subtotal, shippingCost, total, discount, coupon, dispatch } = useCart();
+  /* Clearing the cart on a successful order makes items.length hit 0, which
+     would otherwise trigger the "cart is empty → go to /cart" effect below
+     and hijack the navigation to the confirmation page. This flag tells that
+     effect to stand down once an order has actually been placed. */
+  const orderPlacedRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [loyalty, setLoyalty]           = useState({ points: 0 });
   const [loyaltyEnabled, setLoyaltyEnabled] = useState(false);
@@ -185,6 +190,7 @@ export default function CheckoutPage() {
       const orderNumber = orderData.data.orderNumber;
 
       if (paymentMethod === 'cod') {
+        orderPlacedRef.current = true;
         dispatch({ type: 'CLEAR_CART' });
         router.push(`/order-success?orderNumber=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(form.email)}`);
         return;
@@ -230,6 +236,7 @@ export default function CheckoutPage() {
           });
           const verifyData = await verifyRes.json();
           if (verifyData.success) {
+            orderPlacedRef.current = true;
             dispatch({ type: 'CLEAR_CART' });
             router.push(`/order-success?orderNumber=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(form.email)}`);
           } else {
@@ -258,7 +265,7 @@ export default function CheckoutPage() {
   }
 
   useEffect(() => {
-    if (!items.length) router.push('/cart');
+    if (!items.length && !orderPlacedRef.current) router.push('/cart');
   }, [items.length, router]);
 
   if (!items.length) return null;

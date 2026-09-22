@@ -49,7 +49,9 @@ export async function createShiprocketOrder(order, courier_id = null) {
   const payload = {
     order_id:           order.orderNumber,
     order_date:         new Date(order.createdAt).toISOString().slice(0, 19),
-    pickup_location:    'Primary',
+    /* Must exactly match the pickup address "nickname" set in Shiprocket
+       (Settings → Pickup Addresses) — not whether it's marked PRIMARY there. */
+    pickup_location:    process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary',
     channel_id:         '',
     comment:            'Tulsi Bridal Jewellery',
     billing_customer_name:  addr.name || 'Customer',
@@ -85,7 +87,15 @@ export async function createShiprocketOrder(order, courier_id = null) {
   };
 
   const created = await srFetch('/orders/create/adhoc', { method: 'POST', body: JSON.stringify(payload) });
-  if (!created.order_id) return { success: false, message: created.message || 'Failed to create Shiprocket order', data: created };
+  if (!created.order_id) {
+    /* Shiprocket puts the actually-useful reason (e.g. "pickup_location
+       invalid") inside errors{}, not the generic top-level message. */
+    const fieldErrors = created.errors
+      ? Object.values(created.errors).flat().join(' ')
+      : '';
+    const message = [created.message, fieldErrors].filter(Boolean).join(' — ') || 'Failed to create Shiprocket order';
+    return { success: false, message, data: created };
+  }
 
   /* Auto-assign courier if not specified */
   const shipPayload = {
