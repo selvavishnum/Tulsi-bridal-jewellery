@@ -104,6 +104,9 @@ export async function POST(request) {
         return NextResponse.json({ success: false, message: `Product not found: ${item.name || item.product}` }, { status: 400 });
       }
       const prod = prodDoc.data();
+      if (prod.isActive === false || prod.showMe === false) {
+        return NextResponse.json({ success: false, message: `Product no longer available: ${prod.name || item.name}` }, { status: 400 });
+      }
       if ((Number(prod.stock) || 0) < item.quantity) {
         return NextResponse.json({ success: false, message: `Insufficient stock for ${prod.name || item.name}` }, { status: 400 });
       }

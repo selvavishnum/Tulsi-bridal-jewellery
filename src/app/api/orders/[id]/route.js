@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDB, docToObj } from '@/lib/firebase';
+import { getDB, docToObj, FieldValue } from '@/lib/firebase';
 import { getEffectiveSession, requireAdmin } from '@/lib/adminCollection';
 import { sendStatusUpdateEmail } from '@/lib/email';
 import { sendStatusWhatsApp } from '@/lib/whatsapp';
@@ -49,44 +49,75 @@ export async function PUT(request, context) {
       }
     }
 
-    /* Fetch current order before update (needed for email) */
-    const currentDoc = await ref.get();
-    const currentOrder = currentDoc.exists ? currentDoc.data() : {};
+    /* The whole read-decide-write cycle runs inside one transaction so a
+       second PUT racing in at the same moment (another admin tab, a
+       double-click, a retried request) can't read the same pre-decrement
+       stock number this one just read — Firestore serializes/retries
+       transactions that touch the same documents instead of letting both
+       compute from stale data. */
+    let currentOrder = {};
+    await db.runTransaction(async (tx) => {
+      const currentDoc = await tx.get(ref);
+      if (!currentDoc.exists) throw new Error('Order not found');
+      currentOrder = currentDoc.data();
 
-    const update = { updatedAt: new Date().toISOString() };
+      const update = { updatedAt: new Date().toISOString() };
 
-    if (status) {
-      update.status = status;
-      if (status === 'delivered') {
-        update.deliveredAt = new Date().toISOString();
-        /* COD is collected on delivery — mark it paid so points can be awarded */
-        if (currentOrder.payment?.method === 'cod' && currentOrder.payment?.status !== 'paid') {
-          update['payment.status'] = 'paid';
-          update['payment.paidAt'] = new Date().toISOString();
-        }
-      }
-      if (status === 'cancelled') update.cancelledAt = new Date().toISOString();
-
-      /* Deduct stock on confirmation — skip if already deducted (e.g. by payment verification) */
-      if (status === 'confirmed' && currentDoc.exists && !currentOrder.stockDeducted) {
-        const batch = db.batch();
-        for (const item of (currentDoc.data().items || [])) {
-          if (!item.product) continue;
-          const prodRef = db.collection('products').doc(item.product);
-          const prodDoc = await prodRef.get();
-          if (prodDoc.exists) {
-            batch.update(prodRef, { stock: Math.max(0, (prodDoc.data().stock || 0) - item.quantity) });
+      if (status) {
+        update.status = status;
+        if (status === 'delivered') {
+          update.deliveredAt = new Date().toISOString();
+          /* COD is collected on delivery — mark it paid so points can be awarded */
+          if (currentOrder.payment?.method === 'cod' && currentOrder.payment?.status !== 'paid') {
+            update['payment.status'] = 'paid';
+            update['payment.paidAt'] = new Date().toISOString();
           }
         }
-        await batch.commit();
-        update.stockDeducted = true;
-      }
-    }
-    if (trackingNumber !== undefined) update.trackingNumber = trackingNumber;
-    if (courierName !== undefined) update.courierName = courierName;
-    if (notes !== undefined) update.notes = notes;
+        if (status === 'cancelled') update.cancelledAt = new Date().toISOString();
 
-    await ref.update(update);
+        /* Deduct stock on confirmation — skip if already deducted (e.g. by payment verification) */
+        if (status === 'confirmed' && !currentOrder.stockDeducted) {
+          const items = (currentOrder.items || []).filter((i) => i.product);
+          const prodRefs = items.map((i) => db.collection('products').doc(i.product));
+          const prodDocs = prodRefs.length ? await Promise.all(prodRefs.map((r) => tx.get(r))) : [];
+
+          /* Stock can't go negative (floored at 0 below), but if concurrent
+             orders already emptied it out from under this one, that's a
+             real oversell — record it instead of silently pretending the
+             order shipped from stock that wasn't there, so an admin can
+             follow up (refund/backorder) rather than the gap going unnoticed. */
+          const oversold = [];
+          prodDocs.forEach((prodDoc, idx) => {
+            if (!prodDoc.exists) return;
+            const item = items[idx];
+            const currentStock = Number(prodDoc.data().stock) || 0;
+            const qty = Math.max(0, Math.floor(Number(item.quantity) || 0));
+            const shortfall = qty - currentStock;
+            if (shortfall > 0) oversold.push({ product: item.product, name: item.name, shortBy: shortfall });
+            tx.update(prodRefs[idx], { stock: Math.max(0, currentStock - qty) });
+          });
+          update.stockDeducted = true;
+          if (oversold.length > 0) update.oversoldItems = oversold;
+        }
+
+        /* Restore stock on cancellation — only if it was actually deducted
+           and only once (stockDeducted flips back to false immediately). */
+        if (status === 'cancelled' && currentOrder.stockDeducted && currentOrder.status !== 'cancelled') {
+          for (const item of (currentOrder.items || [])) {
+            if (!item.product) continue;
+            const qty = Math.max(0, Math.floor(Number(item.quantity) || 0));
+            if (qty > 0) tx.update(db.collection('products').doc(item.product), { stock: FieldValue.increment(qty) });
+          }
+          update.stockDeducted = false;
+          update.stockRestoredAt = new Date().toISOString();
+        }
+      }
+      if (trackingNumber !== undefined) update.trackingNumber = trackingNumber;
+      if (courierName !== undefined) update.courierName = courierName;
+      if (notes !== undefined) update.notes = notes;
+
+      tx.update(ref, update);
+    });
 
     /* Awarded only for a paid order, and only once (guarded by pointsAwarded) */
     if (status === 'delivered') {

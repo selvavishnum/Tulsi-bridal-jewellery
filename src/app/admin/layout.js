@@ -21,7 +21,10 @@ import { formatPrice } from '@/lib/utils';
 const ORDERS_POLL_MS = 20000;
 const ORDERS_LAST_SEEN_KEY = 'admin_orders_last_seen';
 
-const DEV_BYPASS = process.env.NEXT_PUBLIC_ADMIN_BYPASS === 'true';
+/* Kept in lockstep with the same guard in src/lib/adminCollection.js — a
+   leaked NEXT_PUBLIC_ADMIN_BYPASS=true in a production env var must not be
+   able to disable this gate on its own. */
+const DEV_BYPASS = process.env.NEXT_PUBLIC_ADMIN_BYPASS === 'true' && process.env.NODE_ENV !== 'production';
 
 const NAV_GROUPS = [
   {

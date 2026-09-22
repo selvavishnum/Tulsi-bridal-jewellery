@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDB, snapshotToArr, docToObj } from '@/lib/firebase';
+import { getDB, snapshotToArr, docToObj, FieldValue } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
 
 export async function GET() {
@@ -23,7 +23,29 @@ export async function PATCH(request) {
     if (!id) return NextResponse.json({ success: false, message: 'ID required' }, { status: 400 });
     const db = getDB();
     const ref = db.collection('returns').doc(id);
-    await ref.update({ ...rest, updatedAt: new Date().toISOString() });
+
+    await db.runTransaction(async (tx) => {
+      const doc = await tx.get(ref);
+      if (!doc.exists) throw new Error('Return request not found');
+      const current = doc.data();
+      const update = { ...rest, updatedAt: new Date().toISOString() };
+
+      /* Restock only once the item has physically come back (not merely
+         "approved", which is just a decision, not a receipt), and only once
+         — a status flipped back and forth must not restock twice. */
+      if (rest.returnStatus === 'product_received' && current.returnStatus !== 'product_received' && !current.stockRestored) {
+        for (const item of (current.items || [])) {
+          if (!item.product) continue;
+          const qty = Math.max(0, Math.floor(Number(item.quantity) || 0));
+          if (qty > 0) tx.update(db.collection('products').doc(item.product), { stock: FieldValue.increment(qty) });
+        }
+        update.stockRestored = true;
+        update.stockRestoredAt = new Date().toISOString();
+      }
+
+      tx.update(ref, update);
+    });
+
     return NextResponse.json({ success: true, data: docToObj(await ref.get()) });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
