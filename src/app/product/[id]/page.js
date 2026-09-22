@@ -269,6 +269,7 @@ function ImageZoomModal({ images, startIndex, productName, onClose }) {
           className="max-w-full max-h-full object-contain select-none transition-transform duration-200"
           style={{ transform: `scale(${scale})` }}
           draggable={false}
+          decoding="async"
         />
 
         {current > 0 && (
@@ -458,15 +459,18 @@ export default function ProductDetailPage() {
       {product.images?.length > 0 && (
         <div className="lg:hidden bg-white">
           <div
-            className="relative w-full overflow-hidden bg-white cursor-zoom-in"
+            className="relative w-full aspect-square overflow-hidden bg-white cursor-zoom-in"
             onClick={() => { setZoomIndex(selectedImage); setZoomOpen(true); }}
             onTouchStart={onMobileSwipeStart}
             onTouchEnd={onMobileSwipeEnd}
           >
-            <img
+            <Image
               src={product.images[selectedImage]}
               alt={product.name}
-              className="w-full h-auto object-contain"
+              fill
+              priority
+              sizes="100vw"
+              className="object-contain"
             />
             {discount > 0 && (
               <span className="absolute top-4 left-4 badge-sale text-sm px-3 py-1.5 z-10">-{discount}% OFF</span>
@@ -502,8 +506,8 @@ export default function ProductDetailPage() {
             <div className="flex gap-2 overflow-x-auto px-4 pb-3 scrollbar-hide">
               {product.images.map((img, i) => (
                 <button key={i} onClick={() => setSelectedImage(i)}
-                  className={`w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${selectedImage === i ? 'border-wine-600 shadow-sm' : 'border-transparent opacity-55 hover:opacity-90'}`}>
-                  <img src={img} alt={`View ${i + 1}`} className="w-full h-full object-cover" />
+                  className={`relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${selectedImage === i ? 'border-wine-600 shadow-sm' : 'border-transparent opacity-55 hover:opacity-90'}`}>
+                  <Image src={img} alt={`View ${i + 1}`} fill sizes="56px" className="object-cover" />
                 </button>
               ))}
             </div>

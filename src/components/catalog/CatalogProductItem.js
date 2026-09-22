@@ -92,6 +92,7 @@ export default function CatalogProductItem({ product, showPrice = false }) {
                     src={images[idx]}
                     alt={`${product.name} view ${idx + 1}`}
                     fill
+                    sizes="25vw"
                     className="object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                 ) : (
@@ -112,6 +113,7 @@ export default function CatalogProductItem({ product, showPrice = false }) {
                 src={largeImg}
                 alt={`${product.name} detail`}
                 fill
+                sizes="50vw"
                 className="object-cover transition-transform duration-500 group-hover:scale-105"
               />
             ) : (
