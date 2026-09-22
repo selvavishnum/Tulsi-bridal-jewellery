@@ -353,7 +353,7 @@ function ProductCard({ product }) {
 
         {/* Quick Add */}
         {product.stock > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+          <div className="absolute bottom-0 left-0 right-0 translate-y-0 sm:translate-y-full sm:group-hover:translate-y-0 transition-transform duration-300">
             <button onClick={addToCart} className="w-full py-3 bg-wine-700 text-white text-xs font-semibold tracking-luxury uppercase flex items-center justify-center gap-2 hover:bg-wine-800 transition-colors">
               <FiShoppingCart className="text-xs" /> Add to Cart
             </button>
@@ -515,7 +515,7 @@ export default function HomePage() {
                       <Link key={cat.href} href={cat.href}
                         className={`group relative ${aspect} overflow-hidden ${radius} bg-gradient-to-br ${cat.color} border border-stone-100 hover:border-gold-300/60 hover:shadow-luxury transition-all duration-400`}>
                         {photo ? (
-                          <img src={photo} alt={cat.label} className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out" />
+                          <Image src={photo} alt={cat.label} fill sizes="(max-width: 768px) 50vw, 25vw" className="object-cover group-hover:scale-105 transition-transform duration-700 ease-out" />
                         ) : (
                           <div className="absolute inset-0 flex items-center justify-center">
                             <span className={size === 'small' ? 'text-3xl' : size === 'medium' ? 'text-5xl' : 'text-6xl'}>{cat.emoji}</span>
@@ -554,9 +554,9 @@ export default function HomePage() {
                     <Link key={cat.href} href={cat.href} className="group flex flex-col items-center gap-3">
                       <div className="relative">
                         {/* Gold glow ring on hover */}
-                        <div className={`${imgSz} rounded-full overflow-hidden border-2 border-gold-200 group-hover:border-gold-400 group-hover:shadow-gold flex items-center justify-center bg-gradient-to-br ${cat.color} transition-all duration-400`}>
+                        <div className={`relative ${imgSz} rounded-full overflow-hidden border-2 border-gold-200 group-hover:border-gold-400 group-hover:shadow-gold flex items-center justify-center bg-gradient-to-br ${cat.color} transition-all duration-400`}>
                           {photo ? (
-                            <img src={photo} alt={cat.label} className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-500" />
+                            <Image src={photo} alt={cat.label} fill sizes="150px" className="object-cover group-hover:scale-108 transition-transform duration-500" />
                           ) : (
                             <span className={size === 'small' ? 'text-2xl' : size === 'medium' ? 'text-3xl' : 'text-4xl'}>{cat.emoji}</span>
                           )}

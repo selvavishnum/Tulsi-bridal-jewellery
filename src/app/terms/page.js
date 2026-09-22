@@ -1,4 +1,6 @@
-export const metadata = { title: 'Terms & Conditions | Tulsi Bridal Jewellery' };
+import { absoluteUrl } from '@/lib/seo';
+
+export const metadata = { title: 'Terms & Conditions | Tulsi Bridal Jewellery', alternates: { canonical: absoluteUrl('/terms') } };
 
 const LAST_UPDATED = 'January 1, 2025';
 

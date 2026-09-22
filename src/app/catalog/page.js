@@ -6,8 +6,16 @@
 import { Suspense } from 'react';
 import CatalogContent from './CatalogContent';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import { absoluteUrl } from '@/lib/seo';
 
-export const metadata = { title: 'Jewellery Catalogue' };
+const description = 'Browse the full Tulsi Bridal Jewellery catalogue by category — necklaces, earrings, bangles, rings, maang tikkas and bridal sets.';
+
+export const metadata = {
+  title: 'Jewellery Catalogue',
+  description,
+  alternates: { canonical: absoluteUrl('/catalog') },
+  openGraph: { title: 'Jewellery Catalogue | Tulsi Bridal Jewellery', description, url: absoluteUrl('/catalog') },
+};
 
 export default function CatalogPage() {
   return (

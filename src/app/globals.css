@@ -24,11 +24,19 @@
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Safety net: catches any child that overflows viewport width (a
+       horizontal-scroll carousel without its own clip, an element sized
+       with 100vw while a scrollbar is present, unbreakable text/URLs, a
+       fixed-px width nobody noticed on a 360px phone) without having to
+       chase down every possible source individually. */
+    overflow-x: hidden;
   }
 
   body {
     @apply bg-ivory text-stone-800 font-sans;
     font-feature-settings: "kern" 1, "liga" 1;
+    overflow-x: hidden;
+    width: 100%;
   }
 
   h1, h2, h3, h4, h5 {

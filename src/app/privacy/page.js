@@ -1,4 +1,6 @@
-export const metadata = { title: 'Privacy Policy | Tulsi Bridal Jewellery' };
+import { absoluteUrl } from '@/lib/seo';
+
+export const metadata = { title: 'Privacy Policy | Tulsi Bridal Jewellery', alternates: { canonical: absoluteUrl('/privacy') } };
 
 const LAST_UPDATED = 'January 1, 2025';
 
