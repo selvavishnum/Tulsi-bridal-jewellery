@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useState, useRef } from 'react';
-import { FiHeart, FiStar } from 'react-icons/fi';
+import { FiHeart, FiStar, FiShoppingCart } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
@@ -111,6 +111,17 @@ export default function ProductCard({ product }) {
         >
           <FiHeart className={`text-xs ${wishlisted ? 'fill-current' : ''}`} />
         </button>
+
+        {/* Add to cart — always tappable, not hover-gated (hover-only controls are unreachable on touch devices) */}
+        {product.stock > 0 && (
+          <button
+            onClick={addToCart}
+            className="absolute top-11 right-2 w-7 h-7 rounded-full flex items-center justify-center bg-white/90 text-stone-400 hover:bg-wine-700 hover:text-white transition-all shadow-sm"
+            aria-label="Add to cart"
+          >
+            <FiShoppingCart className="text-xs" />
+          </button>
+        )}
 
         {/* Slide hint on desktop hover */}
         {images.length > 1 && (

@@ -353,7 +353,7 @@ function ProductCard({ product }) {
 
         {/* Quick Add */}
         {product.stock > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+          <div className="absolute bottom-0 left-0 right-0 translate-y-0 sm:translate-y-full sm:group-hover:translate-y-0 transition-transform duration-300">
             <button onClick={addToCart} className="w-full py-3 bg-wine-700 text-white text-xs font-semibold tracking-luxury uppercase flex items-center justify-center gap-2 hover:bg-wine-800 transition-colors">
               <FiShoppingCart className="text-xs" /> Add to Cart
             </button>
