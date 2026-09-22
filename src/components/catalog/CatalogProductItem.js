@@ -26,6 +26,7 @@ import { FiShoppingCart, FiHeart, FiMessageCircle } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice } from '@/lib/utils';
+import { cldGrid } from '@/lib/cloudinaryImage';
 import toast from 'react-hot-toast';
 
 export default function CatalogProductItem({ product, showPrice = false }) {
@@ -89,9 +90,10 @@ export default function CatalogProductItem({ product, showPrice = false }) {
               >
                 {images[idx] ? (
                   <Image
-                    src={images[idx]}
+                    src={cldGrid(images[idx])}
                     alt={`${product.name} view ${idx + 1}`}
                     fill
+                    unoptimized
                     sizes="25vw"
                     className="object-cover transition-transform duration-500 group-hover:scale-105"
                   />
@@ -110,9 +112,10 @@ export default function CatalogProductItem({ product, showPrice = false }) {
           >
             {largeImg ? (
               <Image
-                src={largeImg}
+                src={cldGrid(largeImg)}
                 alt={`${product.name} detail`}
                 fill
+                unoptimized
                 sizes="50vw"
                 className="object-cover transition-transform duration-500 group-hover:scale-105"
               />

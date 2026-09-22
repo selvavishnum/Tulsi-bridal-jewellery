@@ -13,6 +13,7 @@ import {
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
+import { cldBase, cldZoom, cldThumb } from '@/lib/cloudinaryImage';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
 
@@ -188,10 +189,16 @@ function ReviewForm({ productId, onSubmitted }) {
   );
 }
 
-/* ── Image Zoom Modal ── */
+/* ── Image Zoom Modal ──
+   Opening this modal IS the "zoom" interaction — it's only reachable via a
+   tap/click on the gallery image, never rendered on initial page load — so
+   it eagerly fetches the w_4000 tier for the current image, while the
+   already-loaded base tier stays visible underneath as a fallback/skeleton
+   until the high-res layer finishes and crossfades over it. */
 function ImageZoomModal({ images, startIndex, productName, onClose }) {
   const [current, setCurrent] = useState(startIndex);
   const [scale, setScale]     = useState(1);
+  const [hiResLoaded, setHiResLoaded] = useState(() => new Set());
   const touchStartX   = useRef(null);
   const lastPinchDist = useRef(null);
 
@@ -199,6 +206,17 @@ function ImageZoomModal({ images, startIndex, productName, onClose }) {
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = ''; };
   }, []);
+
+  /* Fetch the high-res tier for whichever image is on screen, on demand —
+     never for the others in the array. */
+  useEffect(() => {
+    if (hiResLoaded.has(current)) return;
+    let cancelled = false;
+    const img = new window.Image();
+    img.onload = () => { if (!cancelled) setHiResLoaded((s) => new Set(s).add(current)); };
+    img.src = cldZoom(images[current]);
+    return () => { cancelled = true; };
+  }, [current, images, hiResLoaded]);
 
   useEffect(() => {
     function onKey(e) {
@@ -263,14 +281,33 @@ function ImageZoomModal({ images, startIndex, productName, onClose }) {
         onTouchEnd={onTouchEnd}
         onDoubleClick={onDoubleTap}
       >
+        {/* Base tier — instant (already cached from the gallery), stays visible
+           as the fallback under the high-res layer at all times. */}
         <img
-          src={images[current]}
+          src={cldBase(images[current])}
           alt={`${productName} — ${current + 1}`}
-          className="max-w-full max-h-full object-contain select-none transition-transform duration-200"
+          className="absolute max-w-full max-h-full object-contain select-none transition-transform duration-200"
           style={{ transform: `scale(${scale})` }}
           draggable={false}
           decoding="async"
         />
+        {/* High-res tier — crossfades in once the w_4000 fetch completes. */}
+        <img
+          key={images[current]}
+          src={cldZoom(images[current])}
+          alt=""
+          aria-hidden="true"
+          className={`max-w-full max-h-full object-contain select-none transition-[opacity,transform] duration-300 ${hiResLoaded.has(current) ? 'opacity-100' : 'opacity-0'}`}
+          style={{ transform: `scale(${scale})` }}
+          draggable={false}
+          decoding="async"
+        />
+        {!hiResLoaded.has(current) && (
+          <span className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/60 text-white text-[10px] px-3 py-1.5 rounded-full flex items-center gap-1.5 pointer-events-none">
+            <span className="w-2.5 h-2.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+            Loading full resolution…
+          </span>
+        )}
 
         {current > 0 && (
           <button onClick={prev}
@@ -304,7 +341,7 @@ function ImageZoomModal({ images, startIndex, productName, onClose }) {
             {images.map((img, i) => (
               <button key={i} onClick={() => { setScale(1); setCurrent(i); }}
                 className={`w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${i === current ? 'border-white opacity-100' : 'border-white/20 opacity-45 hover:opacity-75'}`}>
-                <img src={img} alt={`thumb ${i + 1}`} className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                <img src={cldThumb(img, 96)} alt={`thumb ${i + 1}`} className="w-full h-full object-cover" loading="lazy" decoding="async" />
               </button>
             ))}
           </div>
@@ -335,6 +372,32 @@ export default function ProductDetail() {
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [tryOnOpen, setTryOnOpen] = useState(false);
   const mobileSwipeX = useRef(null);
+
+  /* Desktop hover loupe — a magnified, cursor-following crop of the main
+     image. The w_4000 tier for whichever image is showing is fetched only
+     once the shopper actually hovers it (never on page load, never for the
+     images they haven't looked at), and only once per image per visit. */
+  const [loupeHover, setLoupeHover] = useState(false);
+  const [loupePos, setLoupePos] = useState({ x: 50, y: 50 });
+  const [loupeHiResLoaded, setLoupeHiResLoaded] = useState(() => new Set());
+
+  useEffect(() => {
+    if (!loupeHover || !product?.images?.[selectedImage]) return;
+    if (loupeHiResLoaded.has(selectedImage)) return;
+    let cancelled = false;
+    const img = new window.Image();
+    img.onload = () => { if (!cancelled) setLoupeHiResLoaded((s) => new Set(s).add(selectedImage)); };
+    img.src = cldZoom(product.images[selectedImage]);
+    return () => { cancelled = true; };
+  }, [loupeHover, selectedImage, product?.images, loupeHiResLoaded]);
+
+  function onLoupeMove(e) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setLoupePos({
+      x: Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100)),
+      y: Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100)),
+    });
+  }
 
   function onMobileSwipeStart(e) { mobileSwipeX.current = e.touches[0].clientX; }
   function onMobileSwipeEnd(e) {
@@ -465,10 +528,11 @@ export default function ProductDetail() {
             onTouchEnd={onMobileSwipeEnd}
           >
             <Image
-              src={product.images[selectedImage]}
+              src={cldBase(product.images[selectedImage])}
               alt={product.name}
               fill
               priority
+              unoptimized
               sizes="100vw"
               className="object-contain"
             />
@@ -507,7 +571,7 @@ export default function ProductDetail() {
               {product.images.map((img, i) => (
                 <button key={i} onClick={() => setSelectedImage(i)}
                   className={`relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${selectedImage === i ? 'border-wine-600 shadow-sm' : 'border-transparent opacity-55 hover:opacity-90'}`}>
-                  <Image src={img} alt={`View ${i + 1}`} fill sizes="56px" className="object-cover" />
+                  <Image src={cldThumb(img, 64)} alt={`View ${i + 1}`} fill unoptimized sizes="56px" className="object-cover" />
                 </button>
               ))}
             </div>
@@ -526,18 +590,45 @@ export default function ProductDetail() {
               <div
                 className="relative aspect-square rounded-2xl overflow-hidden bg-white border border-stone-100 mb-3 group cursor-zoom-in"
                 onClick={() => { if (product.images?.[selectedImage]) { setZoomIndex(selectedImage); setZoomOpen(true); } }}
+                onMouseEnter={() => setLoupeHover(true)}
+                onMouseLeave={() => setLoupeHover(false)}
+                onMouseMove={onLoupeMove}
               >
                 {product.images?.[selectedImage] ? (
                   <Image
-                    src={product.images[selectedImage]}
+                    src={cldBase(product.images[selectedImage])}
                     alt={product.name}
                     fill
                     priority
+                    unoptimized
                     sizes="50vw"
                     className="object-contain transition-opacity duration-300"
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-8xl text-stone-200">💍</div>
+                )}
+
+                {/* Hover loupe — magnified, cursor-following crop. Starts
+                   from the already-loaded base tier the instant the cursor
+                   enters (no blank flash), then sharpens to the w_4000
+                   tier once that finishes loading in the background. */}
+                {loupeHover && product.images?.[selectedImage] && (
+                  <div
+                    className="absolute inset-0 pointer-events-none bg-white"
+                    style={{
+                      backgroundImage: `url(${loupeHiResLoaded.has(selectedImage) ? cldZoom(product.images[selectedImage]) : cldBase(product.images[selectedImage])})`,
+                      backgroundPosition: `${loupePos.x}% ${loupePos.y}%`,
+                      backgroundSize: '220%',
+                      backgroundRepeat: 'no-repeat',
+                    }}
+                  >
+                    {!loupeHiResLoaded.has(selectedImage) && (
+                      <span className="absolute top-3 right-3 bg-black/60 text-white text-[10px] px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                        Loading HD zoom…
+                      </span>
+                    )}
+                  </div>
                 )}
 
                 {/* Slide arrows */}
@@ -580,7 +671,7 @@ export default function ProductDetail() {
                   {product.images.map((img, i) => (
                     <button key={i} onClick={() => setSelectedImage(i)}
                       className={`relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${selectedImage === i ? 'border-wine-600 shadow-sm scale-105' : 'border-transparent opacity-60 hover:opacity-100 hover:border-stone-200'}`}>
-                      <Image src={img} alt={`View ${i + 1}`} fill className="object-cover" />
+                      <Image src={cldThumb(img, 64)} alt={`View ${i + 1}`} fill unoptimized className="object-cover" />
                     </button>
                   ))}
                 </div>

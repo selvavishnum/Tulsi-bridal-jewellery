@@ -11,6 +11,7 @@ import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
 import { cacheGet, cacheSet } from '@/lib/clientCache';
+import { cldGrid } from '@/lib/cloudinaryImage';
 import toast from 'react-hot-toast';
 
 function getCookie(name) {
@@ -331,9 +332,10 @@ function ProductCard({ product }) {
       <div className="relative overflow-hidden bg-white aspect-square rounded-t-2xl border border-stone-100 group-hover:border-gold-200/60 transition-colors duration-300">
         {product.images?.[0] ? (
           <Image
-            src={product.images[0]}
+            src={cldGrid(product.images[0])}
             alt={product.name}
             fill
+            unoptimized
             className="object-cover transition-transform duration-700 group-hover:scale-105"
           />
         ) : (
