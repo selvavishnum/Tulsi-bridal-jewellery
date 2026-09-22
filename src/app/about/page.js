@@ -1,6 +1,8 @@
 import Link from 'next/link';
 
-export const metadata = { title: 'About Us | Tulsi Bridal Jewellery' };
+import { absoluteUrl } from '@/lib/seo';
+
+export const metadata = { title: 'About Us | Tulsi Bridal Jewellery', alternates: { canonical: absoluteUrl('/about') } };
 
 export default function AboutPage() {
   return (
