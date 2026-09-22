@@ -64,6 +64,17 @@
   }
 }
 
+@layer base {
+  /* Buttons get a native-app-like tap: no 300ms-delay double-tap-zoom
+     detection, no accidental text selection on a long-press, no lingering
+     grey tap-highlight box on Android Chrome. */
+  button, [role="button"] {
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
 @layer components {
   /* === Buttons === */
   .btn-primary {
@@ -248,6 +259,19 @@
 .trust-icon-ring {
   background: radial-gradient(circle at 30% 30%, #faf0d0, #f4dfa0 60%, #ecc96b);
   box-shadow: 0 4px 14px -4px rgba(201, 151, 58, 0.35), inset 0 1px 0 rgba(255,255,255,0.6);
+}
+
+/* ── Hero viewport height ──
+   100vh doesn't account for mobile browser chrome (address bar/toolbar)
+   showing or hiding, which can clip or letterbox a full-bleed hero. 100dvh
+   tracks the actual visible viewport; the plain vh line stays first as a
+   fallback for browsers that don't support dvh (they ignore that
+   declaration and keep the one before it). */
+.hero-viewport {
+  height: calc(100vh - 88px);
+  height: calc(100dvh - 88px);
+  min-height: 520px;
+  max-height: 860px;
 }
 
 /* ── Particle canvas ── */

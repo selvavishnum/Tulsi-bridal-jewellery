@@ -304,7 +304,7 @@ function ImageZoomModal({ images, startIndex, productName, onClose }) {
             {images.map((img, i) => (
               <button key={i} onClick={() => { setScale(1); setCurrent(i); }}
                 className={`w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${i === current ? 'border-white opacity-100' : 'border-white/20 opacity-45 hover:opacity-75'}`}>
-                <img src={img} alt={`thumb ${i + 1}`} className="w-full h-full object-cover" />
+                <img src={img} alt={`thumb ${i + 1}`} className="w-full h-full object-cover" loading="lazy" decoding="async" />
               </button>
             ))}
           </div>
@@ -533,6 +533,7 @@ export default function ProductDetail() {
                     alt={product.name}
                     fill
                     priority
+                    sizes="50vw"
                     className="object-contain transition-opacity duration-300"
                   />
                 ) : (

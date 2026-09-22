@@ -179,7 +179,7 @@ function HeroSlider({ slides }) {
   const slide = displaySlides[current];
 
   return (
-    <section className="relative w-full overflow-hidden bg-stone-100" style={{ height: 'calc(100vh - 88px)', minHeight: '520px', maxHeight: '860px' }}>
+    <section className="relative w-full overflow-hidden bg-stone-100 hero-viewport">
       {/* Slide image / gradient background */}
       <div className={`absolute inset-0 transition-opacity duration-500 ${transitioning ? 'opacity-0' : 'opacity-100'}`}>
         {slide.imageUrl ? (
