@@ -249,8 +249,8 @@ function ImageZoomModal({ images, startIndex, productName, onClose }) {
           <p className="text-white font-semibold text-sm line-clamp-1">{productName}</p>
           <p className="text-white/50 text-xs mt-0.5">{current + 1} / {images.length}</p>
         </div>
-        <button onClick={onClose}
-          className="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-sm flex items-center justify-center text-white text-2xl transition leading-none">
+        <button onClick={onClose} aria-label="Close"
+          className="w-12 h-12 rounded-full bg-white/15 hover:bg-white/25 backdrop-blur-sm flex items-center justify-center text-white text-2xl transition leading-none">
           ×
         </button>
       </div>

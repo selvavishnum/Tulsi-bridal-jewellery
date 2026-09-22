@@ -158,14 +158,14 @@ export default function Navbar() {
             {/* Search toggle */}
             <button
               onClick={() => setSearchOpen(!searchOpen)}
-              className="p-2.5 text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200"
+              className="min-w-12 min-h-12 flex items-center justify-center text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200"
               aria-label="Search"
             >
               {searchOpen ? <FiX className="text-lg" /> : <FiSearch className="text-lg" />}
             </button>
 
             {/* Wishlist */}
-            <Link href="/wishlist" className="relative p-2.5 text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200 hidden sm:flex">
+            <Link href="/wishlist" className="relative hidden sm:flex min-w-12 min-h-12 items-center justify-center text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200">
               <FiHeart className="text-lg" />
               {wishlistItems.length > 0 && (
                 <span className="absolute top-1.5 right-1.5 bg-wine-700 text-white text-[9px] rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">
@@ -175,7 +175,7 @@ export default function Navbar() {
             </Link>
 
             {/* Cart */}
-            <Link href="/cart" className="relative p-2.5 text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200">
+            <Link href="/cart" className="relative min-w-12 min-h-12 flex items-center justify-center text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200">
               <FiShoppingCart className="text-lg" />
               {itemCount > 0 && (
                 <span className="absolute top-1.5 right-1.5 bg-wine-700 text-white text-[9px] rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">
@@ -189,7 +189,7 @@ export default function Navbar() {
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="p-2.5 text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200"
+                  className="min-w-12 min-h-12 flex items-center justify-center text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200"
                 >
                   <FiUser className="text-lg" />
                 </button>
@@ -222,7 +222,7 @@ export default function Navbar() {
 
             {/* Mobile menu button */}
             <button
-              className="lg:hidden p-2.5 text-stone-600 hover:text-wine-700 transition-colors ml-1"
+              className="lg:hidden min-w-12 min-h-12 flex items-center justify-center text-stone-600 hover:text-wine-700 transition-colors ml-1"
               onClick={() => setMenuOpen(!menuOpen)}
               aria-label="Menu"
             >
@@ -245,7 +245,7 @@ export default function Navbar() {
                 className="bg-transparent text-sm flex-1 outline-none text-stone-700 placeholder-stone-400 font-medium"
               />
               {searchQuery && (
-                <button type="button" onClick={() => setSearchQuery('')} className="text-stone-400 hover:text-stone-600 transition-colors">
+                <button type="button" onClick={() => setSearchQuery('')} className="p-2.5 -m-1 text-stone-400 hover:text-stone-600 transition-colors flex-shrink-0" aria-label="Clear search">
                   <FiX className="text-sm" />
                 </button>
               )}
@@ -257,9 +257,16 @@ export default function Navbar() {
         )}
       </nav>
 
-      {/* Mobile menu */}
-      {menuOpen && (
-        <div className="lg:hidden bg-white border-t border-stone-100">
+      {/* Mobile menu — always mounted, animated via transform/opacity (GPU
+          compositable) instead of mount/unmount, so open/close has no pop-in
+          jank. max-h+overflow-hidden clips it without a layout-thrashing
+          height animation. */}
+      <div
+        aria-hidden={!menuOpen}
+        className={`lg:hidden bg-white border-t border-stone-100 overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-luxury ${
+          menuOpen ? 'max-h-[32rem] opacity-100 translate-y-0' : 'max-h-0 opacity-0 -translate-y-2 pointer-events-none border-t-0'
+        }`}
+      >
           <div className="section-container py-5 space-y-1">
             {[
               { label: 'Home', href: '/' },
@@ -294,8 +301,7 @@ export default function Navbar() {
               </Link>
             </div>
           </div>
-        </div>
-      )}
+      </div>
     </header>
   );
 }
