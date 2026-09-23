@@ -21,7 +21,7 @@ export async function GET(request, context) {
     const doc = await db.collection('orders').doc(id).get();
     if (!doc.exists) return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
     const order = docToObj(doc);
-    if (access.tier === ROLES.SUPER_ADMIN) return NextResponse.json({ success: true, data: order });
+    if (CAN.manageOrders.includes(access.tier)) return NextResponse.json({ success: true, data: order });
     if (CAN.viewOrders.includes(access.tier)) return NextResponse.json({ success: true, data: toFulfillmentOrder(order) });
     /* Same ownership rule as the order list and cancel — a customer who
        checked out as a guest and later signed in used to see the order in
@@ -48,7 +48,7 @@ export async function PUT(request, context) {
     const body = await request.json();
     const { status, trackingNumber, courierName, notes, shippingCostActual } = body;
     const ref = db.collection('orders').doc(id);
-    const isSuper = access.tier === ROLES.SUPER_ADMIN;
+    const isSuper = CAN.manageOrders.includes(access.tier); // full order control
     /* Sales and business staff can read orders but not change them: for a
        write they are ordinary customers (cancel their own order only). */
     const isFulfilment = access.tier === ROLES.ORDER_MANAGER;

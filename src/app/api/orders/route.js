@@ -6,7 +6,7 @@ import { sendOrderWhatsAppToAdmin, sendOrderWhatsAppToCustomer } from '@/lib/wha
 import { getAvailableCouriers, isConfigured as shiprocketConfigured } from '@/lib/shiprocket';
 import { PLATFORM_VENDOR_ID, validateVendorPricing, toCustomerOrder, marginFor, vendorShippingOf } from '@/lib/settlement';
 import { getAccess } from '@/lib/requireRole';
-import { ROLES, CAN, toFulfillmentOrder } from '@/lib/access';
+import { CAN, toFulfillmentOrder } from '@/lib/access';
 
 /* Shipping rules — must match the cart display in src/context/CartContext.js */
 const FREE_SHIPPING_ABOVE = 2000;
@@ -40,7 +40,7 @@ export async function GET(request) {
     if (CAN.viewOrders.includes(access.tier)) {
       const snap = await db.collection('orders').orderBy('createdAt', 'desc').get();
       let orders = snap.docs.map((d) => ({ id: d.id, _id: d.id, ...d.data() }));
-      if (access.tier !== ROLES.SUPER_ADMIN) orders = orders.map(toFulfillmentOrder);
+      if (!CAN.manageOrders.includes(access.tier)) orders = orders.map(toFulfillmentOrder);
       if (status) orders = orders.filter((o) => o.status === status);
       const total = orders.length;
       const pages = Math.ceil(total / limit);

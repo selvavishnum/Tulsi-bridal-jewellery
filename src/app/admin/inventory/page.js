@@ -9,7 +9,7 @@ import {
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useSession } from 'next-auth/react';
-import { ROLES } from '@/lib/access';
+import { CAN } from '@/lib/access';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import Badge from '@/components/ui/Badge';
 import { formatPrice } from '@/lib/utils';
@@ -26,7 +26,7 @@ export default function InventoryPage() {
   const { data: session } = useSession();
   /* Catalog staff adjust stock counts and SKUs; price, discount and
      visibility are Super Admin decisions (the API refuses them). */
-  const isCatalog = !!session?.user?.tier && session.user.tier !== ROLES.SUPER_ADMIN; // product/inventory staff: no prices or costs
+  const isCatalog = !!session?.user?.tier && !CAN.manageCatalog.includes(session.user.tier); // product/inventory staff: no prices or costs
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');

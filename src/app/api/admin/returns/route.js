@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr, docToObj, FieldValue } from '@/lib/firebase';
-import { requireAdmin } from '@/lib/adminCollection';
+import { requireAccess } from '@/lib/adminCollection';
+import { CAN } from '@/lib/access';
 import { reverseOrderSettlements } from '@/lib/vendorLedger';
 
 export async function GET() {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCRM);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const db = getDB();
     const snap = await db.collection('returns').orderBy('createdAt', 'desc').get();
@@ -17,7 +18,7 @@ export async function GET() {
 
 export async function PATCH(request) {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCRM);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const body = await request.json();
     /* Bookkeeping fields are set by this handler only — accepting them from
@@ -70,7 +71,7 @@ export async function PATCH(request) {
 
 export async function DELETE(request) {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCRM);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getDB, docToObj } from '@/lib/firebase';
-import { requireAdmin } from '@/lib/adminCollection';
+import { requireAccess } from '@/lib/adminCollection';
+import { CAN } from '@/lib/access';
 
 export async function DELETE(request, context) {
   try {
     const { id } = await context.params;
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCRM);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const db = getDB();
@@ -19,7 +20,7 @@ export async function DELETE(request, context) {
 export async function PUT(request, context) {
   try {
     const { id } = await context.params;
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCRM);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const db = getDB();

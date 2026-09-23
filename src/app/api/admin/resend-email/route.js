@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getDB, docToObj } from '@/lib/firebase';
 import { esc } from '@/lib/email';
-import { requireAdmin } from '@/lib/adminCollection';
+import { requireAccess } from '@/lib/adminCollection';
+import { CAN } from '@/lib/access';
 import { sendRentalConfirmation, sendRentalNotificationToAdmin } from '@/lib/email';
 import nodemailer from 'nodemailer';
 
@@ -10,7 +11,7 @@ import nodemailer from 'nodemailer';
    { rentalId, type: 'customer'|'admin' }          — rental booking */
 export async function POST(request) {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageOrders);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const { orderId, rentalId, type = 'admin' } = await request.json();

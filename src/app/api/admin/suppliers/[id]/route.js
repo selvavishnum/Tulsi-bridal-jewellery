@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin, updateDoc, deleteDoc } from '@/lib/adminCollection';
+import { updateDoc, deleteDoc, requireAccess } from '@/lib/adminCollection';
+import { CAN } from '@/lib/access';
 
 export async function PUT(request, context) {
   try {
     const { id } = await context.params;
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageBackOffice);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const body = await request.json();
     const doc = await updateDoc('suppliers', id, body);
@@ -15,7 +16,7 @@ export async function PUT(request, context) {
 export async function DELETE(request, context) {
   try {
     const { id } = await context.params;
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageBackOffice);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     await deleteDoc('suppliers', id);
     return NextResponse.json({ success: true, message: 'Deleted' });

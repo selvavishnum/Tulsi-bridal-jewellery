@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getDB, docToObj, toPublicProduct } from '@/lib/firebase';
 import { checkProductVendor } from '@/lib/vendorProducts';
-import { requireAdmin } from '@/lib/adminCollection';
-import { requireRole, ROLES, CAN } from '@/lib/requireRole';
+import { requireAccess } from '@/lib/adminCollection';
+import { requireRole, CAN } from '@/lib/requireRole';
 import { catalogProductViolations, CATALOG_EDITABLE_PRODUCT_FIELDS, stripCostFields } from '@/lib/access';
 
 export async function GET(request, context) {
@@ -44,7 +44,7 @@ export async function PUT(request, context) {
       }
     }
 
-    if (auth.tier !== ROLES.SUPER_ADMIN) {
+    if (!CAN.manageCatalog.includes(auth.tier)) {
       /* Restricted fields sent back unchanged (the form round-trips the
          product) are fine; any attempt to change one is refused. */
       const denied = catalogProductViolations(body, doc.data());
@@ -89,7 +89,7 @@ export async function PUT(request, context) {
 export async function DELETE(request, context) {
   try {
     const { id } = await context.params;
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCatalog);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const db = getDB();

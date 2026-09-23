@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '@/lib/firebase';
-import { requireAdmin } from '@/lib/adminCollection';
+import { requireAccess } from '@/lib/adminCollection';
+import { CAN } from '@/lib/access';
 
 export async function GET() {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCRM);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const db = getDB();
@@ -33,7 +34,7 @@ export async function GET() {
 
 export async function PATCH(request) {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCRM);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const { id, status } = await request.json();
@@ -49,7 +50,7 @@ export async function PATCH(request) {
 
 export async function DELETE(request) {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCRM);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const { searchParams } = new URL(request.url);

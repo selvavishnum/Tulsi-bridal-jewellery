@@ -190,7 +190,7 @@ export default function AdminLayout({ children }) {
   const tier = DEV_BYPASS ? ROLES.SUPER_ADMIN : session?.user?.tier;
   /* Only poll what this tier may read — no point asking for (and being
      refused) messages or orders the person can't see. */
-  const canSeeMessages = !tier || tier === ROLES.SUPER_ADMIN;
+  const canSeeMessages = !tier || CAN.manageOperations.includes(tier);
   const canSeeOrders = !tier || CAN.viewOrders.includes(tier);
 
   useEffect(() => { setSidebarOpen(false); }, [pathname]);

@@ -50,6 +50,10 @@ const [analytics, reports, accounting, vendorLedger, settings, staff, orders, or
   route('products'), route('products/[id]'), route('admin/products'), route('admin/shipments'), route('admin/vendors'),
   route('admin/inventory'), route('admin/customers'),
 ]);
+const [contact, coupons, feedbacks, returns, warehouses, suppliers, employees] = await Promise.all([
+  route('contact'), route('coupons'), route('admin/feedbacks'), route('admin/returns'),
+  route('admin/warehouses'), route('admin/suppliers'), route('admin/employees'),
+]);
 
 async function call(mod, method, { url = 'http://tulsi.test/api', body, params = {} } = {}) {
   const request = new Request(url, {
@@ -74,7 +78,7 @@ beforeEach(() => {
       oldsuper: { email: 'oldsuper@tulsi.test', role: 'SuperAdmin', status: 'Active' },
       inv: { email: 'inv@tulsi.test', role: 'INVENTORY_MANAGER', status: 'Active' },
       sales: { email: 'sales@tulsi.test', role: 'SALES_STAFF', status: 'Active' },
-      biz: { email: 'biz@tulsi.test', role: 'BUSINESS_MANAGER', status: 'Active' },
+      biz: { email: 'biz@tulsi.test', role: 'BUSINESS_MANAGER', status: 'Active', roleGrantedBy: 'owner@tulsi.test' },
       selfmade: { email: 'selfmade@tulsi.test', role: 'SUPER_ADMIN', status: 'Active' },
     },
     orders: {
@@ -227,7 +231,10 @@ test('legacy role names keep their mapped access', async () => {
   signInAs('ordermgr@tulsi.test'); // "OrderManager" → ORDER_MANAGER
   assert.equal((await call(orderById, 'GET', { params: { id: 'oA' } })).status, 200);
   assert.equal((await call(analytics, 'GET')).status, 403);
-  signInAs('bizmgr@tulsi.test'); // "BusinessManager" → BUSINESS_MANAGER
+  signInAs('bizmgr@tulsi.test'); // legacy "BusinessManager" with no recorded grant → nothing until re-granted
+  assert.equal((await call(reports, 'GET')).status, 403);
+  assert.equal((await call(accounting, 'GET')).status, 403);
+  db.store.get('staff').get('bm').roleGrantedBy = 'owner@tulsi.test'; // re-saved on the Staff page
   assert.equal((await call(reports, 'GET')).status, 200);
   assert.equal((await call(vendorLedger, 'POST', { body: { action: 'payout', vendorId: 'vA', reference: 'UTR' } })).status, 403);
 });
@@ -259,19 +266,52 @@ test('inventory manager: stock counts only — no new products, copy, price or o
   assert.equal((await call(customers, 'GET')).status, 403);
 });
 
-test('business manager: reports, analytics, orders and customers read-only; no money, settings, staff or order changes', async () => {
+test('business manager: operation, CRM, product, reports and management work', async () => {
   signInAs('biz@tulsi.test');
-  assert.equal((await call(reports, 'GET')).status, 200);
-  assert.equal((await call(analytics, 'GET')).status, 200);
-  assert.equal((await call(customers, 'GET')).status, 200);
+  // Operation
+  assert.equal((await call(contact, 'GET')).status, 200, 'messages');
   const one = await call(orderById, 'GET', { params: { id: 'oA' } });
   assert.equal(one.status, 200);
-  assert.ok(!JSON.stringify(one.json).includes('supplyCost'));
-  assert.equal((await call(orderById, 'PUT', { params: { id: 'oA' }, body: { status: 'delivered' } })).status, 403);
+  assert.ok(JSON.stringify(one.json).includes('supplyCost'), 'full order view (margin) for accounting');
+  const confirmed = await call(orderById, 'PUT', { params: { id: 'oB' }, body: { status: 'processing' } });
+  assert.equal(confirmed.status, 200, 'full order control');
+  // CRM
+  for (const [mod, name] of [[customers, 'customers'], [coupons, 'coupons'], [feedbacks, 'feedbacks'], [returns, 'returns']]) {
+    assert.equal((await call(mod, 'GET')).status, 200, name);
+  }
+  // Product: price and margin too
+  const priced = await call(productById, 'PUT', { params: { id: 'p1' }, body: { price: 1500, supplyCost: 700 } });
+  assert.equal(priced.status, 200);
+  assert.equal(db.store.get('products').get('p1').price, 1500);
+  assert.ok(JSON.stringify((await call(adminProducts, 'GET')).json).includes('supplyCost'));
+  // Reports
+  assert.equal((await call(reports, 'GET')).status, 200);
+  assert.equal((await call(analytics, 'GET')).status, 200);
+  // Management
+  for (const [mod, name] of [[warehouses, 'warehouses'], [suppliers, 'suppliers'], [employees, 'employees'], [accounting, 'accounting']]) {
+    assert.equal((await call(mod, 'GET')).status, 200, name);
+  }
+});
+
+test('business manager: still no vendor payouts or bank details, staff & access, or settings / gateway keys', async () => {
+  signInAs('biz@tulsi.test');
   assert.equal((await call(vendorLedger, 'POST', { body: { action: 'payout', vendorId: 'vA', reference: 'UTR' } })).status, 403);
+  assert.equal((await call(vendorLedger, 'GET', { url: 'http://tulsi.test/api/admin/vendor-ledger?vendorId=vA' })).status, 403);
+  assert.equal((await call(vendors, 'PUT', { url: 'http://tulsi.test/api/admin/vendors?id=vA', body: { payout: { method: 'upi', upiId: 'x@okaxis' } } })).status, 403);
+  const list = await call(vendors, 'GET');
+  assert.equal(list.status, 200, 'vendor names for the product form');
+  assert.ok(!/payout|accountNumber|upiId|summary|platformFee/.test(JSON.stringify(list.json)), 'no bank details or money in the list');
   assert.equal((await call(settings, 'POST', { body: { razorpayKeyId: 'rzp_live_attacker' } })).status, 403);
   assert.equal((await call(staff, 'POST', { body: { name: 'Me', email: 'me3@tulsi.test', password: 'password1', role: 'SUPER_ADMIN' } })).status, 403);
-  assert.equal((await call(accounting, 'GET')).status, 403);
+});
+
+test('the new business-manager areas stay closed to the narrower roles', async () => {
+  for (const email of ['ofs@tulsi.test', 'cat@tulsi.test', 'inv@tulsi.test', 'sales@tulsi.test']) {
+    signInAs(email);
+    for (const [mod, name] of [[contact, 'messages'], [coupons, 'coupons'], [feedbacks, 'feedbacks'], [returns, 'returns'], [warehouses, 'warehouses'], [suppliers, 'suppliers'], [employees, 'employees'], [accounting, 'accounting'], [vendors, 'vendors']]) {
+      assert.equal((await call(mod, 'GET')).status, 403, `${email} → ${name}`);
+    }
+  }
 });
 
 test('signed out: 401 on admin and vendor endpoints', async () => {

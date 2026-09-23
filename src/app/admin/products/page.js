@@ -9,7 +9,7 @@ import Badge from '@/components/ui/Badge';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
 import { useSession } from 'next-auth/react';
-import { ROLES, CATALOG_EDITABLE_PRODUCT_FIELDS } from '@/lib/access';
+import { CAN, CATALOG_EDITABLE_PRODUCT_FIELDS } from '@/lib/access';
 
 const CATEGORIES = ['necklace', 'earrings', 'bangles', 'bracelet', 'ring', 'maang-tikka', 'nose-ring', 'anklet', 'set', 'other'];
 const MATERIALS  = ['gold', 'silver', 'gold-plated', 'silver-plated', 'kundan', 'meenakari', 'polki', 'other'];
@@ -43,7 +43,7 @@ export default function AdminProductsPage() {
   const { data: session } = useSession();
   /* Catalog staff edit media, copy, categories and stock only; the API
      refuses anything else. These flags just keep the form honest. */
-  const isCatalog = !!session?.user?.tier && session.user.tier !== ROLES.SUPER_ADMIN; // product/inventory staff: no prices or costs
+  const isCatalog = !!session?.user?.tier && !CAN.manageCatalog.includes(session.user.tier); // product/inventory staff: no prices or costs
   const [products, setProducts] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [modalOpen, setModalOpen] = useState(false);

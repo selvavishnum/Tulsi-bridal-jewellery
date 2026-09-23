@@ -13,7 +13,7 @@ const ROLE_HELP = {
   SUPER_ADMIN: 'Everything, including ledgers, payouts, supplier costs, settings and staff.',
   PRODUCT_MANAGER: 'Products, photos, descriptions, categories, variants and stock. New products stay drafts until a Super Admin prices them. No prices, orders or customer data.',
   INVENTORY_MANAGER: 'Stock counts, SKUs and barcodes only. Cannot add products or change prices.',
-  BUSINESS_MANAGER: 'Read-only: reports, sales, visitor analytics, orders and customers. No payouts, settings, staff or payment keys.',
+  BUSINESS_MANAGER: 'Operation (dashboard, orders, messages), CRM (customers, coupons, feedback, returns & refunds), all Product options, Reports, and Management (warehouses, suppliers, employees, accounting). Not vendor payouts, staff & access, settings or rentals.',
   ORDER_MANAGER: 'View confirmed orders, print slips, book couriers, mark Packed / Shipped. No costs, finance or settings.',
   SALES_STAFF: 'Look up orders and customers to help buyers. Read-only: cannot change orders.',
 };

@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { getDB, snapshotToArr } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
 import { PLATFORM_VENDOR_ID } from '@/lib/data/scopedDb';
-import { ASSIGNABLE_STAFF_ROLES, normalizeStaffRole } from '@/lib/access';
+import { ASSIGNABLE_STAFF_ROLES, GRANT_REQUIRED, normalizeStaffRole } from '@/lib/access';
 
 /* Outside vendors' logins live in this collection too, but are managed from
    the Vendors page — the platform staff screen neither lists nor edits them. */
@@ -23,8 +23,8 @@ export async function GET() {
       .map(({ password, ...rest }) => {
         let role = normalizeStaffRole(rest.role);
         /* Mirror resolveAccess: a SUPER_ADMIN not granted through this page
-           grants nothing, so don't display it as if it did. */
-        if (role === 'SUPER_ADMIN' && !rest.roleGrantedBy) role = null;
+           (or BUSINESS_MANAGER) grants nothing, so don't display it as if it did. */
+        if (GRANT_REQUIRED.includes(role) && !rest.roleGrantedBy) role = null;
         return { ...rest, role, ...(rest.role && role !== rest.role && { legacyRole: rest.role }) };
       })
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));

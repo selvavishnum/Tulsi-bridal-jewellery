@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin, listCollection, createDoc } from '@/lib/adminCollection';
+import { listCollection, createDoc, requireAccess } from '@/lib/adminCollection';
+import { CAN } from '@/lib/access';
 
 export async function GET() {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageBackOffice);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const data = await listCollection('suppliers');
     return NextResponse.json({ success: true, data });
@@ -12,7 +13,7 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageBackOffice);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const body = await request.json();
     const doc = await createDoc('suppliers', body);

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getDB } from '@/lib/firebase';
-import { requireAdmin, requireOwner } from '@/lib/adminCollection';
+import { requireOwner } from '@/lib/adminCollection';
+import { requireRole, ROLES, CAN } from '@/lib/requireRole';
 import { summarizeLedger, PLATFORM_VENDOR_ID } from '@/lib/settlement';
 import { parsePayout } from '@/lib/payoutDestination';
 
@@ -29,11 +30,21 @@ function parseFeeBps(percent) {
    login, plus platform-wide totals of what the platform has retained. */
 export async function GET() {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const auth = await requireRole(CAN.manageCatalog);
+    if (auth.error) return auth.error;
     const db = getDB();
-    /* SUPER_ADMIN only (requireAdmin): the full bank/UPI details are needed
-       to make the transfers, and no other tier can reach this route. */
+    /* Business Managers pick a seller on the product form, so they get the
+       vendor names — and nothing else: no bank/UPI details, ledgers, fees
+       or totals. Everything below is SUPER_ADMIN only (needed to make the
+       transfers). */
+    if (auth.tier !== ROLES.SUPER_ADMIN) {
+      const snap = await db.collection('vendors').get();
+      const vendors = snap.docs
+        .filter((d) => d.id !== PLATFORM_VENDOR_ID)
+        .map((d) => ({ id: d.id, name: d.data().name, status: d.data().status || 'active', defaultMarginPercent: Number(d.data().defaultMarginPercent) || 0 }))
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      return NextResponse.json({ success: true, data: { vendors, totals: null } });
+    }
 
     const [vendorsSnap, ledgerSnap, productsSnap, staffSnap] = await Promise.all([
       db.collection('vendors').get(),

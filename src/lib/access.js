@@ -17,9 +17,19 @@
                         prices and publishes them.
      INVENTORY_MANAGER  Stock counts and barcodes only. Can't create or
                         rename products, or touch prices.
-     BUSINESS_MANAGER   Read-only reports, sales, visitor analytics,
-                        orders and customers. Moves no money and changes
-                        nothing: no payouts, settings, staff or gateway keys.
+     BUSINESS_MANAGER   Runs the business day to day:
+                          Operation  — dashboard, orders (full control),
+                                       customer messages
+                          CRM        — customers, coupons, feedback,
+                                       returns & refunds
+                          Product    — everything in the product menu,
+                                       including prices, margins, stock
+                                       lots and purchases
+                          Reports    — reports, sales, visitor analytics
+                          Management — warehouses, suppliers, employees,
+                                       accounting
+                        Not: vendor payouts and bank details, staff &
+                        access, settings / payment-gateway keys, rentals.
      VENDOR             Their own products and orders, retail sales and net
                         payout balance only (/vendor portal).
 
@@ -61,19 +71,33 @@ export const ROLE_LABELS = Object.freeze({
 /* Who may do what. API routes and pages check these groups, so adding a
    role means deciding its place here, once. SUPER_ADMIN is in every group. */
 export const CAN = Object.freeze({
-  /* Read every order (non-SUPER_ADMIN get the cost-free fulfilment view). */
+  /* Read every order. Below manageOrders, the cost-free fulfilment view. */
   viewOrders: Object.freeze([SUPER_ADMIN, ORDER_MANAGER, SALES_STAFF, BUSINESS_MANAGER]),
   /* Mark Packed / Shipped, add tracking, book the courier. */
-  fulfilOrders: Object.freeze([SUPER_ADMIN, ORDER_MANAGER]),
+  fulfilOrders: Object.freeze([SUPER_ADMIN, ORDER_MANAGER, BUSINESS_MANAGER]),
+  /* Full order control: every status, courier charge, cost fields, emails. */
+  manageOrders: Object.freeze([SUPER_ADMIN, BUSINESS_MANAGER]),
+  /* Admin dashboard and customer messages. */
+  manageOperations: Object.freeze([SUPER_ADMIN, BUSINESS_MANAGER]),
   /* Customer list and profiles. */
   viewCustomers: Object.freeze([SUPER_ADMIN, SALES_STAFF, BUSINESS_MANAGER]),
+  /* Coupons, feedback, returns & refunds, complaints. */
+  manageCRM: Object.freeze([SUPER_ADMIN, BUSINESS_MANAGER]),
   /* Create and edit products, categories, variants and photos. */
-  editCatalog: Object.freeze([SUPER_ADMIN, PRODUCT_MANAGER]),
+  editCatalog: Object.freeze([SUPER_ADMIN, PRODUCT_MANAGER, BUSINESS_MANAGER]),
+  /* Everything about a product, including price, margin, seller, stock
+     lots and purchases (editCatalog below this sees no prices or costs). */
+  manageCatalog: Object.freeze([SUPER_ADMIN, BUSINESS_MANAGER]),
   /* See the product list and set stock counts. */
-  editStock: Object.freeze([SUPER_ADMIN, PRODUCT_MANAGER, INVENTORY_MANAGER]),
-  /* Sales reports and visitor analytics (read-only). */
+  editStock: Object.freeze([SUPER_ADMIN, PRODUCT_MANAGER, INVENTORY_MANAGER, BUSINESS_MANAGER]),
+  /* Sales reports and visitor analytics. */
   viewReports: Object.freeze([SUPER_ADMIN, BUSINESS_MANAGER]),
+  /* Warehouses, suppliers, employees, accounting. */
+  manageBackOffice: Object.freeze([SUPER_ADMIN, BUSINESS_MANAGER]),
 });
+
+/* Roles that only count when a SUPER_ADMIN granted them on the Staff page. */
+export const GRANT_REQUIRED = Object.freeze([SUPER_ADMIN, BUSINESS_MANAGER]);
 
 /* Staff records written under earlier role names. Legacy "SuperAdmin"
    maps to nothing: before roles were validated any staff member could
@@ -119,11 +143,12 @@ export async function resolveAccess(db, email, adminEmails) {
   }
   const tier = normalizeStaffRole(staff.role);
   if (!tier || tier === VENDOR) return { tier: null }; // a platform record can't be a vendor
-  /* SUPER_ADMIN from a staff record only counts if a SUPER_ADMIN granted it
-     through the validated staff API (which stamps roleGrantedBy). A literal
-     "SUPER_ADMIN" written before that API existed — when any staff member
-     could set any role — fails closed. */
-  if (tier === SUPER_ADMIN && !staff.roleGrantedBy) return { tier: null };
+  /* SUPER_ADMIN and BUSINESS_MANAGER (orders, accounting, prices and
+     margins) from a staff record only count if a SUPER_ADMIN granted them
+     through the validated staff API (which stamps roleGrantedBy). One
+     written before that API existed — when any staff member could set any
+     role — fails closed until re-granted on the Staff page. */
+  if (GRANT_REQUIRED.includes(tier) && !staff.roleGrantedBy) return { tier: null };
   return { tier, staffId: doc.id };
 }
 
@@ -137,23 +162,40 @@ export function sessionRoleFor(tier) {
 /* ── Admin pages: first matching prefix wins; anything under /admin not
    listed is SUPER_ADMIN only. ── */
 const PAGE_RULES = [
-  ['/admin/inventory/lots', [SUPER_ADMIN]], // stock-lot costs
+  // Operation
+  ['=/admin', CAN.manageOperations], // the dashboard itself (exact path)
   ['/admin/orders', CAN.viewOrders],
+  ['/admin/messages', CAN.manageOperations],
+  // CRM
   ['/admin/customers', CAN.viewCustomers],
+  ['/admin/coupons', CAN.manageCRM],
+  ['/admin/crm', CAN.manageCRM],
+  // Product
+  ['/admin/inventory/lots', CAN.manageCatalog], // stock-lot costs
+  ['/admin/purchase', CAN.manageCatalog],
   ['/admin/products', CAN.editCatalog],
   ['/admin/categories', CAN.editCatalog],
   ['/admin/variants', CAN.editCatalog],
   ['/admin/photo-editor', CAN.editCatalog],
   ['/admin/inventory', CAN.editStock],
   ['/admin/barcodes', CAN.editStock],
+  // Reports
   ['/admin/analytics', CAN.viewReports],
   ['/admin/reports', CAN.viewReports],
   ['/admin/sales', CAN.viewReports],
+  // Management
+  ['/admin/warehouses', CAN.manageBackOffice],
+  ['/admin/suppliers', CAN.manageBackOffice],
+  ['/admin/employees', CAN.manageBackOffice],
+  ['/admin/accounting', CAN.manageBackOffice],
+  // Everything else — vendors & payouts, staff, settings, rentals, …
   ['/admin', [SUPER_ADMIN]],
 ];
 
 export function canViewAdminPath(tier, pathname) {
-  const rule = PAGE_RULES.find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  const rule = PAGE_RULES.find(([prefix]) => (prefix.startsWith('=')
+    ? pathname === prefix.slice(1)
+    : pathname === prefix || pathname.startsWith(`${prefix}/`)));
   return !!rule && rule[1].includes(tier);
 }
 
@@ -161,7 +203,7 @@ const HOME = {
   [SUPER_ADMIN]: '/admin',
   [PRODUCT_MANAGER]: '/admin/products',
   [INVENTORY_MANAGER]: '/admin/inventory',
-  [BUSINESS_MANAGER]: '/admin/reports',
+  [BUSINESS_MANAGER]: '/admin',
   [ORDER_MANAGER]: '/admin/orders',
   [SALES_STAFF]: '/admin/orders',
 };

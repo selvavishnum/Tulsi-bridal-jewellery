@@ -5,7 +5,9 @@
                                        Staff page if intended
      ProductManager, CATALOG_STAFF   → PRODUCT_MANAGER
      InventoryManager                → INVENTORY_MANAGER
-     BusinessManager                 → BUSINESS_MANAGER
+     BusinessManager                 → BUSINESS_MANAGER, but like SuperAdmin
+                                       only honoured once re-granted on the
+                                       Staff page (it now has broad powers)
      OrderManager,
        ORDER_FULFILLMENT_STAFF       → ORDER_MANAGER
      SalesStaff                      → SALES_STAFF
@@ -14,7 +16,7 @@
    this runs; this just makes the stored data match. Also lists everyone who
    will hold SUPER_ADMIN, for the owner to review. */
 import { db, APPLY, pages } from './_lib.mjs';
-import { normalizeStaffRole, ROLES } from '../../src/lib/access.js';
+import { normalizeStaffRole, ROLES, GRANT_REQUIRED } from '../../src/lib/access.js';
 import { PLATFORM_VENDOR_ID } from '../../src/lib/data/scopedDb.js';
 
 const firestore = db();
@@ -31,8 +33,8 @@ for await (const docs of pages(firestore, 'staff')) {
       unmapped.push(`${d.id} ${s.email} (role: ${s.role ?? 'none'})`);
       continue;
     }
-    if (target === ROLES.SUPER_ADMIN && !s.roleGrantedBy) {
-      unmapped.push(`${d.id} ${s.email} (role: SUPER_ADMIN, but not granted through the Staff page — not honoured)`);
+    if (GRANT_REQUIRED.includes(target) && !s.roleGrantedBy) {
+      unmapped.push(`${d.id} ${s.email} (role: ${target}, but not granted through the Staff page — not honoured)`);
       continue;
     }
     if (target === ROLES.SUPER_ADMIN && s.status === 'Active') superAdmins.push(`${s.email} (granted by ${s.roleGrantedBy})`);
