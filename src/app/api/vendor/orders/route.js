@@ -2,19 +2,19 @@ import { NextResponse } from 'next/server';
 import { requireVendor } from '@/lib/vendorAuth';
 import { toVendorOrderView } from '@/lib/settlement';
 
-/* GET /api/vendor/orders — orders containing the vendor's pieces, reduced
-   to their own lines (toVendorOrderView): no other vendors' items or
-   totals, no customer contact details. Orders is a platform collection, so
-   the vendor filter is the array-contains on vendorIds written at checkout. */
+/* GET /api/vendor/orders — orders containing the vendor's pieces. The
+   tenant filter is the query itself (`vendorIds array-contains <vendor>`,
+   written at checkout), and each order is then cut down to that vendor's
+   own lines by toVendorOrderView. */
 export async function GET() {
   try {
-    const ctx = await requireVendor('orders:read');
-    if (!ctx) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
-    const { db, actor } = ctx;
+    const ctx = await requireVendor();
+    if (ctx.error) return ctx.error;
+    const { db, vendorId } = ctx;
 
-    const snap = await db.collection('orders').where('vendorIds', 'array-contains', actor.vendorId).get();
+    const snap = await db.collection('orders').where('vendorIds', 'array-contains', vendorId).get();
     const orders = snap.docs
-      .map((d) => toVendorOrderView({ id: d.id, ...d.data() }, actor.vendorId))
+      .map((d) => toVendorOrderView({ id: d.id, ...d.data() }, vendorId))
       .filter(Boolean)
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
       .slice(0, 300);

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getDB, docToObj, toPublicProduct } from '@/lib/firebase';
 import { checkProductVendor } from '@/lib/vendorProducts';
 import { requireAdmin } from '@/lib/adminCollection';
+import { requireRole, ROLES } from '@/lib/requireRole';
+import { catalogProductViolations, CATALOG_EDITABLE_PRODUCT_FIELDS, stripCostFields } from '@/lib/access';
 
 export async function GET(request, context) {
   try {
@@ -22,8 +24,8 @@ export async function GET(request, context) {
 export async function PUT(request, context) {
   try {
     const { id } = await context.params;
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    if (auth.error) return auth.error;
 
     const db = getDB();
     /* The admin form posts back the whole product it loaded, including
@@ -32,6 +34,41 @@ export async function PUT(request, context) {
     const ref = db.collection('products').doc(id);
     const doc = await ref.get();
     if (!doc.exists) return NextResponse.json({ success: false, message: 'Product not found' }, { status: 404 });
+
+    /* Barcodes are generated from the SKU, so it must stay unique — the
+       inventory route already enforced this; this route didn't. */
+    if (body.sku && body.sku !== doc.data().sku) {
+      const dup = await db.collection('products').where('sku', '==', body.sku).limit(1).get();
+      if (!dup.empty && dup.docs[0].id !== id) {
+        return NextResponse.json({ success: false, message: `SKU "${body.sku}" already exists on another product.` }, { status: 409 });
+      }
+    }
+
+    if (auth.tier === ROLES.CATALOG_STAFF) {
+      /* Restricted fields sent back unchanged (the form round-trips the
+         product) are fine; any attempt to change one is refused. */
+      const denied = catalogProductViolations(body, doc.data());
+      if (denied.length) {
+        return NextResponse.json({ success: false, message: `Forbidden fields for catalog staff: ${denied.join(', ')}` }, { status: 403 });
+      }
+      const allowed = Object.fromEntries(Object.entries(body).filter(([k]) => CATALOG_EDITABLE_PRODUCT_FIELDS.includes(k)));
+      if (allowed.stock !== undefined) {
+        const n = Number(allowed.stock);
+        if (!Number.isInteger(n) || n < 0) return NextResponse.json({ success: false, message: 'Stock must be a whole number ≥ 0' }, { status: 400 });
+        allowed.stock = n;
+        const before = Number(doc.data().stock) || 0;
+        /* Same rule as inventory PATCH: catalog stock corrections are logged
+           for a Super Admin to reconcile against the FIFO cost lots. */
+        if (n !== before) {
+          await db.collection('stockAdjustments').add({
+            productId: id, from: before, to: n, by: auth.session?.user?.email || null, tier: auth.tier,
+            lotsReconciled: false, createdAt: new Date().toISOString(),
+          });
+        }
+      }
+      await ref.update({ ...allowed, updatedAt: new Date().toISOString() });
+      return NextResponse.json({ success: true, data: stripCostFields(docToObj(await ref.get())) });
+    }
 
     const vendor = await checkProductVendor(db, { ...doc.data(), ...body });
     if (vendor.error) return NextResponse.json({ success: false, message: vendor.error }, { status: 400 });

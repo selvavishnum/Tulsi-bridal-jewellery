@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
+import { getAccess, ROLES } from '@/lib/requireRole';
 import Razorpay from 'razorpay';
 import { getDB } from '@/lib/firebase';
-import { getEffectiveSession } from '@/lib/adminCollection';
 
 export async function POST(request) {
   try {
-    const session = await getEffectiveSession();
+    const access = await getAccess();
+    const session = access.session;
     if (!session) {
       return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
     }
@@ -30,7 +31,7 @@ export async function POST(request) {
     const isOwner =
       (!!order.userId && order.userId === session.user.id) ||
       (!!order.guestEmail && order.guestEmail === session.user.email);
-    if (!isOwner && session.user.role !== 'admin') {
+    if (!isOwner && access.tier !== ROLES.SUPER_ADMIN) {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }
 

@@ -1,18 +1,20 @@
 import { NextResponse } from 'next/server';
+import { getAccess, ROLES } from '@/lib/requireRole';
 import { getDB, docToObj } from '@/lib/firebase';
-import { getEffectiveSession, requireAdmin } from '@/lib/adminCollection';
+import { requireAdmin } from '@/lib/adminCollection';
 
 export async function GET(request, context) {
   try {
     const { id } = await context.params;
-    const session = await getEffectiveSession();
+    const access = await getAccess();
+    const session = access.session;
     if (!session) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
 
     const db = getDB();
     const doc = await db.collection('rentals').doc(id).get();
     if (!doc.exists) return NextResponse.json({ success: false, message: 'Rental not found' }, { status: 404 });
     const rental = docToObj(doc);
-    if (session.user.role !== 'admin' && rental.userId !== session.user.id) {
+    if (access.tier !== ROLES.SUPER_ADMIN && rental.userId !== session.user.id) {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }
     return NextResponse.json({ success: true, data: rental });

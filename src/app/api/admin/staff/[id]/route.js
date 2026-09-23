@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { getDB, docToObj } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
 import { PLATFORM_VENDOR_ID } from '@/lib/data/scopedDb';
+import { ASSIGNABLE_STAFF_ROLES } from '@/lib/access';
 
 async function vendorLoginGuard(ref) {
   const snap = await ref.get();
@@ -21,8 +22,8 @@ export async function PUT(request, context) {
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const { name, role, phone, status, password } = await request.json();
-    if (role === 'Owner') {
-      return NextResponse.json({ success: false, message: 'Owner access comes from ADMIN_EMAILS and cannot be assigned here.' }, { status: 400 });
+    if (role !== undefined && !ASSIGNABLE_STAFF_ROLES.includes(role)) {
+      return NextResponse.json({ success: false, message: `Role must be one of: ${ASSIGNABLE_STAFF_ROLES.join(', ')}` }, { status: 400 });
     }
     const db = getDB();
     const ref = db.collection('staff').doc(id);
@@ -31,7 +32,7 @@ export async function PUT(request, context) {
 
     const updateData = {
       ...(name !== undefined && { name }),
-      ...(role !== undefined && { role }),
+      ...(role !== undefined && { role, roleGrantedBy: session.user.email || 'unknown', roleGrantedAt: new Date().toISOString() }),
       ...(phone !== undefined && { phone }),
       ...(status !== undefined && { status }),
       updatedAt: new Date().toISOString(),

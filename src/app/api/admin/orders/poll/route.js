@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '@/lib/firebase';
-import { requireAdmin } from '@/lib/adminCollection';
+import { requireRole, ROLES } from '@/lib/requireRole';
 
 /* Lightweight endpoint for the admin sidebar to poll every few seconds.
    Uses a Firestore count() aggregate instead of fetching full order docs,
    so frequent polling stays cheap. */
 export async function GET(request) {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.ORDER_FULFILLMENT_STAFF]);
+    if (auth.error) return auth.error;
+    const { session } = auth;
 
     const since = new URL(request.url).searchParams.get('since');
     if (!since) return NextResponse.json({ success: false, message: 'since is required' }, { status: 400 });

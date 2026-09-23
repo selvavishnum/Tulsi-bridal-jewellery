@@ -8,6 +8,8 @@ import {
   FiTrash2, FiSave, FiPackage, FiEye, FiEyeOff,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { useSession } from 'next-auth/react';
+import { ROLES } from '@/lib/access';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import Badge from '@/components/ui/Badge';
 import { formatPrice } from '@/lib/utils';
@@ -21,6 +23,10 @@ const CATEGORIES = [
 const LIMITS = [25, 50, 100];
 
 export default function InventoryPage() {
+  const { data: session } = useSession();
+  /* Catalog staff adjust stock counts and SKUs; price, discount and
+     visibility are Super Admin decisions (the API refuses them). */
+  const isCatalog = session?.user?.tier === ROLES.CATALOG_STAFF;
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -80,10 +86,12 @@ export default function InventoryPage() {
         body: JSON.stringify({
           id: product.id,
           sku: draft.sku,
-          mrp: parseFloat(draft.mrp) || 0,
-          discPct: parseFloat(draft.discPct) || 0,
           inStock: parseInt(draft.inStock) || 0,
-          showMe: draft.showMe,
+          ...(!isCatalog && {
+            mrp: parseFloat(draft.mrp) || 0,
+            discPct: parseFloat(draft.discPct) || 0,
+            showMe: draft.showMe,
+          }),
         }),
       });
       const data = await res.json();
@@ -240,7 +248,7 @@ export default function InventoryPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">MRP (₹)</label>
-                      {isDirty ? (
+                      {isDirty && !isCatalog ? (
                         <input type="number" value={draft.mrp} onChange={(e) => updateDraft(product.id, 'mrp', e.target.value)}
                           className={inp} placeholder="0" min="0" />
                       ) : (
@@ -249,7 +257,7 @@ export default function InventoryPage() {
                     </div>
                     <div>
                       <label className="block text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Disc %</label>
-                      {isDirty ? (
+                      {isDirty && !isCatalog ? (
                         <input type="number" value={draft.discPct} onChange={(e) => updateDraft(product.id, 'discPct', e.target.value)}
                           className={inp} placeholder="0" min="0" max="100" />
                       ) : (
@@ -282,7 +290,7 @@ export default function InventoryPage() {
                   </div>
 
                   {/* ShowMe toggle */}
-                  {isDirty && (
+                  {isDirty && !isCatalog && (
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={() => updateDraft(product.id, 'showMe', !draft.showMe)}
                         className={`w-9 h-5 rounded-full transition-colors relative flex-shrink-0 ${draft.showMe ? 'bg-amber-500' : 'bg-gray-200'}`}
@@ -321,11 +329,14 @@ export default function InventoryPage() {
                         >
                           <FiEdit2 className="text-xs" />
                         </Link>
-                        <button onClick={() => handleDelete(product)}
-                          className="px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg transition"
-                        >
-                          <FiTrash2 className="text-xs" />
-                        </button>
+                        {!isCatalog && (
+                          <button onClick={() => handleDelete(product)}
+                            className="px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg transition"
+                            aria-label={`Delete ${product.name}`}
+                          >
+                            <FiTrash2 className="text-xs" />
+                          </button>
+                        )}
                       </>
                     )}
                   </div>

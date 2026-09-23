@@ -45,37 +45,32 @@ export default function VendorEarningsPage() {
         <div className="bg-white rounded-xl border border-stone-200 p-5">
           <p className="text-xs uppercase tracking-wide text-stone-400 font-semibold">Paid out so far</p>
           <p className="text-2xl font-bold mt-1 tabular-nums text-stone-900">{inr(s.paidOutPaise)}</p>
-          <p className="text-xs text-stone-500 mt-2">Platform fee: {data.vendor.platformFeePercent}% of item sales.</p>
         </div>
       </section>
 
       <section className="bg-white rounded-xl border border-stone-200 p-5">
-        <h2 className="font-semibold text-stone-800 mb-3">How your earnings add up</h2>
-        <dl className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-sm tabular-nums">
-          <div><dt className="text-xs text-stone-400">Gross collected</dt><dd className="font-semibold">{inr(s.grossPaise)}</dd></div>
-          <div><dt className="text-xs text-stone-400">− Supply cost</dt><dd className="font-semibold">{inr(s.supplyCostPaise)}</dd></div>
-          <div><dt className="text-xs text-stone-400">− Shipping</dt><dd className="font-semibold">{inr(s.shippingPaise)}</dd></div>
-          <div><dt className="text-xs text-stone-400">− Platform fee</dt><dd className="font-semibold">{inr(s.platformFeePaise)}</dd></div>
-          <div><dt className="text-xs text-stone-400">= Net earned</dt><dd className="font-bold text-wine-700">{inr(s.netPaise)}</dd></div>
+        <h2 className="font-semibold text-stone-800 mb-3">Your sales</h2>
+        <dl className="grid grid-cols-2 gap-4 text-sm tabular-nums max-w-md">
+          <div><dt className="text-xs text-stone-400">Retail sales</dt><dd className="text-lg font-semibold">{inr(s.retailSalesPaise)}</dd></div>
+          <div><dt className="text-xs text-stone-400">Your net earnings</dt><dd className="text-lg font-bold text-wine-700">{inr(s.netPaise)}</dd></div>
         </dl>
-        <p className="text-xs text-stone-400 mt-3">Counted for delivered orders only. Gross collected is what customers paid for your pieces, including their share of any shipping fee.</p>
+        <p className="text-xs text-stone-400 mt-3">Delivered orders only. Retail sales is what customers paid for your pieces; net earnings is what you receive after Tulsi&apos;s agreed deductions.</p>
       </section>
 
       <section className="bg-white rounded-xl border border-stone-200 p-5">
         <h2 className="font-semibold text-stone-800 mb-3">Order by order</h2>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[720px]">
+          <table className="w-full text-sm min-w-[480px]">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-stone-400">
                 <th className="py-2 pr-3">Order</th><th className="pr-3">Delivered</th>
-                <th className="pr-3 text-right">Collected</th><th className="pr-3 text-right">Supply cost</th>
-                <th className="pr-3 text-right">Shipping</th><th className="pr-3 text-right">Fee</th>
-                <th className="pr-3 text-right">Net</th><th>Status</th>
+                <th className="pr-3 text-right">Retail sales</th>
+                <th className="pr-3 text-right">Net earnings</th><th>Status</th>
               </tr>
             </thead>
             <tbody className="tabular-nums">
               {data.entries.length === 0 && (
-                <tr><td colSpan={8} className="py-6 text-stone-400">No delivered orders yet — earnings appear here once an order with your pieces is delivered.</td></tr>
+                <tr><td colSpan={5} className="py-6 text-stone-400">No delivered orders yet — earnings appear here once an order with your pieces is delivered.</td></tr>
               )}
               {data.entries.map((e) => {
                 const [label, cls] = e.type === 'reversal'
@@ -84,11 +79,8 @@ export default function VendorEarningsPage() {
                 return (
                   <tr key={e.id} className="border-t border-stone-100">
                     <td className="py-2 pr-3 font-mono text-xs">{e.orderNumber}</td>
-                    <td className="pr-3">{date(e.deliveredAt || e.createdAt)}</td>
-                    <td className="pr-3 text-right">{inr(e.grossPaise)}</td>
-                    <td className="pr-3 text-right">{inr(e.supplyCostPaise)}</td>
-                    <td className="pr-3 text-right">{inr(e.shippingPaise)}</td>
-                    <td className="pr-3 text-right">{inr(e.platformFeePaise)}</td>
+                    <td className="pr-3">{date(e.deliveredAt)}</td>
+                    <td className="pr-3 text-right">{inr(e.retailSalesPaise)}</td>
                     <td className={`pr-3 text-right font-semibold ${e.netPaise < 0 ? 'text-red-600' : ''}`}>{inr(e.netPaise)}</td>
                     <td>
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${cls}`}>{label}</span>
