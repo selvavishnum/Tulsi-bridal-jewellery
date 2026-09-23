@@ -93,6 +93,8 @@ const PRODUCT_PRIVATE_FIELDS = [
   /* Marketplace: the platform's retained supply cost is its margin, and
      which vendor lists a piece is a business relationship, not shopper info. */
   'supplyCost', 'vendorId',
+  /* Vendor self-service bookkeeping (who submitted/reviewed a listing). */
+  'submittedBy', 'reviewStatus', 'reviewedBy', 'reviewedAt', 'restockQty',
 ];
 export function toPublicProduct(p) {
   if (!p) return p;

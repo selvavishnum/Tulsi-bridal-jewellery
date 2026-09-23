@@ -3,34 +3,11 @@ import bcrypt from 'bcryptjs';
 import { getDB } from '@/lib/firebase';
 import { requireAdmin, requireOwner } from '@/lib/adminCollection';
 import { summarizeLedger, PLATFORM_VENDOR_ID } from '@/lib/settlement';
-
-const IFSC = /^[A-Z]{4}0[A-Z0-9]{6}$/;
-const UPI = /^[\w.-]{2,256}@[a-zA-Z]{2,64}$/;
-const ACCOUNT = /^\d{9,18}$/;
+import { parsePayout } from '@/lib/payoutDestination';
 
 function adminEmails() {
   return (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
     .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
-}
-
-/* Validates and normalises the payout destination. Returns { payout } or { error }. */
-function parsePayout(input) {
-  if (!input || !input.method) return { payout: null };
-  if (input.method === 'upi') {
-    const upiId = String(input.upiId || '').trim();
-    if (!UPI.test(upiId)) return { error: 'Enter a valid UPI ID (e.g. name@okaxis).' };
-    return { payout: { method: 'upi', upiId } };
-  }
-  if (input.method === 'bank') {
-    const accountName = String(input.accountName || '').trim();
-    const accountNumber = String(input.accountNumber || '').replace(/\s/g, '');
-    const ifsc = String(input.ifsc || '').trim().toUpperCase();
-    if (!accountName) return { error: 'Enter the account holder name.' };
-    if (!ACCOUNT.test(accountNumber)) return { error: 'Account number must be 9–18 digits.' };
-    if (!IFSC.test(ifsc)) return { error: 'Enter a valid IFSC (e.g. HDFC0001234).' };
-    return { payout: { method: 'bank', accountName, accountNumber, ifsc } };
-  }
-  return { error: 'Payout method must be bank or UPI.' };
 }
 
 function parseFeeBps(percent) {
@@ -52,7 +29,7 @@ export async function GET() {
     const [vendorsSnap, ledgerSnap, productsSnap, staffSnap] = await Promise.all([
       db.collection('vendors').get(),
       db.collection('vendorLedger').get(),
-      db.collection('products').select('vendorId').get(),
+      db.collection('products').select('vendorId', 'reviewStatus', 'isActive').get(),
       db.collection('staff').get(),
     ]);
 
@@ -63,9 +40,12 @@ export async function GET() {
       entriesByVendor.get(e.vendorId).push(e);
     }
     const productCount = new Map();
+    const inReviewCount = new Map();
     for (const d of productsSnap.docs) {
-      const v = d.data().vendorId;
+      const p = d.data();
+      const v = p.vendorId;
       if (v) productCount.set(v, (productCount.get(v) || 0) + 1);
+      if (v && p.reviewStatus === 'pending' && p.isActive === false) inReviewCount.set(v, (inReviewCount.get(v) || 0) + 1);
     }
     const loginByVendor = new Map();
     for (const d of staffSnap.docs) {
@@ -90,8 +70,15 @@ export async function GET() {
           status: v.status || 'active',
           platformFeePercent: (Number(v.platformFeeBps) || 0) / 100,
           payout: v.payout || null,
+          /* A bank/UPI change the vendor asked for — not used for payouts
+             until a Super Admin approves it below. */
+          pendingPayout: v.pendingPayout || null,
+          contactEmail: v.contactEmail || '',
+          gstin: v.gstin || '',
+          pickupAddress: v.pickupAddress || null,
           login: loginByVendor.get(d.id) || null,
           productCount: productCount.get(d.id) || 0,
+          inReviewCount: inReviewCount.get(d.id) || 0,
           summary,
           createdAt: v.createdAt,
         };
@@ -208,6 +195,23 @@ export async function PUT(request) {
       update.payout = payout;
       update.payoutUpdatedAt = update.updatedAt;
       update.payoutUpdatedBy = session.user.email || null;
+    }
+    if (body.pendingPayoutDecision !== undefined) {
+      const current = (await ref.get()).data();
+      if (!current.pendingPayout) return NextResponse.json({ success: false, message: 'There is no pending payout change.' }, { status: 400 });
+      if (!['approve', 'reject'].includes(body.pendingPayoutDecision)) {
+        return NextResponse.json({ success: false, message: 'Decision must be approve or reject.' }, { status: 400 });
+      }
+      if (body.pendingPayoutDecision === 'approve') {
+        const { payout, error } = parsePayout(current.pendingPayout);
+        if (error) return NextResponse.json({ success: false, message: error }, { status: 400 });
+        update.payout = payout;
+        update.payoutUpdatedAt = update.updatedAt;
+        update.payoutUpdatedBy = session.user.email || null;
+      }
+      update.pendingPayout = null;
+      update.pendingPayoutReviewedAt = update.updatedAt;
+      update.pendingPayoutReviewedBy = session.user.email || null;
     }
     await ref.update(update);
 

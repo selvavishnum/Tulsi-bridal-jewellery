@@ -8,6 +8,7 @@ import { GiQueenCrown } from 'react-icons/gi';
 import { FiEye, FiEyeOff, FiMail, FiLock, FiUser } from 'react-icons/fi';
 import { FcGoogle } from 'react-icons/fc';
 import toast from 'react-hot-toast';
+import { destinationAfterSignIn } from '@/lib/postLoginRedirect';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 
 const GOOGLE_CONFIGURED = !!process.env.NEXT_PUBLIC_GOOGLE_ENABLED;
@@ -44,7 +45,7 @@ function PasswordForm({ callbackUrl }) {
       if (mode === 'login') {
         const r = await signIn('credentials', { email: form.email, password: form.password, redirect: false });
         if (r?.error) toast.error('Wrong email or password');
-        else { toast.success('Welcome back!'); window.location.href = callbackUrl || '/'; }
+        else { toast.success('Welcome back!'); window.location.href = await destinationAfterSignIn(callbackUrl, '/'); }
       } else {
         const res = await fetch('/api/auth/register', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -127,7 +128,7 @@ function OTPForm({ callbackUrl }) {
         setOtp('');
       } else {
         toast.success('Signed in! Redirecting…');
-        window.location.href = callbackUrl || '/';
+        window.location.href = await destinationAfterSignIn(callbackUrl, '/');
       }
     } finally { setLoading(false); }
   }

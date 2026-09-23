@@ -283,6 +283,9 @@ export default function AdminProductsPage() {
                         <div className="min-w-0">
                           <p className="font-semibold text-gray-800 truncate">{p.name}</p>
                           <p className="text-xs text-gray-400">{p.sku || '—'}</p>
+                          {p.reviewStatus === 'pending' && p.isActive === false && (
+                            <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-semibold">Vendor submitted — set supply cost &amp; publish</span>
+                          )}
                         </div>
                       </div>
                     </td>

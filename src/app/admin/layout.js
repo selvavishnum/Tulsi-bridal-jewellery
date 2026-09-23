@@ -281,7 +281,7 @@ export default function AdminLayout({ children }) {
     }
 
     if (session?.user?.role === 'vendor') {
-      router.replace('/vendor');
+      router.replace('/vendor/dashboard');
       return null;
     }
 

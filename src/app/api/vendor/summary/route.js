@@ -3,9 +3,12 @@ import { requireVendor } from '@/lib/vendorAuth';
 import { summarizeLedger, retailSalesOf, RETURN_WINDOW_DAYS } from '@/lib/settlement';
 import { maskPayoutDestination } from '@/lib/vendorLedger';
 
-/* GET /api/vendor/summary — the signed-in vendor's retail sales and net
-   withdrawable balance. Supply cost, shipping and fee breakdowns stay
-   server-side: those are the platform's margins, not vendor data. */
+/* GET /api/vendor/summary — the signed-in vendor's ledger:
+     Total sold − Logistics − Tulsi charges = Net earnings
+   "Tulsi charges" is supply cost and platform fee combined, per order and
+   in total — never per product, and never the fee rate — so the platform's
+   retained margin stays internal while the vendor can still reconcile
+   every rupee (sold − net was always derivable from what they see). */
 export async function GET() {
   try {
     const ctx = await requireVendor();
@@ -35,6 +38,9 @@ export async function GET() {
         status: e.status,
         held: e.status === 'unsettled' && new Date(e.availableAt).getTime() > now,
         retailSalesPaise: retailSalesOf(e),
+        totalSoldPaise: e.grossPaise || 0,
+        logisticsPaise: e.shippingPaise || 0,
+        chargesPaise: (e.supplyCostPaise || 0) + (e.platformFeePaise || 0),
         netPaise: e.netPaise || 0,
       }));
     const payouts = payoutSnap.docs
@@ -52,6 +58,9 @@ export async function GET() {
         holdDays: RETURN_WINDOW_DAYS,
         summary: {
           retailSalesPaise: s.itemsPaise,
+          totalSoldPaise: s.grossPaise,
+          logisticsPaise: s.shippingPaise,
+          chargesPaise: s.supplyCostPaise + s.platformFeePaise,
           netPaise: s.netPaise,
           paidOutPaise: s.paidOutPaise,
           availablePaise: s.availablePaise,

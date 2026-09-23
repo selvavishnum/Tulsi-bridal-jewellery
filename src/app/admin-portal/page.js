@@ -7,6 +7,7 @@ import { FiLock, FiMail, FiShield, FiAlertCircle, FiArrowRight } from 'react-ico
 import { GiQueenCrown } from 'react-icons/gi';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import { destinationAfterSignIn } from '@/lib/postLoginRedirect';
 
 /* ── tiny reusable input ── */
 function AdminInput({ icon: Icon, ...props }) {
@@ -54,7 +55,7 @@ export default function AdminPortalPage() {
 
   // Already logged-in admin or vendor — go straight to their dashboard
   if (status === 'authenticated' && (session?.user?.role === 'admin' || session?.user?.role === 'vendor')) {
-    router.replace(session.user.role === 'vendor' ? '/vendor' : '/admin');
+    router.replace(session.user.role === 'vendor' ? '/vendor/dashboard' : '/admin');
     return (
       <Screen>
         <div className="flex flex-col items-center gap-3">
@@ -148,8 +149,8 @@ export default function AdminPortalPage() {
         setOtp('');
       } else {
         // signIn() with redirect:false awaits until the session cookie is fully written.
-        // Hard-navigate so /admin loads fresh with the correct session — no useSession timing issues.
-        window.location.replace('/admin');
+        // Hard-navigate so the dashboard loads fresh with the correct session — no useSession timing issues.
+        window.location.replace(await destinationAfterSignIn(null, '/admin'));
       }
     } finally {
       setLoading(null);
@@ -165,7 +166,7 @@ export default function AdminPortalPage() {
       if (r?.error) {
         toast.error('Wrong email or password.');
       } else {
-        window.location.replace('/admin');
+        window.location.replace(await destinationAfterSignIn(null, '/admin'));
       }
     } finally {
       setLoading(null);
@@ -322,6 +323,9 @@ export default function AdminPortalPage() {
 
         <p className="text-center text-xs text-slate-700 mt-6 flex items-center justify-center gap-1.5">
           <FiShield className="text-xs" /> Authorised administrators only
+        </p>
+        <p className="text-center text-xs text-slate-500 mt-2">
+          Selling with Tulsi? <a href="/vendor/login" className="text-amber-500 hover:text-amber-400 font-semibold">Vendor sign-in</a>
         </p>
       </div>
     </Screen>

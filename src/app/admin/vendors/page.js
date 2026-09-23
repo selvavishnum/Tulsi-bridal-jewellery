@@ -69,6 +69,21 @@ export default function VendorsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  async function decidePayout(v, decision) {
+    if (decision === 'approve' && !window.confirm(`Send all future payouts for ${v.name} to ${destination(v.pendingPayout)}?`)) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/vendors?id=${encodeURIComponent(v.id)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pendingPayoutDecision: decision }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message);
+      toast.success(decision === 'approve' ? 'Payout account updated' : 'Request rejected');
+      load();
+    } catch (err) { toast.error(err.message || 'Could not save'); }
+    finally { setBusy(false); }
+  }
+
   function toggle(id) {
     if (openId === id) { setOpenId(null); return; }
     setOpenId(id);
@@ -236,6 +251,26 @@ export default function VendorsPage() {
                     {v.productCount} product{v.productCount !== 1 ? 's' : ''} · fee {v.platformFeePercent}% · login {v.login ? `${v.login.email} (${v.login.status})` : 'none'}
                   </p>
                   <p className="text-xs text-gray-500">Pays to: {destination(v.payout)}</p>
+                  {v.pickupAddress && (
+                    <p className="text-xs text-gray-500">Pickup: {[v.pickupAddress.line1, v.pickupAddress.line2, v.pickupAddress.city, v.pickupAddress.state, v.pickupAddress.pincode].filter(Boolean).join(', ')}</p>
+                  )}
+                  {v.inReviewCount > 0 && (
+                    <a href="/admin/products" className="inline-block mt-1 text-xs font-semibold text-blue-700 hover:underline">
+                      {v.inReviewCount} new product{v.inReviewCount !== 1 ? 's' : ''} to review — set supply cost and publish →
+                    </a>
+                  )}
+                  {v.pendingPayout && (
+                    <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 p-2 text-xs text-amber-900">
+                      <p><span className="font-semibold">Vendor asked to change payouts to:</span> <span className="font-mono">{destination(v.pendingPayout)}</span></p>
+                      <p className="text-amber-700">Confirm it with the vendor by phone before approving.</p>
+                      {isOwner && (
+                        <div className="flex gap-2 mt-1.5">
+                          <button onClick={() => decidePayout(v, 'approve')} disabled={busy} className="px-2.5 py-1 rounded bg-green-600 text-white font-semibold disabled:opacity-40">Approve</button>
+                          <button onClick={() => decidePayout(v, 'reject')} disabled={busy} className="px-2.5 py-1 rounded border border-amber-300 font-semibold disabled:opacity-40">Reject</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="text-right">
                   <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Available</p>

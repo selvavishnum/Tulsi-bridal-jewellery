@@ -73,7 +73,12 @@ export async function PUT(request, context) {
     const vendor = await checkProductVendor(db, { ...doc.data(), ...body });
     if (vendor.error) return NextResponse.json({ success: false, message: vendor.error }, { status: 400 });
 
-    await ref.update({ ...body, vendorId: vendor.vendorId, supplyCost: vendor.supplyCost, updatedAt: new Date().toISOString() });
+    /* Publishing a vendor-submitted draft completes its review. */
+    const merged = { ...doc.data(), ...body };
+    const review = merged.reviewStatus === 'pending' && merged.isActive !== false
+      ? { reviewStatus: 'approved', reviewedBy: auth.session?.user?.email || null, reviewedAt: new Date().toISOString() }
+      : {};
+    await ref.update({ ...body, ...review, vendorId: vendor.vendorId, supplyCost: vendor.supplyCost, updatedAt: new Date().toISOString() });
     const updated = await ref.get();
     return NextResponse.json({ success: true, data: docToObj(updated) });
   } catch (error) {
