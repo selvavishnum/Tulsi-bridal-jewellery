@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr, toPublicProduct } from '@/lib/firebase';
 import { checkProductVendor } from '@/lib/vendorProducts';
-import { requireRole, ROLES } from '@/lib/requireRole';
+import { requireRole, ROLES, CAN } from '@/lib/requireRole';
 import { catalogProductViolations, CATALOG_EDITABLE_PRODUCT_FIELDS } from '@/lib/access';
 import { slugify } from '@/lib/utils';
 
@@ -70,9 +70,9 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    const auth = await requireRole(CAN.editCatalog);
     if (auth.error) return auth.error;
-    const isCatalog = auth.tier === ROLES.CATALOG_STAFF;
+    const isCatalog = auth.tier !== ROLES.SUPER_ADMIN;
 
     const db = getDB();
     let body = await request.json();

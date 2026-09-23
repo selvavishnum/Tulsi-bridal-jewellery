@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDB, docToObj, toPublicProduct } from '@/lib/firebase';
 import { checkProductVendor } from '@/lib/vendorProducts';
 import { requireAdmin } from '@/lib/adminCollection';
-import { requireRole, ROLES } from '@/lib/requireRole';
+import { requireRole, ROLES, CAN } from '@/lib/requireRole';
 import { catalogProductViolations, CATALOG_EDITABLE_PRODUCT_FIELDS, stripCostFields } from '@/lib/access';
 
 export async function GET(request, context) {
@@ -24,7 +24,7 @@ export async function GET(request, context) {
 export async function PUT(request, context) {
   try {
     const { id } = await context.params;
-    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    const auth = await requireRole(CAN.editCatalog);
     if (auth.error) return auth.error;
 
     const db = getDB();
@@ -44,7 +44,7 @@ export async function PUT(request, context) {
       }
     }
 
-    if (auth.tier === ROLES.CATALOG_STAFF) {
+    if (auth.tier !== ROLES.SUPER_ADMIN) {
       /* Restricted fields sent back unchanged (the form round-trips the
          product) are fine; any attempt to change one is refused. */
       const denied = catalogProductViolations(body, doc.data());

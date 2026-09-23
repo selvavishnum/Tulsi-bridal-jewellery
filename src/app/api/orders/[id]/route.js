@@ -5,7 +5,7 @@ import { sendStatusWhatsApp } from '@/lib/whatsapp';
 import { awardLoyaltyPoints } from '@/lib/loyalty';
 import { toCustomerOrder } from '@/lib/settlement';
 import { getAccess } from '@/lib/requireRole';
-import { ROLES, FULFILLMENT_STATUSES, toFulfillmentOrder } from '@/lib/access';
+import { ROLES, CAN, FULFILLMENT_STATUSES, toFulfillmentOrder } from '@/lib/access';
 import { postDeliverySettlement, reverseOrderSettlements } from '@/lib/vendorLedger';
 
 class OrderStateError extends Error {}
@@ -22,7 +22,7 @@ export async function GET(request, context) {
     if (!doc.exists) return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
     const order = docToObj(doc);
     if (access.tier === ROLES.SUPER_ADMIN) return NextResponse.json({ success: true, data: order });
-    if (access.tier === ROLES.ORDER_FULFILLMENT_STAFF) return NextResponse.json({ success: true, data: toFulfillmentOrder(order) });
+    if (CAN.viewOrders.includes(access.tier)) return NextResponse.json({ success: true, data: toFulfillmentOrder(order) });
     /* Same ownership rule as the order list and cancel — a customer who
        checked out as a guest and later signed in used to see the order in
        their list but get "Forbidden" opening it. Nullish guarded so a
@@ -49,7 +49,9 @@ export async function PUT(request, context) {
     const { status, trackingNumber, courierName, notes, shippingCostActual } = body;
     const ref = db.collection('orders').doc(id);
     const isSuper = access.tier === ROLES.SUPER_ADMIN;
-    const isFulfilment = access.tier === ROLES.ORDER_FULFILLMENT_STAFF;
+    /* Sales and business staff can read orders but not change them: for a
+       write they are ordinary customers (cancel their own order only). */
+    const isFulfilment = access.tier === ROLES.ORDER_MANAGER;
     /* "Staff" here = may act on any order. Fulfilment staff only move orders
        through packing and shipping; confirming (stock), delivering (money)
        and cancelling stay with SUPER_ADMIN, as does the courier charge

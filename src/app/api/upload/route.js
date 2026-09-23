@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { uploadImage } from '@/lib/cloudinary';
-import { requireRole, ROLES } from '@/lib/requireRole';
+import { requireRole, CAN } from '@/lib/requireRole';
 
 export const maxDuration = 60;
 
 export async function POST(request) {
   try {
-    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    const auth = await requireRole(CAN.editCatalog);
     if (auth.error) return auth.error;
     const { session } = auth;
 

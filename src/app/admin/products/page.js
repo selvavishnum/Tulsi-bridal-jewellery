@@ -43,7 +43,7 @@ export default function AdminProductsPage() {
   const { data: session } = useSession();
   /* Catalog staff edit media, copy, categories and stock only; the API
      refuses anything else. These flags just keep the form honest. */
-  const isCatalog = session?.user?.tier === ROLES.CATALOG_STAFF;
+  const isCatalog = !!session?.user?.tier && session.user.tier !== ROLES.SUPER_ADMIN; // product/inventory staff: no prices or costs
   const [products, setProducts] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [modalOpen, setModalOpen] = useState(false);

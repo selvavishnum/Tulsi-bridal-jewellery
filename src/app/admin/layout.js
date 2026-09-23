@@ -17,7 +17,7 @@ import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { playOrderChime } from '@/lib/notifySound';
 import { formatPrice } from '@/lib/utils';
-import { canViewAdminPath, ROLES, ROLE_LABELS } from '@/lib/access';
+import { canViewAdminPath, ROLES, CAN, ROLE_LABELS } from '@/lib/access';
 
 const ORDERS_POLL_MS = 20000;
 const ORDERS_LAST_SEEN_KEY = 'admin_orders_last_seen';
@@ -191,7 +191,7 @@ export default function AdminLayout({ children }) {
   /* Only poll what this tier may read — no point asking for (and being
      refused) messages or orders the person can't see. */
   const canSeeMessages = !tier || tier === ROLES.SUPER_ADMIN;
-  const canSeeOrders = !tier || tier === ROLES.SUPER_ADMIN || tier === ROLES.ORDER_FULFILLMENT_STAFF;
+  const canSeeOrders = !tier || CAN.viewOrders.includes(tier);
 
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
 

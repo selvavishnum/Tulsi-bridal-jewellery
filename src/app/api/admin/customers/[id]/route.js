@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getDB, docToObj, snapshotToArr } from '@/lib/firebase';
-import { requireAdmin } from '@/lib/adminCollection';
+import { requireRole, CAN } from '@/lib/requireRole';
+import { ROLES, toFulfillmentOrder } from '@/lib/access';
 
 export async function GET(request, { params }) {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const auth = await requireRole(CAN.viewCustomers);
+    if (auth.error) return auth.error;
 
     const { id } = await params;
     const db = getDB();
@@ -21,9 +22,9 @@ export async function GET(request, { params }) {
 
     const rawUser = docToObj(userDoc);
     const { password, ...user } = rawUser;
-    const orders = snapshotToArr(ordersSnap).sort((a, b) =>
-      (b.createdAt || '').localeCompare(a.createdAt || '')
-    );
+    const orders = snapshotToArr(ordersSnap)
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+      .map((o) => (auth.tier === ROLES.SUPER_ADMIN ? o : toFulfillmentOrder(o))); // no cost/margin fields below Super Admin
 
     return NextResponse.json({ success: true, user, orders });
   } catch (error) {

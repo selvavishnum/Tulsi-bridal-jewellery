@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr } from '@/lib/firebase';
-import { requireAdmin } from '@/lib/adminCollection';
+import { requireRole, CAN } from '@/lib/requireRole';
 
 export async function GET() {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const auth = await requireRole(CAN.viewCustomers);
+    if (auth.error) return auth.error;
 
     const db = getDB();
     const [usersSnap, ordersSnap] = await Promise.all([

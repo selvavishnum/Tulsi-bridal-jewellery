@@ -369,10 +369,15 @@ const SIDEBAR_ITEMS = [
 
 export default function AdminOrdersPage() {
   const { data: session } = useSession();
-  /* Fulfilment staff pack and ship only; the API refuses other status
-     changes and never sends them cost fields. This keeps the UI in step. */
-  const isFulfilment = session?.user?.tier === ROLES.ORDER_FULFILLMENT_STAFF;
-  const canSetStatus = (s) => !isFulfilment || FULFILLMENT_STATUSES.includes(s);
+  /* Order managers pack and ship only; sales and business staff only read.
+     The API enforces both and never sends them cost fields — this keeps
+     the UI in step. (No tier yet = a pre-tier session: full UI, the API
+     still decides.) */
+  const tier = session?.user?.tier;
+  const isFulfilment = tier === ROLES.ORDER_MANAGER;
+  const readOnly = tier === ROLES.SALES_STAFF || tier === ROLES.BUSINESS_MANAGER;
+  const isSuper = !isFulfilment && !readOnly;
+  const canSetStatus = (s) => !readOnly && (!isFulfilment || FULFILLMENT_STATUSES.includes(s));
   const statusLabel = (s) => (s === 'processing' ? 'packed' : s);
   const [orders, setOrders]       = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -532,7 +537,7 @@ export default function AdminOrdersPage() {
       {/* Key metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          ...(isFulfilment ? [] : [{ label: 'Total Revenue',  value: formatPrice(stats.revenue),     color: 'bg-green-50 text-green-700',  badge: null }]),
+          ...(isFulfilment || tier === ROLES.SALES_STAFF ? [] : [{ label: 'Total Revenue',  value: formatPrice(stats.revenue),     color: 'bg-green-50 text-green-700',  badge: null }]),
           { label: "Today's Orders", value: stats.todayCount,               color: 'bg-blue-50 text-blue-700',    badge: stats.todayCount > 0 ? 'bg-blue-500' : null },
           { label: 'Pending',        value: stats.pending,                  color: 'bg-yellow-50 text-yellow-700',badge: stats.pending > 0 ? 'bg-yellow-500' : null },
           { label: 'Action Needed',  value: stats.actionNeeded,             color: stats.actionNeeded > 0 ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-500', badge: stats.actionNeeded > 0 ? 'bg-red-500' : null },
@@ -713,7 +718,7 @@ export default function AdminOrdersPage() {
                                 {updating === o._id ? '…' : `→ ${statusLabel(STATUS_FLOW[o.status].next)}`}
                               </button>
                             )}
-                            <button onClick={() => setSelected(o)} className="text-xs text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-md transition">Edit</button>
+                            {!readOnly && <button onClick={() => setSelected(o)} className="text-xs text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-md transition">Edit</button>}
                             <button onClick={() => printLabel(o)} className="text-xs text-purple-600 hover:text-purple-800 bg-purple-50 hover:bg-purple-100 px-2 py-1 rounded-md transition flex items-center gap-1">
                               <FiPrinter className="text-[11px]" /> Label
                             </button>
@@ -778,9 +783,11 @@ export default function AdminOrdersPage() {
                                   <button onClick={() => printLabel(o)} className="flex items-center gap-2 w-full px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg transition">
                                     <FiPrinter /> Print Delivery Label
                                   </button>
-                                  <button onClick={() => setShipModal(o)} className="flex items-center gap-2 w-full px-3 py-2 bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-semibold rounded-lg transition">
-                                    <FiTruck /> {o.trackingNumber ? 'Update Tracking' : 'Add Tracking / Ship'}
-                                  </button>
+                                  {!readOnly && (
+                                    <button onClick={() => setShipModal(o)} className="flex items-center gap-2 w-full px-3 py-2 bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-semibold rounded-lg transition">
+                                      <FiTruck /> {o.trackingNumber ? 'Update Tracking' : 'Add Tracking / Ship'}
+                                    </button>
+                                  )}
                                   {o.shippingAddress?.phone && (
                                     <a href={`https://wa.me/91${o.shippingAddress.phone.replace(/\D/g,'')}?text=${encodeURIComponent(`Hi ${o.shippingAddress.name}! Your Tulsi Bridal order #${o.orderNumber} status: ${o.status}. Thank you!`)}`}
                                       target="_blank" rel="noopener noreferrer"
@@ -788,7 +795,7 @@ export default function AdminOrdersPage() {
                                       <FiPhone className="text-xs" /> WhatsApp Customer
                                     </a>
                                   )}
-                                  {!isFulfilment && <ResendEmailButtons orderId={o._id} />}
+                                  {isSuper && <ResendEmailButtons orderId={o._id} />}
                                   <div className="text-xs text-gray-500 space-y-1">
                                     <p><span className="font-medium">Payment:</span> {o.payment?.method} — {o.payment?.status}</p>
                                     {o.trackingNumber && <p><span className="font-medium">Tracking:</span> <span className="font-mono">{o.trackingNumber}</span></p>}
@@ -870,7 +877,7 @@ export default function AdminOrdersPage() {
       )}
 
       {shipModal && (
-        <ShipmentModal order={shipModal} onClose={() => setShipModal(null)} onShipped={fetchOrders} canSetCost={!isFulfilment} />
+        <ShipmentModal order={shipModal} onClose={() => setShipModal(null)} onShipped={fetchOrders} canSetCost={isSuper} />
       )}
     </div>
   );

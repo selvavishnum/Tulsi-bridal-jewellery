@@ -1,15 +1,15 @@
-/* 004 — Rewrite pre-4-tier staff roles to the new names.
-     SuperAdmin                      → left unchanged, reported: before the
-                                       4-tier model anyone could set it, so it
-                                       grants nothing — re-grant on the Staff
-                                       page if intended
-     OrderManager, SalesStaff        → ORDER_FULFILLMENT_STAFF
-     ProductManager, InventoryManager→ CATALOG_STAFF
+/* 004 — Rewrite staff roles to the canonical six-role names.
+     SuperAdmin (no roleGrantedBy)   → left unchanged, reported: before roles
+                                       were validated anyone could set it, so
+                                       it grants nothing — re-grant on the
+                                       Staff page if intended
+     ProductManager, CATALOG_STAFF   → PRODUCT_MANAGER
+     InventoryManager                → INVENTORY_MANAGER
+     BusinessManager                 → BUSINESS_MANAGER
+     OrderManager,
+       ORDER_FULFILLMENT_STAFF       → ORDER_MANAGER
+     SalesStaff                      → SALES_STAFF
      VendorAdmin (vendor logins)     → VENDOR
-     BusinessManager                 → left unchanged, reported: it has no
-                                       least-privilege tier below SUPER_ADMIN,
-                                       so that person has no admin access until
-                                       a Super Admin picks a role on the Staff page.
    The app already maps the old names at sign-in, so nothing breaks before
    this runs; this just makes the stored data match. Also lists everyone who
    will hold SUPER_ADMIN, for the owner to review. */
