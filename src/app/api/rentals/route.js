@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getAccess, ROLES } from '@/lib/requireRole';
 import { getDB, snapshotToArr } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
 import { calculateRentalDays } from '@/lib/utils';
@@ -18,7 +19,8 @@ function rateFor(method) {
 
 export async function GET(request) {
   try {
-    const session = await getEffectiveSession();
+    const access = await getAccess();
+    const session = access.session;
     if (!session) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
 
     const db = getDB();
@@ -27,7 +29,7 @@ export async function GET(request) {
     const status = searchParams.get('status');
 
     let snap;
-    if (session.user.role === 'admin') {
+    if (access.tier === ROLES.SUPER_ADMIN) {
       snap = await db.collection('rentals').orderBy('createdAt', 'desc').get();
     } else {
       snap = await db.collection('rentals').where('userId', '==', session.user.id).get();

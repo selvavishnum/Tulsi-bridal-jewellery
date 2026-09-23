@@ -16,7 +16,7 @@ export function fakeFirestore(seed = {}) {
     return {
       kind: 'doc', col, id,
       get: async () => snapOf(col, id),
-      set: async (d) => { colMap(col).set(id, structuredClone(d)); },
+      set: async (d, opts) => { colMap(col).set(id, structuredClone(opts?.merge ? { ...(colMap(col).get(id) || {}), ...d } : d)); },
       update: async (d) => applyUpdate(col, id, d),
       delete: async () => { colMap(col).delete(id); },
     };
@@ -33,22 +33,36 @@ export function fakeFirestore(seed = {}) {
     }
   }
 
-  function query(col, filters = []) {
+  function query(col, filters = [], order = null) {
     return {
       kind: 'query',
       where: (f, op, v) => {
-        if (op !== '==' && op !== 'array-contains') throw new Error(`fake: unsupported op ${op}`);
-        return query(col, [...filters, [f, op, v]]);
+        if (!['==', 'array-contains', '>', '>=', '<', '<='].includes(op)) throw new Error(`fake: unsupported op ${op}`);
+        return query(col, [...filters, [f, op, v]], order);
       },
-      limit: () => query(col, filters),
-      get: async () => runQuery(col, filters),
+      orderBy: (field, dir = 'asc') => query(col, filters, [field, dir]),
+      select: () => query(col, filters, order),
+      limit: () => query(col, filters, order),
+      get: async () => runQuery(col, filters, order),
     };
   }
 
-  function runQuery(col, filters) {
-    const docs = [...colMap(col).entries()]
-      .filter(([, d]) => filters.every(([f, op, v]) => (op === '==' ? d[f] === v : Array.isArray(d[f]) && d[f].includes(v))))
-      .map(([id]) => snapOf(col, id));
+  const matches = (d, [f, op, v]) => {
+    if (op === '==') return d[f] === v;
+    if (op === 'array-contains') return Array.isArray(d[f]) && d[f].includes(v);
+    if (op === '>') return d[f] > v;
+    if (op === '>=') return d[f] >= v;
+    if (op === '<') return d[f] < v;
+    return d[f] <= v;
+  };
+
+  function runQuery(col, filters, order) {
+    let entries = [...colMap(col).entries()].filter(([, d]) => filters.every((flt) => matches(d, flt)));
+    if (order) {
+      const [field, dir] = order;
+      entries = entries.sort(([, a], [, b]) => (String(a[field] ?? '') < String(b[field] ?? '') ? -1 : 1) * (dir === 'desc' ? -1 : 1));
+    }
+    const docs = entries.map(([id]) => snapOf(col, id));
     return { docs, empty: docs.length === 0, size: docs.length };
   }
 

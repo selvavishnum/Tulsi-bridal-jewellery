@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import { canViewAdminPath, adminHomeFor } from '@/lib/access';
 
 /* Defense-in-depth on top of the per-route requireAdmin() checks (which
    remain the real authority — every /api/admin handler still calls it):
@@ -44,6 +45,14 @@ export async function middleware(request) {
     if (token?.role === 'vendor') return NextResponse.redirect(new URL('/vendor', request.url));
     if (!token || token.role !== 'admin') {
       return NextResponse.redirect(new URL('/admin-portal', request.url));
+    }
+    /* Page-level least privilege: each staff tier only reaches its own
+       screens (e.g. catalog staff never load the orders or finance pages).
+       A token minted before tiers existed has none yet — let it through;
+       the session refresh adds it within minutes, and every API call
+       re-checks the tier from the database regardless. */
+    if (token.tier && !canViewAdminPath(token.tier, pathname)) {
+      return NextResponse.redirect(new URL(adminHomeFor(token.tier) || '/admin-portal', request.url));
     }
   }
 

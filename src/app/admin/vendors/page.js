@@ -34,8 +34,9 @@ function StatusChip({ status }) {
 
 export default function VendorsPage() {
   const { data: session } = useSession();
-  /* UI hint only — the API enforces owner-only on every money action. */
-  const isOwner = session?.user?.staffRole === 'Owner'
+  /* This page is SUPER_ADMIN-only (middleware + API); kept as a guard so
+     money buttons never render for anyone else if that ever changes. */
+  const isOwner = session?.user?.tier === 'SUPER_ADMIN'
     || (process.env.NEXT_PUBLIC_ADMIN_BYPASS === 'true' && process.env.NODE_ENV !== 'production');
 
   const [data, setData] = useState({ vendors: [], totals: null });

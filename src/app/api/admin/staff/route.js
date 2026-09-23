@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { getDB, snapshotToArr } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
 import { PLATFORM_VENDOR_ID } from '@/lib/data/scopedDb';
+import { ASSIGNABLE_STAFF_ROLES, normalizeStaffRole } from '@/lib/access';
 
 /* Outside vendors' logins live in this collection too, but are managed from
    the Vendors page — the platform staff screen neither lists nor edits them. */
@@ -16,7 +17,14 @@ export async function GET() {
     const snap = await db.collection('staff').get();
     const data = snapshotToArr(snap)
       .filter((s) => !isVendorLogin(s))
-      .map(({ password, ...rest }) => rest)
+      /* role = the tier this record actually grants today (a pre-4-tier role
+         like "OrderManager" shows as its mapped tier, or null if it maps to
+         none); legacyRole keeps the stored value visible until migration 004. */
+      .map(({ password, ...rest }) => ({
+        ...rest,
+        role: normalizeStaffRole(rest.role),
+        ...(rest.role && normalizeStaffRole(rest.role) !== rest.role && { legacyRole: rest.role }),
+      }))
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     return NextResponse.json({ success: true, data });
   } catch (e) { return NextResponse.json({ success: false, message: e.message }, { status: 500 }); }
@@ -31,8 +39,8 @@ export async function POST(request) {
        an address saved as typed ("Priya@…") could never log in. */
     const email = String(rawEmail || '').trim().toLowerCase();
 
-    if (role === 'Owner') {
-      return NextResponse.json({ success: false, message: 'Owner access comes from ADMIN_EMAILS and cannot be assigned here.' }, { status: 400 });
+    if (!ASSIGNABLE_STAFF_ROLES.includes(role)) {
+      return NextResponse.json({ success: false, message: `Role must be one of: ${ASSIGNABLE_STAFF_ROLES.join(', ')}` }, { status: 400 });
     }
     if (!name || !email || !password) {
       return NextResponse.json({ success: false, message: 'Name, email and password are required' }, { status: 400 });
@@ -49,7 +57,7 @@ export async function POST(request) {
     const hashedPassword = await bcrypt.hash(password, 10);
     const now = new Date().toISOString();
     const ref = db.collection('staff').doc();
-    const doc = { name, email, password: hashedPassword, role: role || 'SalesStaff', phone: phone || '', status: status || 'Active', createdAt: now, updatedAt: now };
+    const doc = { name, email, password: hashedPassword, role, phone: phone || '', status: status || 'Active', createdAt: now, updatedAt: now };
     await ref.set(doc);
 
     const { password: _p, ...safeDoc } = doc;

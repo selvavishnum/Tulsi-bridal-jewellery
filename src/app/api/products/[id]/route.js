@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getDB, docToObj, toPublicProduct } from '@/lib/firebase';
 import { checkProductVendor } from '@/lib/vendorProducts';
 import { requireAdmin } from '@/lib/adminCollection';
+import { requireRole, ROLES } from '@/lib/requireRole';
+import { catalogProductViolations, CATALOG_EDITABLE_PRODUCT_FIELDS, stripCostFields } from '@/lib/access';
 
 export async function GET(request, context) {
   try {
@@ -22,8 +24,8 @@ export async function GET(request, context) {
 export async function PUT(request, context) {
   try {
     const { id } = await context.params;
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    if (auth.error) return auth.error;
 
     const db = getDB();
     /* The admin form posts back the whole product it loaded, including
@@ -32,6 +34,18 @@ export async function PUT(request, context) {
     const ref = db.collection('products').doc(id);
     const doc = await ref.get();
     if (!doc.exists) return NextResponse.json({ success: false, message: 'Product not found' }, { status: 404 });
+
+    if (auth.tier === ROLES.CATALOG_STAFF) {
+      /* Restricted fields sent back unchanged (the form round-trips the
+         product) are fine; any attempt to change one is refused. */
+      const denied = catalogProductViolations(body, doc.data());
+      if (denied.length) {
+        return NextResponse.json({ success: false, message: `Forbidden fields for catalog staff: ${denied.join(', ')}` }, { status: 403 });
+      }
+      const allowed = Object.fromEntries(Object.entries(body).filter(([k]) => CATALOG_EDITABLE_PRODUCT_FIELDS.includes(k)));
+      await ref.update({ ...allowed, updatedAt: new Date().toISOString() });
+      return NextResponse.json({ success: true, data: stripCostFields(docToObj(await ref.get())) });
+    }
 
     const vendor = await checkProductVendor(db, { ...doc.data(), ...body });
     if (vendor.error) return NextResponse.json({ success: false, message: vendor.error }, { status: 400 });

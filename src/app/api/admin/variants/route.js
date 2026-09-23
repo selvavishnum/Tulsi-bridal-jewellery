@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr, docToObj } from '@/lib/firebase';
-import { requireAdmin } from '@/lib/adminCollection';
+import { requireRole, ROLES } from '@/lib/requireRole';
 
 export async function GET() {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    if (auth.error) return auth.error;
+    const { session } = auth;
     const db = getDB();
     const snap = await db.collection('variantTypes').orderBy('createdAt', 'asc').get();
     return NextResponse.json({ success: true, data: snapshotToArr(snap) });
@@ -16,8 +17,9 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    if (auth.error) return auth.error;
+    const { session } = auth;
     const body = await request.json();
     const { name, displayAs, values } = body;
     if (!name) return NextResponse.json({ success: false, message: 'Name is required' }, { status: 400 });
@@ -39,8 +41,9 @@ export async function POST(request) {
 
 export async function PUT(request) {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    if (auth.error) return auth.error;
+    const { session } = auth;
     const body = await request.json();
     const { id, ...rest } = body;
     if (!id) return NextResponse.json({ success: false, message: 'ID required' }, { status: 400 });
@@ -55,8 +58,9 @@ export async function PUT(request) {
 
 export async function DELETE(request) {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    if (auth.error) return auth.error;
+    const { session } = auth;
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ success: false, message: 'ID required' }, { status: 400 });

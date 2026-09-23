@@ -1,0 +1,46 @@
+/* 004 — Rewrite pre-4-tier staff roles to the new names.
+     SuperAdmin                      → SUPER_ADMIN
+     OrderManager, SalesStaff        → ORDER_FULFILLMENT_STAFF
+     ProductManager, InventoryManager→ CATALOG_STAFF
+     VendorAdmin (vendor logins)     → VENDOR
+     BusinessManager                 → left unchanged, reported: it has no
+                                       least-privilege tier below SUPER_ADMIN,
+                                       so that person has no admin access until
+                                       a Super Admin picks a role on the Staff page.
+   The app already maps the old names at sign-in, so nothing breaks before
+   this runs; this just makes the stored data match. Also lists everyone who
+   will hold SUPER_ADMIN, for the owner to review. */
+import { db, APPLY, pages } from './_lib.mjs';
+import { normalizeStaffRole, ROLES } from '../../src/lib/access.js';
+import { PLATFORM_VENDOR_ID } from '../../src/lib/data/scopedDb.js';
+
+const firestore = db();
+let changed = 0;
+const unmapped = [];
+const superAdmins = [];
+
+for await (const docs of pages(firestore, 'staff')) {
+  for (const d of docs) {
+    const s = d.data();
+    const isVendorLogin = s.vendorId && s.vendorId !== PLATFORM_VENDOR_ID;
+    const target = isVendorLogin ? ROLES.VENDOR : normalizeStaffRole(s.role);
+    if (!target || (!isVendorLogin && target === ROLES.VENDOR)) {
+      unmapped.push(`${d.id} ${s.email} (role: ${s.role ?? 'none'})`);
+      continue;
+    }
+    if (target === ROLES.SUPER_ADMIN && s.status === 'Active') superAdmins.push(`${s.email}${s.role !== target ? ` (was ${s.role})` : ''}`);
+    if (s.role === target) continue;
+    console.log(`${APPLY ? 'Update' : 'Would update'} ${d.id} ${s.email}: ${s.role} → ${target}`);
+    if (APPLY) await d.ref.update({ role: target, legacyRole: s.role ?? null, updatedAt: new Date().toISOString() });
+    changed += 1;
+  }
+}
+
+console.log(`\n${APPLY ? 'Updated' : 'Would update'} ${changed} staff record(s).`);
+if (unmapped.length) {
+  console.log(`\nNo tier — these people have NO admin access until a Super Admin assigns a role on the Staff page:`);
+  unmapped.forEach((u) => console.log(`  ${u}`));
+}
+console.log(`\nActive staff records with SUPER_ADMIN (plus everyone in ADMIN_EMAILS) — review these:`);
+(superAdmins.length ? superAdmins : ['(none)']).forEach((u) => console.log(`  ${u}`));
+if (!APPLY && changed) console.log('\nRe-run with --apply to write.');

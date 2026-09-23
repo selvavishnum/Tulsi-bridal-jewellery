@@ -21,7 +21,7 @@ export default function VendorCatalogPage() {
 
   return (
     <div>
-      <p className="text-sm text-stone-500 mb-4">Listings, prices and stock are managed by Tulsi. Margin shown is per piece, before shipping and platform fee.</p>
+      <p className="text-sm text-stone-500 mb-4">Listings, prices and stock are managed by Tulsi.</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {products.map((p) => {
           const selling = p.discountPrice || p.price;
@@ -37,7 +37,6 @@ export default function VendorCatalogPage() {
                   {formatPrice(selling)}
                   {p.discountPrice > 0 && p.discountPrice < p.price && <span className="text-xs text-stone-400 line-through ml-1">{formatPrice(p.price)}</span>}
                 </p>
-                <p className="text-xs text-stone-500 tabular-nums">Supply {formatPrice(p.supplyCost)} · margin <span className="font-semibold text-stone-700">{formatPrice(selling - p.supplyCost)}</span></p>
                 <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${p.live ? 'bg-green-50 text-green-700' : 'bg-stone-100 text-stone-500'}`}>{p.live ? 'Live' : 'Hidden'}</span>
               </div>
             </article>

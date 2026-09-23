@@ -2,7 +2,7 @@ import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { getDB } from '@/lib/firebase';
-import { PLATFORM_VENDOR_ID } from '@/lib/data/scopedDb';
+import { resolveAccess as resolveTier, sessionRoleFor } from '@/lib/access';
 import bcrypt from 'bcryptjs';
 
 /* How often a signed-in admin/vendor session re-checks that the person is
@@ -16,37 +16,14 @@ function getAdminEmails() {
     .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
 }
 
-/* Access is derived on every sign-in (and re-checked during the session)
-   from the two sources of truth only: the ADMIN_EMAILS env var, and an
-   Active record in the staff collection. A role stored on the users
-   document is never trusted on its own — it used to be, which meant a
-   staff member who once signed in with Google stayed admin forever, even
-   after being deactivated.
-     ADMIN_EMAILS                          → admin  (platform owner)
-     active staff, platform (Tulsi) staff   → admin  (platform staff)
-     active staff of an outside vendor      → vendor (their own dashboard only)
-     anyone else                            → customer */
+/* Access comes only from the sources of truth — ADMIN_EMAILS and an Active
+   staff record — via the shared 4-tier resolver (src/lib/access.js). A role
+   stored on the users document is never trusted on its own. The tier is
+   copied into the session for the UI; every API call re-resolves it
+   (src/lib/requireRole.js), so the token is never the authority. */
 async function resolveAccess(db, email) {
-  const lower = String(email || '').toLowerCase();
-  if (!lower) return { role: 'customer' };
-  if (getAdminEmails().includes(lower)) return { role: 'admin', staffRole: 'Owner' };
-
-  const snap = await db.collection('staff').where('email', '==', lower).limit(5).get();
-  const active = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((s) => s.status === 'Active');
-  if (active.length !== 1) {
-    // Active at more than one place: refuse rather than guess which one.
-    if (active.length > 1) console.error('[auth] multiple active staff records for', lower);
-    return { role: 'customer' };
-  }
-  const staff = active[0];
-  /* 'Owner' is reserved for ADMIN_EMAILS (it unlocks payouts). A staff
-     record claiming it — staff roles are editable by any admin — gets no
-     role label rather than owner powers. */
-  const staffRole = staff.role && staff.role !== 'Owner' ? staff.role : null;
-  if (staff.vendorId && staff.vendorId !== PLATFORM_VENDOR_ID) {
-    return { role: 'vendor', vendorId: staff.vendorId, staffRole };
-  }
-  return { role: 'admin', staffRole };
+  const access = await resolveTier(db, email, getAdminEmails());
+  return { role: sessionRoleFor(access.tier), tier: access.tier || null, vendorId: access.vendorId || null };
 }
 
 async function upsertGoogleUser(db, profile) {
@@ -178,7 +155,7 @@ export const authOptions = {
           const dbUser = await upsertGoogleUser(db, profile);
           user.id = dbUser.id;
           user.role = dbUser.role;
-          if (dbUser.staffRole) user.staffRole = dbUser.staffRole;
+          user.tier = dbUser.tier || null;
           if (dbUser.vendorId) user.vendorId = dbUser.vendorId;
         } catch (err) {
           console.error('Google signIn error:', err.message);
@@ -191,21 +168,21 @@ export const authOptions = {
       if (user) {
         token.id = user.id;
         token.role = user.role;
-        token.staffRole = user.staffRole || null;
+        token.tier = user.tier || null;
         token.vendorId = user.vendorId || null;
         token.accessCheckedAt = Date.now();
         return token;
       }
+      /* Keeps the UI's view of the role fresh; the API re-checks on every
+         request regardless. */
       if (token.role && token.role !== 'customer' && token.email && Date.now() - (token.accessCheckedAt || 0) > ACCESS_RECHECK_MS) {
         try {
           const access = await resolveAccess(getDB(), token.email);
           token.role = access.role;
-          token.staffRole = access.staffRole || null;
-          token.vendorId = access.vendorId || null;
+          token.tier = access.tier;
+          token.vendorId = access.vendorId;
           token.accessCheckedAt = Date.now();
         } catch (err) {
-          // A Firestore blip shouldn't sign everyone out — keep the current
-          // access and try again on the next request.
           console.error('[auth] access re-check failed:', err.message);
         }
       }
@@ -215,7 +192,7 @@ export const authOptions = {
       if (token) {
         session.user.id = token.id;
         session.user.role = token.role;
-        if (token.staffRole) session.user.staffRole = token.staffRole;
+        session.user.tier = token.tier || null;
         if (token.vendorId) session.user.vendorId = token.vendorId;
       }
       return session;

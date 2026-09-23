@@ -1,11 +1,10 @@
-/* Tenant-isolation tests for src/lib/data/scopedDb.js and src/lib/rbac.js.
+/* Tenant-isolation tests for src/lib/data/scopedDb.js.
    Run: npm run test:isolation   (node's built-in runner, no dependencies)
    Uses an in-memory stand-in for the slice of the Firestore Admin API
    those modules touch, so it never needs credentials or production data. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { scopedDb, TenantIsolationError } from '../src/lib/data/scopedDb.js';
-import { resolveActor, can, ROLES } from '../src/lib/rbac.js';
 
 function fakeDb(seed = {}) {
   const store = new Map(Object.entries(seed).map(([col, docs]) => [col, new Map(Object.entries(docs))]));
@@ -135,49 +134,4 @@ test('super_admin acting as a vendor is pinned to that vendor', async () => {
   const db = seed();
   const snap = await scopedDb({ role: 'super_admin', actingAsVendorId: 'B' }, db).query('products').get();
   assert.deepEqual(snap.docs.map((d) => d.id), ['pB1']);
-});
-
-/* ── RBAC ── */
-
-const staffDb = () => fakeDb({
-  staff: {
-    s1: { email: 'owner@a.com', role: 'SuperAdmin', status: 'Active', vendorId: 'A' },
-    s2: { email: 'orders@a.com', role: 'OrderManager', status: 'Active', vendorId: 'A' },
-    s3: { email: 'gone@a.com', role: 'OrderManager', status: 'Inactive', vendorId: 'A' },
-    s4: { email: 'legacy@a.com', role: 'OrderManager', status: 'Active' },
-    s5: { email: 'both@x.com', role: 'OrderManager', status: 'Active', vendorId: 'A' },
-    s6: { email: 'both@x.com', role: 'OrderManager', status: 'Active', vendorId: 'B' },
-    s7: { email: 'odd@a.com', role: 'Astrologer', status: 'Active', vendorId: 'A' },
-  },
-});
-const actorFor = (email) => resolveActor({ user: { email } }, staffDb(), ['boss@tulsijewels.in']);
-
-test('ADMIN_EMAILS is the only path to super_admin', async () => {
-  assert.equal((await actorFor('Boss@TulsiJewels.in')).role, ROLES.SUPER_ADMIN);
-});
-
-test('a staff "SuperAdmin" is admin of their own vendor, not the platform', async () => {
-  const actor = await actorFor('owner@a.com');
-  assert.equal(actor.role, ROLES.VENDOR_ADMIN);
-  assert.equal(actor.vendorId, 'A');
-});
-
-test('staff permissions follow their role', async () => {
-  const actor = await actorFor('orders@a.com');
-  assert.equal(can(actor, 'orders:fulfil'), true);
-  assert.equal(can(actor, 'catalog:write'), false);
-  assert.equal(can(actor, 'finance:read'), false);
-});
-
-test('inactive staff, staff without a vendor, and ambiguous memberships are denied', async () => {
-  assert.equal(await actorFor('gone@a.com'), null);
-  assert.equal(await actorFor('legacy@a.com'), null);
-  assert.equal(await actorFor('both@x.com'), null);
-  assert.equal(await actorFor('stranger@x.com'), null);
-});
-
-test('an unknown staff role gets no permissions', async () => {
-  const actor = await actorFor('odd@a.com');
-  assert.equal(actor.permissions.size, 0);
-  assert.equal(can(actor, 'catalog:read'), false);
 });

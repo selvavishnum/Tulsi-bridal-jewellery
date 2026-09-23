@@ -7,6 +7,8 @@ import Badge from '@/components/ui/Badge';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { useSession } from 'next-auth/react';
+import { ROLES, FULFILLMENT_STATUSES } from '@/lib/access';
 
 const STATUS_BADGE = {
   pending: 'warning', confirmed: 'success', processing: 'gold',
@@ -364,6 +366,12 @@ const SIDEBAR_ITEMS = [
 ];
 
 export default function AdminOrdersPage() {
+  const { data: session } = useSession();
+  /* Fulfilment staff pack and ship only; the API refuses other status
+     changes and never sends them cost fields. This keeps the UI in step. */
+  const isFulfilment = session?.user?.tier === ROLES.ORDER_FULFILLMENT_STAFF;
+  const canSetStatus = (s) => !isFulfilment || FULFILLMENT_STATUSES.includes(s);
+  const statusLabel = (s) => (s === 'processing' ? 'packed' : s);
   const [orders, setOrders]       = useState([]);
   const [loading, setLoading]     = useState(true);
   const [search, setSearch]       = useState('');
@@ -522,7 +530,7 @@ export default function AdminOrdersPage() {
       {/* Key metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'Total Revenue',  value: formatPrice(stats.revenue),     color: 'bg-green-50 text-green-700',  badge: null },
+          ...(isFulfilment ? [] : [{ label: 'Total Revenue',  value: formatPrice(stats.revenue),     color: 'bg-green-50 text-green-700',  badge: null }]),
           { label: "Today's Orders", value: stats.todayCount,               color: 'bg-blue-50 text-blue-700',    badge: stats.todayCount > 0 ? 'bg-blue-500' : null },
           { label: 'Pending',        value: stats.pending,                  color: 'bg-yellow-50 text-yellow-700',badge: stats.pending > 0 ? 'bg-yellow-500' : null },
           { label: 'Action Needed',  value: stats.actionNeeded,             color: stats.actionNeeded > 0 ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-500', badge: stats.actionNeeded > 0 ? 'bg-red-500' : null },
@@ -696,11 +704,11 @@ export default function AdminOrdersPage() {
                         <td className="px-4 py-3 text-gray-400 text-xs hidden lg:table-cell">{o.createdAt ? format(new Date(o.createdAt), 'dd MMM, hh:mm a') : '—'}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {STATUS_FLOW[o.status]?.next && (
+                            {STATUS_FLOW[o.status]?.next && canSetStatus(STATUS_FLOW[o.status].next) && (
                               <button onClick={() => quickNext(o)} disabled={updating === o._id}
                                 className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-md transition disabled:opacity-50 capitalize whitespace-nowrap flex items-center gap-1">
                                 {STATUS_FLOW[o.status].next === 'shipped' && <FiTruck className="text-[10px]" />}
-                                {updating === o._id ? '…' : `→ ${STATUS_FLOW[o.status].next}`}
+                                {updating === o._id ? '…' : `→ ${statusLabel(STATUS_FLOW[o.status].next)}`}
                               </button>
                             )}
                             <button onClick={() => setSelected(o)} className="text-xs text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-md transition">Edit</button>
@@ -846,10 +854,10 @@ export default function AdminOrdersPage() {
               <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-600 transition"><FiX /></button>
             </div>
             <div className="space-y-2">
-              {STATUSES.map((s) => (
-                <button key={s} onClick={() => updateStatus(selected._id, s)}
+              {STATUSES.filter((s) => canSetStatus(s) || s === selected.status).map((s) => (
+                <button key={s} onClick={() => (canSetStatus(s) ? updateStatus(selected._id, s) : null)}
                   className={`w-full py-2.5 rounded-xl text-sm font-semibold capitalize transition flex items-center justify-between px-4 ${selected.status === s ? 'bg-maroon-950 text-white' : 'bg-gray-100 text-gray-700 hover:bg-maroon-50 hover:text-maroon-950'}`}>
-                  <span className="flex items-center gap-2">{s === 'shipped' && <FiTruck className="text-sm" />}{s}</span>
+                  <span className="flex items-center gap-2">{s === 'shipped' && <FiTruck className="text-sm" />}{statusLabel(s)}</span>
                   {selected.status === s && <span className="text-xs opacity-60">Current</span>}
                 </button>
               ))}

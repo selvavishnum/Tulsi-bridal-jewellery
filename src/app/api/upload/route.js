@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { uploadImage } from '@/lib/cloudinary';
-import { requireAdmin } from '@/lib/adminCollection';
+import { requireRole, ROLES } from '@/lib/requireRole';
 
 export const maxDuration = 60;
 
 export async function POST(request) {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    if (auth.error) return auth.error;
+    const { session } = auth;
 
     if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
       return NextResponse.json({ success: false, message: 'Cloudinary not configured — add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET to Vercel environment variables.' }, { status: 503 });

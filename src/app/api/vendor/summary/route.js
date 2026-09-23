@@ -3,16 +3,17 @@ import { requireVendor } from '@/lib/vendorAuth';
 import { summarizeLedger, RETURN_WINDOW_DAYS } from '@/lib/settlement';
 import { maskPayoutDestination } from '@/lib/vendorLedger';
 
-/* GET /api/vendor/summary — the signed-in vendor's wallet: totals, recent
-   ledger lines and payouts. Read-only; only their own records. */
+/* GET /api/vendor/summary — the signed-in vendor's retail sales and net
+   withdrawable balance. Supply cost, shipping and fee breakdowns stay
+   server-side: those are the platform's margins, not vendor data. */
 export async function GET() {
   try {
-    const ctx = await requireVendor('finance:read');
-    if (!ctx) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
-    const { db, sdb, actor } = ctx;
+    const ctx = await requireVendor();
+    if (ctx.error) return ctx.error;
+    const { db, sdb, vendorId } = ctx;
 
     const [vendorSnap, ledgerSnap, payoutSnap] = await Promise.all([
-      db.collection('vendors').doc(actor.vendorId).get(),
+      db.collection('vendors').doc(vendorId).get(),
       sdb.query('vendorLedger').get(),
       sdb.query('vendorPayouts').get(),
     ]);
@@ -20,29 +21,44 @@ export async function GET() {
     const vendor = vendorSnap.data();
 
     const now = Date.now();
-    const entries = ledgerSnap.docs.map((d) => {
-      const e = { id: d.id, ...d.data() };
-      return { ...e, held: e.status === 'unsettled' && new Date(e.availableAt).getTime() > now };
-    }).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-    const payouts = payoutSnap.docs.map((d) => {
-      const { entryIds: _e, createdBy: _c, ...p } = d.data();
-      return { id: d.id, ...p };
-    }).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    const raw = ledgerSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const s = summarizeLedger(raw, now);
+    const entries = raw
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      .slice(0, 100)
+      .map((e) => ({
+        id: e.id,
+        type: e.type,
+        orderNumber: e.orderNumber,
+        deliveredAt: e.deliveredAt || e.createdAt,
+        availableAt: e.availableAt,
+        status: e.status,
+        held: e.status === 'unsettled' && new Date(e.availableAt).getTime() > now,
+        retailSalesPaise: e.itemsPaise || 0,
+        netPaise: e.netPaise || 0,
+      }));
+    const payouts = payoutSnap.docs
+      .map((d) => {
+        const p = d.data();
+        return { id: d.id, amountPaise: p.amountPaise, destination: p.destination, reference: p.reference, createdAt: p.createdAt };
+      })
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      .slice(0, 50);
 
     return NextResponse.json({
       success: true,
       data: {
-        vendor: {
-          name: vendor.name,
-          status: vendor.status,
-          platformFeePercent: (Number(vendor.platformFeeBps) || 0) / 100,
-          payoutDestination: maskPayoutDestination(vendor.payout),
-          payoutMethod: vendor.payout?.method || null,
-        },
+        vendor: { name: vendor.name, status: vendor.status, payoutDestination: maskPayoutDestination(vendor.payout) },
         holdDays: RETURN_WINDOW_DAYS,
-        summary: summarizeLedger(entries, now),
-        entries: entries.slice(0, 100),
-        payouts: payouts.slice(0, 50),
+        summary: {
+          retailSalesPaise: s.itemsPaise,
+          netPaise: s.netPaise,
+          paidOutPaise: s.paidOutPaise,
+          availablePaise: s.availablePaise,
+          pendingPaise: s.pendingPaise,
+        },
+        entries,
+        payouts,
       },
     });
   } catch (e) {

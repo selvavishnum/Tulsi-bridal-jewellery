@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr, docToObj } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
+import { requireRole, ROLES } from '@/lib/requireRole';
+import { stripCostFields } from '@/lib/access';
 import { fifoDeduct } from '@/lib/fifoDeduct';
 
 export async function GET(request) {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    if (auth.error) return auth.error;
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
     const mainCategory = searchParams.get('mainCategory') || '';
@@ -26,7 +28,8 @@ export async function GET(request) {
     if (brand) products = products.filter((p) => p.brand === brand);
     if (showMe === 'visible') products = products.filter((p) => p.showMe !== false);
     if (showMe === 'hidden') products = products.filter((p) => p.showMe === false);
-    return NextResponse.json({ success: true, data: products.slice(0, limit) });
+    const page = products.slice(0, limit);
+    return NextResponse.json({ success: true, data: auth.tier === ROLES.SUPER_ADMIN ? page : page.map(stripCostFields) });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }
@@ -34,10 +37,15 @@ export async function GET(request) {
 
 export async function PATCH(request) {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    if (auth.error) return auth.error;
     const body = await request.json();
     const { id, sku, mrp, discPct, inStock, showMe } = body;
+    /* Catalog staff manage stock counts and SKUs; price (mrp / discount)
+       and publishing (showMe) are SUPER_ADMIN decisions. */
+    if (auth.tier !== ROLES.SUPER_ADMIN && (mrp !== undefined || discPct !== undefined || showMe !== undefined)) {
+      return NextResponse.json({ success: false, message: 'Forbidden: price and visibility changes need a Super Admin' }, { status: 403 });
+    }
     if (!id) return NextResponse.json({ success: false, message: 'ID required' }, { status: 400 });
     const db = getDB();
     const ref = db.collection('products').doc(id);

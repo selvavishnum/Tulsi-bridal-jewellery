@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { requireVendor } from '@/lib/vendorAuth';
 
-/* GET /api/vendor/products — the vendor's own catalogue, read-only.
-   Listing, pricing and supply cost are managed by the platform admin. */
+/* GET /api/vendor/products — the vendor's own catalogue (scopedDb appends
+   the vendorId filter), read-only, at retail price. Supply cost is the
+   platform's margin and is never sent to vendors. */
 export async function GET() {
   try {
-    const ctx = await requireVendor('catalog:read');
-    if (!ctx) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const ctx = await requireVendor();
+    if (ctx.error) return ctx.error;
 
     const snap = await ctx.sdb.query('products').get();
     const products = snap.docs.map((d) => {
@@ -19,7 +20,6 @@ export async function GET() {
         category: p.category || '',
         price: Number(p.price) || 0,
         discountPrice: Number(p.discountPrice) || 0,
-        supplyCost: Number(p.supplyCost) || 0,
         stock: Number(p.stock) || 0,
         live: p.isActive !== false && p.showMe !== false,
       };

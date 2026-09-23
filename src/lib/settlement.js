@@ -123,12 +123,13 @@ export function computeVendorSettlements(order) {
 /** Wallet totals from a vendor's ledger entries. */
 export function summarizeLedger(entries, now = Date.now()) {
   const s = {
-    grossPaise: 0, supplyCostPaise: 0, shippingPaise: 0, platformFeePaise: 0, netPaise: 0,
+    itemsPaise: 0, grossPaise: 0, supplyCostPaise: 0, shippingPaise: 0, platformFeePaise: 0, netPaise: 0,
     paidOutPaise: 0, availablePaise: 0, pendingPaise: 0,
     unsettledCount: 0, estimatedShippingCount: 0,
   };
   for (const e of entries) {
     if (!e || e.status === 'reversed') continue;
+    s.itemsPaise += e.itemsPaise || 0;
     s.grossPaise += e.grossPaise || 0;
     s.supplyCostPaise += e.supplyCostPaise || 0;
     s.shippingPaise += e.shippingPaise || 0;
@@ -146,10 +147,10 @@ export function summarizeLedger(entries, now = Date.now()) {
   return s;
 }
 
-/* What a vendor may see of an order: only their own lines, no customer
-   contact details, and nothing about other vendors in the same parcel
-   (not their items, not the order total). Returns null if the vendor has
-   nothing in the order. */
+/* What a vendor may see of an order: only their own lines at retail price,
+   no supply cost, no customer contact details, and nothing about other
+   vendors in the same parcel (not their items, not the order total).
+   Returns null if the vendor has nothing in the order. */
 export function toVendorOrderView(order, vendorId) {
   const own = (order?.items || []).filter((i) => i && vendorOf(i) === vendorId);
   if (!own.length || vendorId === PLATFORM_VENDOR_ID) return null;
@@ -170,7 +171,6 @@ export function toVendorOrderView(order, vendorId) {
       image: i.image || null,
       quantity: Number(i.quantity) || 0,
       price: Number(i.price) || 0,
-      supplyCost: Number(i.supplyCost) || 0,
     })),
     itemsTotal: own.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 0), 0),
     courierName: order.courierName || null,

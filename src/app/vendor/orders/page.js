@@ -45,7 +45,7 @@ export default function VendorOrdersPage() {
             {o.items.map((i, idx) => (
               <li key={idx} className="flex justify-between gap-3">
                 <span className="text-stone-700">{i.name} × {i.quantity}</span>
-                <span className="tabular-nums text-stone-600">{formatPrice(i.price * i.quantity)} <span className="text-xs text-stone-400">(supply {formatPrice(i.supplyCost * i.quantity)})</span></span>
+                <span className="tabular-nums text-stone-600">{formatPrice(i.price * i.quantity)}</span>
               </li>
             ))}
           </ul>

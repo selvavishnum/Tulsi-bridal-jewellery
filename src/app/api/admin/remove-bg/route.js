@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/adminCollection';
+import { requireRole, ROLES } from '@/lib/requireRole';
 
 export async function POST(request) {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    if (auth.error) return auth.error;
+    const { session } = auth;
 
     const apiKey = process.env.REMOVE_BG_API_KEY;
     if (!apiKey) {

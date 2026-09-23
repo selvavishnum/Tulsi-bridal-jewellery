@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr, toPublicProduct } from '@/lib/firebase';
 import { checkProductVendor } from '@/lib/vendorProducts';
-import { requireAdmin } from '@/lib/adminCollection';
+import { requireRole, ROLES } from '@/lib/requireRole';
+import { catalogProductViolations, CATALOG_EDITABLE_PRODUCT_FIELDS } from '@/lib/access';
 import { slugify } from '@/lib/utils';
 
 export async function GET(request) {
@@ -69,11 +70,22 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    if (auth.error) return auth.error;
+    const isCatalog = auth.tier === ROLES.CATALOG_STAFF;
 
     const db = getDB();
-    const body = await request.json();
+    let body = await request.json();
+    if (isCatalog) {
+      /* Catalog staff add media, copy, category and stock only. Anything
+         else (price, supply cost, vendor, publishing) is refused outright
+         rather than silently dropped, so tampering is visible. */
+      const denied = catalogProductViolations(body, null);
+      if (denied.length) {
+        return NextResponse.json({ success: false, message: `Forbidden fields for catalog staff: ${denied.join(', ')}` }, { status: 403 });
+      }
+      body = Object.fromEntries(Object.entries(body).filter(([k]) => CATALOG_EDITABLE_PRODUCT_FIELDS.includes(k)));
+    }
     if (!body.slug) body.slug = slugify(body.name);
     if (!body.sku) body.sku = `${(body.category || 'PRD').substring(0, 3).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
 
@@ -98,7 +110,10 @@ export async function POST(request) {
       category: body.category || 'other',
       images: body.images || [],
       featured: body.featured || false,
-      isActive: true,
+      /* A catalog-staff product is a draft: unpriced and hidden until a
+         SUPER_ADMIN sets its price (and supply cost) and publishes it. */
+      isActive: !isCatalog,
+      ...(isCatalog && { showMe: false }),
       isAvailableForRent: body.isAvailableForRent || false,
       rentalPrice: Number(body.rentalPrice) || 0,
       rentalStock: Number(body.rentalStock) || 0,

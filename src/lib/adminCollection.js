@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr, docToObj } from '@/lib/firebase';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { requireRole, ROLES } from '@/lib/requireRole';
 
 /* NODE_ENV check is the safety net here: NEXT_PUBLIC_* vars are inlined into
    the client bundle, so a misconfigured Vercel/preview env that leaks this
@@ -15,35 +16,20 @@ const MOCK_ADMIN_SESSION = {
   user: { id: 'dev-bypass', email: 'dev-bypass@test.com', name: 'Dev Admin', role: 'admin' },
 };
 
-/* Returns admin session. In DEV_BYPASS mode, always succeeds. */
+/* Deny by default: every admin route that still calls requireAdmin() is
+   SUPER_ADMIN only. Routes that fulfilment or catalog staff need call
+   requireRole([...]) explicitly with the tiers they allow — so a new route
+   is never accidentally open to every staff member. Returns the session, or
+   null (→ the caller responds 403). */
 export async function requireAdmin() {
-  if (DEV_BYPASS) return MOCK_ADMIN_SESSION;
-  const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'admin') return null;
-  return session;
+  const access = await requireRole([ROLES.SUPER_ADMIN]);
+  return access.error ? null : access.session;
 }
 
-/* Money controls — vendor payouts, vendor bank/UPI details, fee rates.
-   Owner = the signed-in email is listed in ADMIN_EMAILS, checked directly
-   on every call. Deliberately not any staff role: staff roles live in the
-   staff collection, which any platform admin can edit, so trusting one
-   would let an employee point a vendor's payouts at their own account. */
-export async function requireOwner() {
-  const session = await requireAdmin();
-  if (!session) return null;
-  if (DEV_BYPASS) return session;
-  const owners = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
-    .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
-  return owners.includes(String(session.user.email || '').toLowerCase()) ? session : null;
-}
-
-export function isOwnerSession(session) {
-  if (!session) return false;
-  if (DEV_BYPASS) return true;
-  const owners = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
-    .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
-  return owners.includes(String(session.user?.email || '').toLowerCase());
-}
+/* Money controls (payouts, vendor bank/UPI details, fee rates). Same gate:
+   SUPER_ADMIN, which is only ever granted by ADMIN_EMAILS or by another
+   SUPER_ADMIN — staff management itself is SUPER_ADMIN-only. */
+export const requireOwner = requireAdmin;
 
 /* For endpoints that behave differently for admin vs. customer.
    In DEV_BYPASS mode, always returns a mock admin session. */

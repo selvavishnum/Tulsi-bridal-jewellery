@@ -17,6 +17,7 @@ import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { playOrderChime } from '@/lib/notifySound';
 import { formatPrice } from '@/lib/utils';
+import { canViewAdminPath, ROLES, ROLE_LABELS } from '@/lib/access';
 
 const ORDERS_POLL_MS = 20000;
 const ORDERS_LAST_SEEN_KEY = 'admin_orders_last_seen';
@@ -110,7 +111,18 @@ function NavItem({ href, label, icon: Icon, exact, pathname, onClick, unread }) 
   );
 }
 
-function Sidebar({ session, pathname, onClose, badges }) {
+/* Nav is filtered to the pages the signed-in tier can open (the same table
+   the middleware enforces). A session from before tiers existed has none
+   yet: show everything for those few minutes — the APIs still refuse
+   anything the person isn't allowed. */
+function visibleGroups(tier) {
+  if (!tier) return NAV_GROUPS;
+  return NAV_GROUPS
+    .map((g) => ({ ...g, items: g.items.filter((i) => canViewAdminPath(tier, i.href)) }))
+    .filter((g) => g.items.length > 0);
+}
+
+function Sidebar({ session, tier, pathname, onClose, badges }) {
   return (
     <div className="flex flex-col h-full bg-[#0d1117] border-r border-white/[0.06]">
       <div className="px-4 py-4 flex items-center justify-between flex-shrink-0 border-b border-white/[0.06]">
@@ -121,6 +133,7 @@ function Sidebar({ session, pathname, onClose, badges }) {
           <div className="min-w-0">
             <p className="font-serif font-bold text-white text-sm leading-none">Tulsi Admin</p>
             <p className="text-[10px] text-amber-500/70 mt-0.5 truncate">{session?.user?.email}</p>
+            {tier && <p className="text-[10px] text-slate-500 mt-0.5">{ROLE_LABELS[tier]}</p>}
           </div>
         </div>
         {onClose && (
@@ -131,7 +144,7 @@ function Sidebar({ session, pathname, onClose, badges }) {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-5">
-        {NAV_GROUPS.map((group) => (
+        {visibleGroups(tier).map((group) => (
           <div key={group.label}>
             <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-widest px-3 mb-1.5">
               {group.label}
@@ -174,10 +187,16 @@ export default function AdminLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [newOrders, setNewOrders] = useState(0);
+  const tier = DEV_BYPASS ? ROLES.SUPER_ADMIN : session?.user?.tier;
+  /* Only poll what this tier may read — no point asking for (and being
+     refused) messages or orders the person can't see. */
+  const canSeeMessages = !tier || tier === ROLES.SUPER_ADMIN;
+  const canSeeOrders = !tier || tier === ROLES.SUPER_ADMIN || tier === ROLES.ORDER_FULFILLMENT_STAFF;
 
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
 
   useEffect(() => {
+    if (!canSeeMessages) return undefined;
     function fetchUnread() {
       fetch('/api/contact').then((r) => r.json()).then((d) => {
         if (d.success) setUnreadMessages(d.data.filter((m) => !m.read).length);
@@ -186,11 +205,12 @@ export default function AdminLayout({ children }) {
     fetchUnread();
     const t = setInterval(fetchUnread, 60000);
     return () => clearInterval(t);
-  }, []);
+  }, [canSeeMessages]);
 
   /* New-order alert — polls a cheap count endpoint, chimes + toasts on arrival,
      and clears itself once the admin opens the Orders page. */
   useEffect(() => {
+    if (!canSeeOrders) return undefined;
     if (!localStorage.getItem(ORDERS_LAST_SEEN_KEY)) {
       localStorage.setItem(ORDERS_LAST_SEEN_KEY, new Date().toISOString());
     }
@@ -221,7 +241,7 @@ export default function AdminLayout({ children }) {
     poll();
     const t = setInterval(poll, ORDERS_POLL_MS);
     return () => { cancelled = true; clearInterval(t); };
-  }, [pathname]);
+  }, [pathname, canSeeOrders]);
 
   /* Landing on the Orders page marks everything seen so far as read */
   useEffect(() => {
@@ -299,7 +319,7 @@ export default function AdminLayout({ children }) {
   return (
     <div className="flex h-screen bg-[#f0f2f5] overflow-hidden">
       <aside className="hidden md:flex md:w-56 lg:w-60 flex-shrink-0 flex-col">
-        <Sidebar session={activeSession} pathname={pathname} badges={badges} />
+        <Sidebar session={activeSession} tier={tier} pathname={pathname} badges={badges} />
       </aside>
 
       {sidebarOpen && (
@@ -309,7 +329,7 @@ export default function AdminLayout({ children }) {
             onClick={() => setSidebarOpen(false)}
           />
           <aside className="relative w-64 h-full z-10 shadow-2xl">
-            <Sidebar session={activeSession} pathname={pathname} onClose={() => setSidebarOpen(false)} badges={badges} />
+            <Sidebar session={activeSession} tier={tier} pathname={pathname} onClose={() => setSidebarOpen(false)} badges={badges} />
           </aside>
         </div>
       )}

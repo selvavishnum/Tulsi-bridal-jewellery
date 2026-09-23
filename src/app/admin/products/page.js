@@ -8,6 +8,8 @@ import { uploadToCloudinary } from '@/lib/cloudinaryUpload';
 import Badge from '@/components/ui/Badge';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
+import { useSession } from 'next-auth/react';
+import { ROLES, CATALOG_EDITABLE_PRODUCT_FIELDS } from '@/lib/access';
 
 const CATEGORIES = ['necklace', 'earrings', 'bangles', 'bracelet', 'ring', 'maang-tikka', 'nose-ring', 'anklet', 'set', 'other'];
 const MATERIALS  = ['gold', 'silver', 'gold-plated', 'silver-plated', 'kundan', 'meenakari', 'polki', 'other'];
@@ -38,6 +40,10 @@ const inp = 'w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outlin
 const sel = `${inp} cursor-pointer`;
 
 export default function AdminProductsPage() {
+  const { data: session } = useSession();
+  /* Catalog staff edit media, copy, categories and stock only; the API
+     refuses anything else. These flags just keep the form honest. */
+  const isCatalog = session?.user?.tier === ROLES.CATALOG_STAFF;
   const [products, setProducts] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -53,10 +59,11 @@ export default function AdminProductsPage() {
   const fileRef = useRef(null);
 
   useEffect(() => {
+    if (isCatalog) return;
     fetch('/api/admin/vendors').then((r) => r.json())
       .then((d) => { if (d.success) setVendors(d.data.vendors); })
       .catch(() => {});
-  }, []);
+  }, [isCatalog]);
 
   const upd = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
@@ -165,12 +172,15 @@ export default function AdminProductsPage() {
         tags:          form.tags ? form.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
         slug:          form.slug || form.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
       };
+      if (isCatalog) {
+        for (const k of Object.keys(payload)) if (!CATALOG_EDITABLE_PRODUCT_FIELDS.includes(k)) delete payload[k];
+      }
       const url    = editId ? `/api/products/${editId}` : '/api/products';
       const method = editId ? 'PUT' : 'POST';
       const res    = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data   = await res.json();
       if (data.success) {
-        toast.success(editId ? 'Product updated!' : 'Product created!');
+        toast.success(editId ? 'Product updated!' : isCatalog ? 'Draft created — a Super Admin will price and publish it' : 'Product created!');
         setModalOpen(false);
         fetchProducts();
       } else { toast.error(data.message); }
@@ -307,13 +317,15 @@ export default function AdminProductsPage() {
                         >
                           <FiEdit2 className="text-sm" />
                         </button>
-                        <button
-                          onClick={() => handleDelete(p.id || p._id)}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition"
-                          title="Delete"
-                        >
-                          <FiTrash2 className="text-sm" />
-                        </button>
+                        {!isCatalog && (
+                          <button
+                            onClick={() => handleDelete(p.id || p._id)}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition"
+                            title="Delete"
+                          >
+                            <FiTrash2 className="text-sm" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -381,6 +393,12 @@ export default function AdminProductsPage() {
                 </Field>
               </div>
 
+              {isCatalog ? (
+                <p className="text-xs text-gray-500 bg-gray-50 rounded-xl px-4 py-2.5">
+                  Price, supply cost and seller are set by a Super Admin. {editId ? '' : 'This product is saved as a hidden draft until they do.'}
+                </p>
+              ) : (
+              <>
               {/* Pricing */}
               <div className="grid grid-cols-2 gap-4">
                 <Field label="MRP / Original Price (₹)" required>
@@ -420,6 +438,9 @@ export default function AdminProductsPage() {
                 <p className="text-xs text-gray-500 -mt-2">
                   Per piece: customer pays {formatPrice(parseFloat(form.discountPrice || form.price))} · Tulsi retains {formatPrice(parseFloat(form.supplyCost))} · vendor margin before shipping &amp; fee {formatPrice(parseFloat(form.discountPrice || form.price) - parseFloat(form.supplyCost))}
                 </p>
+              )}
+
+              </>
               )}
 
               {/* Stock + Weight + Purity */}
@@ -578,7 +599,7 @@ export default function AdminProductsPage() {
                   </div>
                   <span className="text-sm font-medium text-gray-700">Featured Product</span>
                 </label>
-                <label className="flex items-center gap-2.5 cursor-pointer">
+                {!isCatalog && <label className="flex items-center gap-2.5 cursor-pointer">
                   <div
                     onClick={() => upd('isAvailableForRent', !form.isAvailableForRent)}
                     className={`w-10 h-6 rounded-full transition-colors relative ${form.isAvailableForRent ? 'bg-gold-500' : 'bg-gray-200'}`}
@@ -586,11 +607,11 @@ export default function AdminProductsPage() {
                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${form.isAvailableForRent ? 'left-5' : 'left-1'}`} />
                   </div>
                   <span className="text-sm font-medium text-gray-700">Available for Rent</span>
-                </label>
+                </label>}
               </div>
 
               {/* Rental fields */}
-              {form.isAvailableForRent && (
+              {form.isAvailableForRent && !isCatalog && (
                 <div className="grid grid-cols-2 gap-4 p-4 bg-gold-50 rounded-xl border border-gold-100">
                   <Field label="Rental Price/Day (₹)">
                     <input type="number" value={form.rentalPrice} onChange={(e) => upd('rentalPrice', e.target.value)} className={inp} placeholder="0" min="0" />

@@ -3,23 +3,24 @@ import { useState, useEffect } from 'react';
 import { FiUsers, FiPlus, FiEdit2, FiTrash2, FiX, FiRefreshCw, FiShield } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import { ASSIGNABLE_STAFF_ROLES, ROLE_LABELS } from '@/lib/access';
 
-const ROLES = [
-  'SuperAdmin',
-  'ProductManager',
-  'InventoryManager',
-  'BusinessManager',
-  'OrderManager',
-  'SalesStaff',
-];
+/* Three staff tiers only (vendor logins are managed on the Vendors page).
+   The six granular roles this replaced — ProductManager, InventoryManager,
+   OrderManager, SalesStaff, BusinessManager, SuperAdmin — were all full
+   admins in practice; each tier below is enforced by the API. */
+const ROLES = ASSIGNABLE_STAFF_ROLES;
+
+const ROLE_HELP = {
+  SUPER_ADMIN: 'Everything, including ledgers, payouts, supplier costs, settings and staff.',
+  ORDER_FULFILLMENT_STAFF: 'View confirmed orders, print slips, book couriers, mark Packed / Shipped. No costs, finance or settings.',
+  CATALOG_STAFF: 'Product photos, descriptions, categories and stock counts. New products stay drafts until a Super Admin prices them. No prices, orders or customer data.',
+};
 
 const ROLE_COLORS = {
-  SuperAdmin:       'bg-purple-100 text-purple-700',
-  ProductManager:   'bg-blue-100 text-blue-700',
-  InventoryManager: 'bg-cyan-100 text-cyan-700',
-  BusinessManager:  'bg-indigo-100 text-indigo-700',
-  OrderManager:     'bg-orange-100 text-orange-700',
-  SalesStaff:       'bg-gray-100 text-gray-700',
+  SUPER_ADMIN:             'bg-purple-100 text-purple-700',
+  ORDER_FULFILLMENT_STAFF: 'bg-orange-100 text-orange-700',
+  CATALOG_STAFF:           'bg-blue-100 text-blue-700',
 };
 
 const STATUS_COLORS = {
@@ -28,7 +29,7 @@ const STATUS_COLORS = {
   'On Leave': 'bg-yellow-100 text-yellow-700',
 };
 
-const EMPTY_FORM = { name: '', email: '', password: '', role: 'SalesStaff', phone: '', status: 'Active' };
+const EMPTY_FORM = { name: '', email: '', password: '', role: 'CATALOG_STAFF', phone: '', status: 'Active' };
 
 export default function StaffPage() {
   const [staff, setStaff] = useState([]);
@@ -53,7 +54,7 @@ export default function StaffPage() {
 
   function openAdd() { setForm(EMPTY_FORM); setEditId(null); setShowModal(true); }
   function openEdit(member) {
-    setForm({ name: member.name || '', email: member.email || '', password: '', role: member.role || 'SalesStaff', phone: member.phone || '', status: member.status || 'Active' });
+    setForm({ name: member.name || '', email: member.email || '', password: '', role: member.role || 'CATALOG_STAFF', phone: member.phone || '', status: member.status || 'Active' });
     setEditId(member.id);
     setShowModal(true);
   }
@@ -175,9 +176,14 @@ export default function StaffPage() {
                   <td className="px-4 py-3 text-gray-600">{member.phone || '—'}</td>
                   <td className="px-4 py-3 text-gray-400 text-sm tracking-widest">••••••</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${ROLE_COLORS[member.role] || 'bg-gray-100 text-gray-700'}`}>
-                      {member.role || 'SalesStaff'}
-                    </span>
+                    {member.role ? (
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${ROLE_COLORS[member.role] || 'bg-gray-100 text-gray-700'}`}>
+                        {ROLE_LABELS[member.role] || member.role}
+                      </span>
+                    ) : (
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700">No access — assign a role</span>
+                    )}
+                    {member.legacyRole && <p className="text-[11px] text-gray-400 mt-0.5">was {member.legacyRole}</p>}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_COLORS[member.status] || 'bg-gray-100 text-gray-600'}`}>
@@ -274,8 +280,9 @@ export default function StaffPage() {
                   onChange={(e) => setForm({ ...form, role: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400 bg-white"
                 >
-                  {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                  {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                 </select>
+                <p className="text-xs text-gray-500 mt-1">{ROLE_HELP[form.role]}</p>
               </div>
 
               {/* Phone */}
