@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr } from '@/lib/firebase';
-import { requireAdmin } from '@/lib/adminCollection';
+import { requireAccess } from '@/lib/adminCollection';
+import { CAN } from '@/lib/access';
 
 export async function GET(request) {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCatalog);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const { searchParams } = new URL(request.url);

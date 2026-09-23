@@ -26,6 +26,13 @@ export async function requireAdmin() {
   return access.error ? null : access.session;
 }
 
+/* Same contract as requireAdmin (session or null → 403), for routes a
+   wider group may use, e.g. requireAccess(CAN.manageCRM). */
+export async function requireAccess(allowed) {
+  const access = await requireRole(allowed);
+  return access.error ? null : access.session;
+}
+
 /* Money controls (payouts, vendor bank/UPI details, fee rates). Same gate:
    SUPER_ADMIN, which is only ever granted by ADMIN_EMAILS or by another
    SUPER_ADMIN — staff management itself is SUPER_ADMIN-only. */

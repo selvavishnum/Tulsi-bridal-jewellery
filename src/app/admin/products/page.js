@@ -9,7 +9,7 @@ import Badge from '@/components/ui/Badge';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
 import { useSession } from 'next-auth/react';
-import { ROLES, CATALOG_EDITABLE_PRODUCT_FIELDS } from '@/lib/access';
+import { CAN, CATALOG_EDITABLE_PRODUCT_FIELDS } from '@/lib/access';
 
 const CATEGORIES = ['necklace', 'earrings', 'bangles', 'bracelet', 'ring', 'maang-tikka', 'nose-ring', 'anklet', 'set', 'other'];
 const MATERIALS  = ['gold', 'silver', 'gold-plated', 'silver-plated', 'kundan', 'meenakari', 'polki', 'other'];
@@ -22,7 +22,7 @@ const EMPTY_FORM = {
   isAvailableForRent: false, featured: false,
   images: [], tags: '', weight: '', purity: '',
   metalType: '', stoneType: '', color: '', usageInstructions: '', isNew: false, tryOnImage: '',
-  vendorId: '', supplyCost: '',
+  vendorId: '', supplyCost: '', marginMode: 'fixed', marginPercent: '', vendorShipping: '',
 };
 
 function Field({ label, children, required }) {
@@ -43,7 +43,7 @@ export default function AdminProductsPage() {
   const { data: session } = useSession();
   /* Catalog staff edit media, copy, categories and stock only; the API
      refuses anything else. These flags just keep the form honest. */
-  const isCatalog = !!session?.user?.tier && session.user.tier !== ROLES.SUPER_ADMIN; // product/inventory staff: no prices or costs
+  const isCatalog = !!session?.user?.tier && !CAN.manageCatalog.includes(session.user.tier); // product/inventory staff: no prices or costs
   const [products, setProducts] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -135,7 +135,10 @@ export default function AdminProductsPage() {
       isNew: p.isNew || false,
       tryOnImage: p.tryOnImage || '',
       vendorId: p.vendorId && p.vendorId !== 'tulsi' ? p.vendorId : '',
-      supplyCost: p.supplyCost ? p.supplyCost.toString() : '',
+      supplyCost: p.supplyCost && p.marginMode !== 'percent' ? p.supplyCost.toString() : '',
+      marginMode: p.marginMode === 'percent' ? 'percent' : 'fixed',
+      marginPercent: p.marginPercent ? p.marginPercent.toString() : '',
+      vendorShipping: typeof p.vendorShipping === 'number' ? p.vendorShipping.toString() : '',
     });
     setEditId(p.id || p._id);
     setModalOpen(true);
@@ -165,7 +168,12 @@ export default function AdminProductsPage() {
         discountPrice: form.discountPrice ? parseFloat(form.discountPrice) : 0,
         rentalPrice:   form.rentalPrice   ? parseFloat(form.rentalPrice)   : 0,
         vendorId:      form.vendorId || 'tulsi',
-        supplyCost:    form.vendorId ? parseFloat(form.supplyCost) || 0 : 0,
+        /* Margin: a fixed ₹ per piece (stored as supplyCost) or a % of the
+           selling price — the API works out the ₹ amount for a %. */
+        marginMode:    form.vendorId ? form.marginMode : 'fixed',
+        marginPercent: form.vendorId && form.marginMode === 'percent' ? parseFloat(form.marginPercent) || 0 : 0,
+        supplyCost:    form.vendorId && form.marginMode === 'fixed' ? parseFloat(form.supplyCost) || 0 : 0,
+        vendorShipping: form.vendorId && form.vendorShipping !== '' ? parseFloat(form.vendorShipping) : null,
         stock:         parseInt(form.stock),
         rentalStock:   parseInt(form.rentalStock) || 0,
         weight:        form.weight ? parseFloat(form.weight) : undefined,
@@ -283,6 +291,9 @@ export default function AdminProductsPage() {
                         <div className="min-w-0">
                           <p className="font-semibold text-gray-800 truncate">{p.name}</p>
                           <p className="text-xs text-gray-400">{p.sku || '—'}</p>
+                          {p.reviewStatus === 'pending' && p.isActive === false && (
+                            <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-semibold">Vendor submitted — check margin &amp; publish</span>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -395,7 +406,7 @@ export default function AdminProductsPage() {
 
               {isCatalog ? (
                 <p className="text-xs text-gray-500 bg-gray-50 rounded-xl px-4 py-2.5">
-                  Price, supply cost and seller are set by a Super Admin. {editId ? '' : 'This product is saved as a hidden draft until they do.'}
+                  Price, margin and seller are set by a Super Admin. {editId ? '' : 'This product is saved as a hidden draft until they do.'}
                 </p>
               ) : (
               <>
@@ -428,17 +439,49 @@ export default function AdminProductsPage() {
                     {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}{v.status === 'suspended' ? ' (suspended)' : ''}</option>)}
                   </select>
                 </Field>
-                {form.vendorId && (
-                  <Field label="Supply cost retained (₹)" required>
-                    <input type="number" value={form.supplyCost} onChange={(e) => upd('supplyCost', e.target.value)} className={inp} placeholder="e.g. 3500" min="0" />
-                  </Field>
-                )}
               </div>
-              {form.vendorId && form.supplyCost && (form.discountPrice || form.price) && (
-                <p className="text-xs text-gray-500 -mt-2">
-                  Per piece: customer pays {formatPrice(parseFloat(form.discountPrice || form.price))} · Tulsi retains {formatPrice(parseFloat(form.supplyCost))} · vendor margin before shipping &amp; fee {formatPrice(parseFloat(form.discountPrice || form.price) - parseFloat(form.supplyCost))}
-                </p>
-              )}
+              {form.vendorId && (() => {
+                const selling = parseFloat(form.discountPrice || form.price) || 0;
+                const marginAmt = form.marginMode === 'percent'
+                  ? Math.round(selling * (parseFloat(form.marginPercent) || 0)) / 100
+                  : parseFloat(form.supplyCost) || 0;
+                const ship = parseFloat(form.vendorShipping) || 0;
+                const toVendor = selling - marginAmt - ship;
+                return (
+                  <div className="space-y-3 -mt-1">
+                    <div className="grid grid-cols-2 gap-4">
+                      <Field label="Tulsi margin" required>
+                        <div className="flex gap-2">
+                          <div className="inline-flex rounded-xl border border-gray-200 p-0.5 flex-shrink-0" role="radiogroup" aria-label="Margin type">
+                            {[['fixed', '₹'], ['percent', '%']].map(([m, sym]) => (
+                              <button key={m} type="button" role="radio" aria-checked={form.marginMode === m} onClick={() => upd('marginMode', m)}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-bold ${form.marginMode === m ? 'bg-maroon-950 text-white' : 'text-gray-500'}`}>
+                                {sym}
+                              </button>
+                            ))}
+                          </div>
+                          {form.marginMode === 'percent' ? (
+                            <input type="number" value={form.marginPercent} onChange={(e) => upd('marginPercent', e.target.value)} className={inp} placeholder="e.g. 20" min="0" max="99.99" step="0.01" aria-label="Margin percent" />
+                          ) : (
+                            <input type="number" value={form.supplyCost} onChange={(e) => upd('supplyCost', e.target.value)} className={inp} placeholder="e.g. 400" min="0" aria-label="Margin in rupees" />
+                          )}
+                        </div>
+                      </Field>
+                      <Field label="Vendor shipping charge (₹ per piece)">
+                        <input type="number" value={form.vendorShipping} onChange={(e) => upd('vendorShipping', e.target.value)} className={inp} placeholder="Blank = actual courier cost" min="0" />
+                      </Field>
+                    </div>
+                    {selling > 0 && (
+                      <p className={`text-xs ${toVendor < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                        Per piece: customer pays {formatPrice(selling)} · Tulsi margin {formatPrice(marginAmt)}
+                        {form.marginMode === 'percent' && form.marginPercent ? ` (${form.marginPercent}%)` : ''}
+                        {' · '}vendor shipping {form.vendorShipping !== '' ? formatPrice(ship) : 'actual courier cost'}
+                        {' · '}vendor gets {formatPrice(toVendor)} before platform fee
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               </>
               )}

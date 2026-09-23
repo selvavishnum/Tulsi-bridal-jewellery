@@ -7,7 +7,7 @@ import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import {
   FiShoppingCart, FiHeart, FiUser, FiMenu, FiX, FiSearch,
-  FiChevronDown, FiLogOut, FiSettings, FiPhone,
+  FiChevronDown, FiLogOut, FiSettings, FiPhone, FiBriefcase,
 } from 'react-icons/fi';
 
 const catalogCategories = [
@@ -201,6 +201,11 @@ export default function Navbar() {
                     <Link href="/account" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-stone-700 hover:text-wine-700 hover:bg-ivory-100 transition-colors font-medium">
                       <FiUser className="text-base" /> My Account
                     </Link>
+                    {session.user.role === 'vendor' && (
+                      <Link href="/vendor/dashboard" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-wine-700 hover:bg-ivory-100 transition-colors font-semibold">
+                        <FiBriefcase className="text-base" /> Vendor Dashboard
+                      </Link>
+                    )}
                     {session.user.role === 'admin' && (
                       <Link href="/admin" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-stone-700 hover:text-wine-700 hover:bg-ivory-100 transition-colors font-medium">
                         <FiSettings className="text-base" /> Admin Panel
@@ -286,6 +291,11 @@ export default function Navbar() {
                 {l.label}
               </Link>
             ))}
+            {session?.user?.role === 'vendor' && (
+              <Link href="/vendor/dashboard" onClick={() => setMenuOpen(false)} className="flex items-center justify-center gap-2 mt-3 py-3 bg-wine-700 text-white text-sm font-semibold rounded-xl hover:bg-wine-800 transition-colors">
+                <FiBriefcase /> Vendor Dashboard
+              </Link>
+            )}
             <div className="pt-3 flex gap-3">
               {!session ? (
                 <Link href="/login" onClick={() => setMenuOpen(false)} className="flex-1 text-center py-3 bg-wine-700 text-white text-sm font-semibold rounded-xl hover:bg-wine-800 transition-colors">

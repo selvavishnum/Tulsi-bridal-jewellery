@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr, docToObj } from '@/lib/firebase';
-import { requireAdmin } from '@/lib/adminCollection';
-import { requireRole, ROLES, CAN } from '@/lib/requireRole';
+import { requireAccess } from '@/lib/adminCollection';
+import { requireRole, CAN } from '@/lib/requireRole';
 import { stripCostFields } from '@/lib/access';
 import { fifoDeduct } from '@/lib/fifoDeduct';
+import { marginFor } from '@/lib/settlement';
 
 export async function GET(request) {
   try {
@@ -29,7 +30,7 @@ export async function GET(request) {
     if (showMe === 'visible') products = products.filter((p) => p.showMe !== false);
     if (showMe === 'hidden') products = products.filter((p) => p.showMe === false);
     const page = products.slice(0, limit);
-    return NextResponse.json({ success: true, data: auth.tier === ROLES.SUPER_ADMIN ? page : page.map(stripCostFields) });
+    return NextResponse.json({ success: true, data: CAN.manageCatalog.includes(auth.tier) ? page : page.map(stripCostFields) });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }
@@ -43,7 +44,7 @@ export async function PATCH(request) {
     const { id, sku, mrp, discPct, inStock, showMe } = body;
     /* Catalog staff manage stock counts and SKUs; price (mrp / discount)
        and publishing (showMe) are SUPER_ADMIN decisions. */
-    if (auth.tier !== ROLES.SUPER_ADMIN && (mrp !== undefined || discPct !== undefined || showMe !== undefined)) {
+    if (!CAN.manageCatalog.includes(auth.tier) && (mrp !== undefined || discPct !== undefined || showMe !== undefined)) {
       return NextResponse.json({ success: false, message: 'Forbidden: price and visibility changes need a Super Admin' }, { status: 403 });
     }
     if (!id) return NextResponse.json({ success: false, message: 'ID required' }, { status: 400 });
@@ -70,7 +71,7 @@ export async function PATCH(request) {
       if (!currentSnap.exists) return NextResponse.json({ success: false, message: 'Product not found' }, { status: 404 });
       const currentStock = currentSnap.data()?.stock || 0;
       updateData.stock = inStock;
-      if (auth.tier === ROLES.SUPER_ADMIN) {
+      if (CAN.manageCatalog.includes(auth.tier)) {
         if (inStock < currentStock) await fifoDeduct(db, id, currentStock - inStock);
       } else if (inStock !== currentStock) {
         /* Catalog staff correct stock counts, but the FIFO stock lots are the
@@ -88,9 +89,14 @@ export async function PATCH(request) {
       updateData.showMe = showMe;
       updateData.isActive = showMe; // keep in sync so shop pages respect hidden flag
     }
+    if (updateData.price !== undefined || updateData.discountPrice !== undefined) {
+      /* A percentage margin follows the price. */
+      const cur = (await ref.get()).data() || {};
+      if (cur.marginMode === 'percent') updateData.supplyCost = marginFor({ ...cur, ...updateData });
+    }
     await ref.update(updateData);
     const saved = docToObj(await ref.get());
-    return NextResponse.json({ success: true, data: auth.tier === ROLES.SUPER_ADMIN ? saved : stripCostFields(saved) });
+    return NextResponse.json({ success: true, data: CAN.manageCatalog.includes(auth.tier) ? saved : stripCostFields(saved) });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }
@@ -98,7 +104,7 @@ export async function PATCH(request) {
 
 export async function DELETE(request) {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCatalog);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

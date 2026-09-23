@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr, docToObj } from '@/lib/firebase';
-import { requireAdmin } from '@/lib/adminCollection';
+import { requireAccess } from '@/lib/adminCollection';
+import { CAN } from '@/lib/access';
 
 async function generateLotNumber(db) {
   const snap = await db.collection('stockLots').orderBy('lotNumber', 'desc').limit(1).get();
@@ -12,7 +13,7 @@ async function generateLotNumber(db) {
 
 export async function GET() {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCatalog);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const db = getDB();
     const snap = await db.collection('purchaseOrders').orderBy('createdAt', 'desc').get();
@@ -24,7 +25,7 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCatalog);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const body = await request.json();
     const {
@@ -100,7 +101,7 @@ export async function POST(request) {
 
 export async function PUT(request) {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCatalog);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const body = await request.json();
     const { id, ...rest } = body;
@@ -116,7 +117,7 @@ export async function PUT(request) {
 
 export async function DELETE(request) {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCatalog);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

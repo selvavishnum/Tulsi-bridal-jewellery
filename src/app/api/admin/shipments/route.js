@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '@/lib/firebase';
-import { requireRole, ROLES, CAN } from '@/lib/requireRole';
+import { requireRole, CAN } from '@/lib/requireRole';
 import { createShiprocketOrder, assignAwb, getFreightQuote, trackShiprocketAWB, isConfigured } from '@/lib/shiprocket';
 import { sendStatusUpdateEmail } from '@/lib/email';
 import { sendStatusWhatsApp } from '@/lib/whatsapp';
@@ -41,11 +41,11 @@ export async function POST(request) {
     }
     /* Fulfilment staff ship confirmed orders only (a pending COD order hasn't
        had its stock deducted yet); re-shipping to fix tracking is fine. */
-    if (auth.tier !== ROLES.SUPER_ADMIN && !['confirmed', 'processing', 'shipped'].includes(order.status)) {
+    if (!CAN.manageOrders.includes(auth.tier) && !['confirmed', 'processing', 'shipped'].includes(order.status)) {
       return NextResponse.json({ success: false, message: 'Only confirmed orders can be shipped — ask a Super Admin to confirm this one first.' }, { status: 400 });
     }
 
-    const isSuper = auth.tier === ROLES.SUPER_ADMIN;
+    const isSuper = CAN.manageOrders.includes(auth.tier); // may set the courier charge
     const sentCost = shippingCost !== undefined && shippingCost !== '' && shippingCost !== null;
     /* The courier charge is deducted from vendor payouts, so setting it is a
        financial action: fulfilment staff book the parcel, a Super Admin

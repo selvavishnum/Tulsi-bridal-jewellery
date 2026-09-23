@@ -41,7 +41,7 @@ test('staff records resolve to their role; old names map; legacy SuperAdmin gets
   assert.equal(await tierOf('sales@tulsi.test'), ROLES.SALES_STAFF);
   assert.equal(await tierOf('sa@tulsi.test'), ROLES.SUPER_ADMIN);
   assert.equal(await tierOf('legacy@tulsi.test'), ROLES.ORDER_MANAGER);
-  assert.equal(await tierOf('bm@tulsi.test'), ROLES.BUSINESS_MANAGER);
+  assert.equal(await tierOf('bm@tulsi.test'), null, 'legacy BusinessManager needs a recorded grant');
   assert.equal(await tierOf('old4tier@tulsi.test'), ROLES.PRODUCT_MANAGER);
   assert.equal(normalizeStaffRole('InventoryManager'), ROLES.INVENTORY_MANAGER);
   assert.equal(normalizeStaffRole('ORDER_FULFILLMENT_STAFF'), ROLES.ORDER_MANAGER);
@@ -64,20 +64,34 @@ test('a vendor login is VENDOR whatever its role field says, and carries its ven
 test('page policy: each role reaches only its screens; everything unlisted is SUPER_ADMIN', () => {
   const { SUPER_ADMIN: SA, PRODUCT_MANAGER: PM, INVENTORY_MANAGER: IM, BUSINESS_MANAGER: BM, ORDER_MANAGER: OM, SALES_STAFF: SS, VENDOR } = ROLES;
   const table = {
-    '/admin': [SA],
+    '/admin': [SA, BM],
+    '/admin/messages': [SA, BM],
+    '/admin/rentals': [SA],
+    '/admin/coupons': [SA, BM],
+    '/admin/crm/feedbacks': [SA, BM],
+    '/admin/crm/complaints': [SA, BM],
+    '/admin/variants': [SA, PM, BM],
+    '/admin/photo-editor': [SA, PM, BM],
+    '/admin/inventory/stock-checker': [SA, PM, IM, BM],
+    '/admin/purchase': [SA, BM],
+    '/admin/purchase/inward': [SA, BM],
+    '/admin/warehouses': [SA, BM],
+    '/admin/suppliers': [SA, BM],
+    '/admin/employees': [SA, BM],
+    '/admin/vendors/payouts': [SA],
     '/admin/orders': [SA, OM, SS, BM],
     '/admin/customers': [SA, SS, BM],
-    '/admin/products': [SA, PM],
-    '/admin/categories': [SA, PM],
-    '/admin/inventory': [SA, PM, IM],
-    '/admin/barcodes': [SA, PM, IM],
-    '/admin/inventory/lots': [SA],
+    '/admin/products': [SA, PM, BM],
+    '/admin/categories': [SA, PM, BM],
+    '/admin/inventory': [SA, PM, IM, BM],
+    '/admin/barcodes': [SA, PM, IM, BM],
+    '/admin/inventory/lots': [SA, BM],
     '/admin/reports': [SA, BM],
     '/admin/sales': [SA, BM],
     '/admin/analytics': [SA, BM],
     '/admin/vendors': [SA],
     '/admin/settings': [SA],
-    '/admin/accounting': [SA],
+    '/admin/accounting': [SA, BM],
     '/admin/staff': [SA],
     '/admin/orders-archive-lookalike': [SA],
   };

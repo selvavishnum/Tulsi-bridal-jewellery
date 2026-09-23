@@ -3,15 +3,20 @@
    Razorpay account and all parcels ship through the platform's Shiprocket
    account. Each delivered order is then settled per vendor:
 
-     Vendor payout = Collected − Supply cost − Shipping cost − Platform fee
+     Vendor payout = Collected − Margin − Shipping − Platform fee
 
-   Collected    = the vendor's items at the price charged, plus that
-                  vendor's share of any shipping fee the customer paid.
-   Supply cost  = product.supplyCost × qty, snapshotted onto the order item
-                  when the order was placed (a later change to the product
-                  never rewrites history). Retained by the platform.
-   Shipping     = the actual courier charge for the parcel, split across the
-                  vendors in it in proportion to their item value.
+   Collected    = the vendor's items at the price charged, plus (unless the
+                  vendor set their own shipping charge) that vendor's share
+                  of any shipping fee the customer paid.
+   Margin       = what the platform keeps per piece, either a fixed ₹ amount
+                  or a percentage of the selling price (product.marginMode).
+                  Stored in the `supplyCost` field — its old name — and
+                  snapshotted per piece onto the order item when the order is
+                  placed, so a later change never rewrites history.
+   Shipping     = the vendor's own per-piece shipping charge when their
+                  product sets one (item.vendorShipping, snapshotted too);
+                  otherwise the actual courier charge for the parcel, split
+                  across the vendors in it in proportion to their item value.
    Platform fee = vendor's fee rate (basis points, snapshotted at order time)
                   × the vendor's item value.
 
@@ -95,16 +100,24 @@ export function computeVendorSettlements(order) {
     const supplyCostPaise = vendorItems.reduce((s, i) => s + toPaise(i.supplyCost) * (Number(i.quantity) || 0), 0);
     const platformFeeBps = Math.max(0, Math.floor(Number(order.vendorFees?.[vid]) || 0));
     const platformFeePaise = Math.round((itemsPaise * platformFeeBps) / 10000);
-    const grossPaise = itemsPaise + customerShares[idx];
-    const shippingPaise = actualShares[idx];
+    /* Vendor-set shipping: the vendor pays the per-piece charge they set,
+       and the shipping fee the customer paid stays with the platform (which
+       books and pays the courier). Only when every one of the vendor's lines
+       carries that snapshot — older orders fall back to the courier split. */
+    const vendorSet = vendorItems.every((i) => typeof i.vendorShipping === 'number');
+    const customerShippingPaise = vendorSet ? 0 : customerShares[idx];
+    const grossPaise = itemsPaise + customerShippingPaise;
+    const shippingPaise = vendorSet
+      ? vendorItems.reduce((s, i) => s + Math.max(0, toPaise(i.vendorShipping)) * (Number(i.quantity) || 0), 0)
+      : actualShares[idx];
     out.push({
       vendorId: vid,
       itemsPaise,
-      customerShippingPaise: customerShares[idx],
+      customerShippingPaise,
       grossPaise,
       supplyCostPaise,
       shippingPaise,
-      shippingSource,
+      shippingSource: vendorSet ? 'vendor_set' : shippingSource,
       platformFeeBps,
       platformFeePaise,
       netPaise: grossPaise - supplyCostPaise - shippingPaise - platformFeePaise,
@@ -188,9 +201,9 @@ export function toVendorOrderView(order, vendorId) {
 }
 
 const CUSTOMER_HIDDEN_ORDER_FIELDS = ['vendorIds', 'vendorFees', 'shippingCostActual', 'shippingCostSource', 'vendorSettlementPostedAt'];
-const CUSTOMER_HIDDEN_ITEM_FIELDS = ['supplyCost', 'vendorId'];
+const CUSTOMER_HIDDEN_ITEM_FIELDS = ['supplyCost', 'vendorId', 'vendorShipping'];
 
-/* Supply cost is the platform's margin — never let it reach a shopper. */
+/* Margin (supplyCost) and vendor shipping are internal — never let them reach a shopper. */
 export function toCustomerOrder(order) {
   if (!order) return order;
   const out = { ...order };
@@ -205,14 +218,52 @@ export function toCustomerOrder(order) {
   return out;
 }
 
-/* A vendor-owned product must carry a supply cost, and must not sell below
-   it — otherwise the platform ships stock it supplied and keeps nothing. */
+export const MARGIN_MODES = Object.freeze(['fixed', 'percent']);
+
+/* What a customer pays for one piece. */
+export function sellingPriceOf(product) {
+  return Number(product?.discountPrice) || Number(product?.price) || 0;
+}
+
+/* The platform's margin on one piece, in rupees (2 dp): a percentage of
+   the selling price, or the fixed amount stored in supplyCost. */
+export function marginFor(product, sellingPrice = sellingPriceOf(product)) {
+  if (product?.marginMode === 'percent') {
+    const pct = Number(product.marginPercent) || 0;
+    return Math.round(sellingPrice * pct) / 100;
+  }
+  return Number(product?.supplyCost) || 0;
+}
+
+/* The vendor's own per-piece shipping charge, or null when they haven't
+   set one (then the actual courier cost is deducted instead). */
+export function vendorShippingOf(product) {
+  const v = product?.vendorShipping;
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/* A vendor-owned product must carry a margin, and its selling price must
+   cover that margin plus the vendor's shipping charge — otherwise the
+   platform ships the piece and keeps nothing (or the vendor owes money). */
 export function validateVendorPricing(product) {
   const vid = product?.vendorId;
   if (!vid || vid === PLATFORM_VENDOR_ID) return null;
-  const supply = Number(product.supplyCost);
-  if (!Number.isFinite(supply) || supply <= 0) return 'Vendor products need a supply cost greater than 0.';
-  const retail = Number(product.discountPrice) || Number(product.price) || 0;
-  if (retail < supply) return `Selling price (₹${retail}) is below the supply cost (₹${supply}).`;
+  if (product.marginMode === 'percent') {
+    const pct = Number(product.marginPercent);
+    if (!Number.isFinite(pct) || pct <= 0 || pct >= 100) return 'Margin percentage must be more than 0 and less than 100.';
+  } else {
+    const fixed = Number(product.supplyCost);
+    if (!Number.isFinite(fixed) || fixed <= 0) return 'Vendor products need a margin greater than ₹0.';
+  }
+  const raw = product.vendorShipping;
+  if (raw !== null && raw !== undefined && raw !== '' && vendorShippingOf(product) === null) return 'Vendor shipping charge must be ₹0 or more.';
+  const selling = sellingPriceOf(product);
+  const margin = marginFor(product, selling);
+  const ship = vendorShippingOf(product) || 0;
+  if (selling < margin + ship) {
+    return `Selling price (₹${selling}) doesn't cover the margin (₹${margin})${ship ? ` and vendor shipping (₹${ship})` : ''}.`;
+  }
   return null;
 }

@@ -42,7 +42,7 @@ export async function middleware(request) {
     if (DEV_BYPASS) return NextResponse.next();
 
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    if (token?.role === 'vendor') return NextResponse.redirect(new URL('/vendor', request.url));
+    if (token?.role === 'vendor') return NextResponse.redirect(new URL('/vendor/dashboard', request.url));
     if (!token || token.role !== 'admin') {
       return NextResponse.redirect(new URL('/admin-portal', request.url));
     }
@@ -56,13 +56,24 @@ export async function middleware(request) {
     }
   }
 
-  /* Outside vendors get their own read-only dashboard; the platform admin
-     panel is never reachable with a vendor session. */
+  /* Vendor self-service portal. /vendor/login is public (a signed-in
+     vendor skips it); every other /vendor page needs a vendor session.
+     Staff go to the admin panel; signed-out visitors and customers go to
+     the vendor sign-in. The platform admin panel is never reachable with a
+     vendor session (above), and /api/vendor/* re-checks the vendor from
+     the database on every call regardless. */
   if (pathname === '/vendor' || pathname.startsWith('/vendor/')) {
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+    if (pathname === '/vendor/login') {
+      return token?.role === 'vendor'
+        ? NextResponse.redirect(new URL('/vendor/dashboard', request.url))
+        : NextResponse.next();
+    }
     if (token?.role === 'admin') return NextResponse.redirect(new URL('/admin', request.url));
     if (!token || token.role !== 'vendor') {
-      return NextResponse.redirect(new URL('/admin-portal', request.url));
+      const login = new URL('/vendor/login', request.url);
+      login.searchParams.set('callbackUrl', pathname);
+      return NextResponse.redirect(login);
     }
   }
 

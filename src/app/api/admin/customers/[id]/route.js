@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB, docToObj, snapshotToArr } from '@/lib/firebase';
 import { requireRole, CAN } from '@/lib/requireRole';
-import { ROLES, toFulfillmentOrder } from '@/lib/access';
+import { toFulfillmentOrder } from '@/lib/access';
 
 export async function GET(request, { params }) {
   try {
@@ -24,7 +24,7 @@ export async function GET(request, { params }) {
     const { password, ...user } = rawUser;
     const orders = snapshotToArr(ordersSnap)
       .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
-      .map((o) => (auth.tier === ROLES.SUPER_ADMIN ? o : toFulfillmentOrder(o))); // no cost/margin fields below Super Admin
+      .map((o) => (CAN.manageOrders.includes(auth.tier) ? o : toFulfillmentOrder(o))); // cost/margin fields only for full order access
 
     return NextResponse.json({ success: true, user, orders });
   } catch (error) {

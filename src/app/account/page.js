@@ -282,6 +282,15 @@ export default function AccountPage() {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-8">
+        {user?.role === 'vendor' && (
+          <Link href="/vendor/dashboard" className="flex items-center justify-between gap-3 mb-6 p-4 rounded-xl bg-white border-2 border-maroon-950/15 shadow-sm hover:border-maroon-950/40 transition">
+            <span>
+              <span className="block font-semibold text-maroon-950">Vendor Dashboard</span>
+              <span className="block text-xs text-gray-500">Manage your products, stock, orders and payouts</span>
+            </span>
+            <span className="text-sm font-semibold text-maroon-950 whitespace-nowrap">Open →</span>
+          </Link>
+        )}
         {/* Tabs */}
         <div className="flex gap-1 bg-white rounded-xl shadow-sm p-1 mb-6">
           {[

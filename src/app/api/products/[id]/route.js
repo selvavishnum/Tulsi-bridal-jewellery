@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getDB, docToObj, toPublicProduct } from '@/lib/firebase';
 import { checkProductVendor } from '@/lib/vendorProducts';
-import { requireAdmin } from '@/lib/adminCollection';
-import { requireRole, ROLES, CAN } from '@/lib/requireRole';
+import { requireAccess } from '@/lib/adminCollection';
+import { requireRole, CAN } from '@/lib/requireRole';
 import { catalogProductViolations, CATALOG_EDITABLE_PRODUCT_FIELDS, stripCostFields } from '@/lib/access';
 
 export async function GET(request, context) {
@@ -44,7 +44,7 @@ export async function PUT(request, context) {
       }
     }
 
-    if (auth.tier !== ROLES.SUPER_ADMIN) {
+    if (!CAN.manageCatalog.includes(auth.tier)) {
       /* Restricted fields sent back unchanged (the form round-trips the
          product) are fine; any attempt to change one is refused. */
       const denied = catalogProductViolations(body, doc.data());
@@ -73,7 +73,12 @@ export async function PUT(request, context) {
     const vendor = await checkProductVendor(db, { ...doc.data(), ...body });
     if (vendor.error) return NextResponse.json({ success: false, message: vendor.error }, { status: 400 });
 
-    await ref.update({ ...body, vendorId: vendor.vendorId, supplyCost: vendor.supplyCost, updatedAt: new Date().toISOString() });
+    /* Publishing a vendor-submitted draft completes its review. */
+    const merged = { ...doc.data(), ...body };
+    const review = merged.reviewStatus === 'pending' && merged.isActive !== false
+      ? { reviewStatus: 'approved', reviewedBy: auth.session?.user?.email || null, reviewedAt: new Date().toISOString() }
+      : {};
+    await ref.update({ ...body, ...review, vendorId: vendor.vendorId, supplyCost: vendor.supplyCost, marginMode: vendor.marginMode, marginPercent: vendor.marginPercent, vendorShipping: vendor.vendorShipping, updatedAt: new Date().toISOString() });
     const updated = await ref.get();
     return NextResponse.json({ success: true, data: docToObj(updated) });
   } catch (error) {
@@ -84,7 +89,7 @@ export async function PUT(request, context) {
 export async function DELETE(request, context) {
   try {
     const { id } = await context.params;
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageCatalog);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const db = getDB();

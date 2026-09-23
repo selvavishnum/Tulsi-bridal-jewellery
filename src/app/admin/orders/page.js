@@ -369,13 +369,14 @@ const SIDEBAR_ITEMS = [
 
 export default function AdminOrdersPage() {
   const { data: session } = useSession();
-  /* Order managers pack and ship only; sales and business staff only read.
+  /* Order managers pack and ship only; sales staff only read; Super Admin
+     and Business Manager have full control.
      The API enforces both and never sends them cost fields — this keeps
      the UI in step. (No tier yet = a pre-tier session: full UI, the API
      still decides.) */
   const tier = session?.user?.tier;
   const isFulfilment = tier === ROLES.ORDER_MANAGER;
-  const readOnly = tier === ROLES.SALES_STAFF || tier === ROLES.BUSINESS_MANAGER;
+  const readOnly = tier === ROLES.SALES_STAFF;
   const isSuper = !isFulfilment && !readOnly;
   const canSetStatus = (s) => !readOnly && (!isFulfilment || FULFILLMENT_STATUSES.includes(s));
   const statusLabel = (s) => (s === 'processing' ? 'packed' : s);

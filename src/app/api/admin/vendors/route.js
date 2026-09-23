@@ -1,36 +1,23 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getDB } from '@/lib/firebase';
-import { requireAdmin, requireOwner } from '@/lib/adminCollection';
+import { requireOwner } from '@/lib/adminCollection';
+import { requireRole, ROLES, CAN } from '@/lib/requireRole';
 import { summarizeLedger, PLATFORM_VENDOR_ID } from '@/lib/settlement';
-
-const IFSC = /^[A-Z]{4}0[A-Z0-9]{6}$/;
-const UPI = /^[\w.-]{2,256}@[a-zA-Z]{2,64}$/;
-const ACCOUNT = /^\d{9,18}$/;
+import { parsePayout } from '@/lib/payoutDestination';
 
 function adminEmails() {
   return (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
     .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
 }
 
-/* Validates and normalises the payout destination. Returns { payout } or { error }. */
-function parsePayout(input) {
-  if (!input || !input.method) return { payout: null };
-  if (input.method === 'upi') {
-    const upiId = String(input.upiId || '').trim();
-    if (!UPI.test(upiId)) return { error: 'Enter a valid UPI ID (e.g. name@okaxis).' };
-    return { payout: { method: 'upi', upiId } };
-  }
-  if (input.method === 'bank') {
-    const accountName = String(input.accountName || '').trim();
-    const accountNumber = String(input.accountNumber || '').replace(/\s/g, '');
-    const ifsc = String(input.ifsc || '').trim().toUpperCase();
-    if (!accountName) return { error: 'Enter the account holder name.' };
-    if (!ACCOUNT.test(accountNumber)) return { error: 'Account number must be 9–18 digits.' };
-    if (!IFSC.test(ifsc)) return { error: 'Enter a valid IFSC (e.g. HDFC0001234).' };
-    return { payout: { method: 'bank', accountName, accountNumber, ifsc } };
-  }
-  return { error: 'Payout method must be bank or UPI.' };
+/* Default margin % for this vendor's new self-listed products; 0 = none
+   (Tulsi sets each product's margin at review). */
+function parseMarginPercent(v) {
+  if (v === undefined || v === null || v === '') return 0;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n >= 100) return null;
+  return Math.round(n * 100) / 100;
 }
 
 function parseFeeBps(percent) {
@@ -43,16 +30,26 @@ function parseFeeBps(percent) {
    login, plus platform-wide totals of what the platform has retained. */
 export async function GET() {
   try {
-    const session = await requireAdmin();
-    if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    const auth = await requireRole(CAN.manageCatalog);
+    if (auth.error) return auth.error;
     const db = getDB();
-    /* SUPER_ADMIN only (requireAdmin): the full bank/UPI details are needed
-       to make the transfers, and no other tier can reach this route. */
+    /* Business Managers pick a seller on the product form, so they get the
+       vendor names — and nothing else: no bank/UPI details, ledgers, fees
+       or totals. Everything below is SUPER_ADMIN only (needed to make the
+       transfers). */
+    if (auth.tier !== ROLES.SUPER_ADMIN) {
+      const snap = await db.collection('vendors').get();
+      const vendors = snap.docs
+        .filter((d) => d.id !== PLATFORM_VENDOR_ID)
+        .map((d) => ({ id: d.id, name: d.data().name, status: d.data().status || 'active', defaultMarginPercent: Number(d.data().defaultMarginPercent) || 0 }))
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      return NextResponse.json({ success: true, data: { vendors, totals: null } });
+    }
 
     const [vendorsSnap, ledgerSnap, productsSnap, staffSnap] = await Promise.all([
       db.collection('vendors').get(),
       db.collection('vendorLedger').get(),
-      db.collection('products').select('vendorId').get(),
+      db.collection('products').select('vendorId', 'reviewStatus', 'isActive').get(),
       db.collection('staff').get(),
     ]);
 
@@ -63,9 +60,12 @@ export async function GET() {
       entriesByVendor.get(e.vendorId).push(e);
     }
     const productCount = new Map();
+    const inReviewCount = new Map();
     for (const d of productsSnap.docs) {
-      const v = d.data().vendorId;
+      const p = d.data();
+      const v = p.vendorId;
       if (v) productCount.set(v, (productCount.get(v) || 0) + 1);
+      if (v && p.reviewStatus === 'pending' && p.isActive === false) inReviewCount.set(v, (inReviewCount.get(v) || 0) + 1);
     }
     const loginByVendor = new Map();
     for (const d of staffSnap.docs) {
@@ -89,9 +89,17 @@ export async function GET() {
           phone: v.phone || '',
           status: v.status || 'active',
           platformFeePercent: (Number(v.platformFeeBps) || 0) / 100,
+          defaultMarginPercent: Number(v.defaultMarginPercent) || 0,
           payout: v.payout || null,
+          /* A bank/UPI change the vendor asked for — not used for payouts
+             until a Super Admin approves it below. */
+          pendingPayout: v.pendingPayout || null,
+          contactEmail: v.contactEmail || '',
+          gstin: v.gstin || '',
+          pickupAddress: v.pickupAddress || null,
           login: loginByVendor.get(d.id) || null,
           productCount: productCount.get(d.id) || 0,
+          inReviewCount: inReviewCount.get(d.id) || 0,
           summary,
           createdAt: v.createdAt,
         };
@@ -121,6 +129,8 @@ export async function POST(request) {
     if (feeBps === null) return NextResponse.json({ success: false, message: 'Platform fee must be between 0% and 50%.' }, { status: 400 });
     const { payout, error } = parsePayout(body.payout);
     if (error) return NextResponse.json({ success: false, message: error }, { status: 400 });
+    const defaultMarginPercent = parseMarginPercent(body.defaultMarginPercent);
+    if (defaultMarginPercent === null) return NextResponse.json({ success: false, message: 'Default margin must be from 0% to under 100%.' }, { status: 400 });
 
     if (adminEmails().includes(email)) {
       return NextResponse.json({ success: false, message: 'That email belongs to a store owner.' }, { status: 400 });
@@ -145,6 +155,7 @@ export async function POST(request) {
       phone: String(body.phone || '').trim(),
       status: 'active',
       platformFeeBps: feeBps,
+      defaultMarginPercent,
       payout,
       createdAt: now,
       updatedAt: now,
@@ -202,12 +213,34 @@ export async function PUT(request) {
       if (bps === null) return NextResponse.json({ success: false, message: 'Platform fee must be between 0% and 50%.' }, { status: 400 });
       update.platformFeeBps = bps;
     }
+    if (body.defaultMarginPercent !== undefined) {
+      const pct = parseMarginPercent(body.defaultMarginPercent);
+      if (pct === null) return NextResponse.json({ success: false, message: 'Default margin must be from 0% to under 100%.' }, { status: 400 });
+      update.defaultMarginPercent = pct;
+    }
     if (body.payout !== undefined) {
       const { payout, error } = parsePayout(body.payout);
       if (error) return NextResponse.json({ success: false, message: error }, { status: 400 });
       update.payout = payout;
       update.payoutUpdatedAt = update.updatedAt;
       update.payoutUpdatedBy = session.user.email || null;
+    }
+    if (body.pendingPayoutDecision !== undefined) {
+      const current = (await ref.get()).data();
+      if (!current.pendingPayout) return NextResponse.json({ success: false, message: 'There is no pending payout change.' }, { status: 400 });
+      if (!['approve', 'reject'].includes(body.pendingPayoutDecision)) {
+        return NextResponse.json({ success: false, message: 'Decision must be approve or reject.' }, { status: 400 });
+      }
+      if (body.pendingPayoutDecision === 'approve') {
+        const { payout, error } = parsePayout(current.pendingPayout);
+        if (error) return NextResponse.json({ success: false, message: error }, { status: 400 });
+        update.payout = payout;
+        update.payoutUpdatedAt = update.updatedAt;
+        update.payoutUpdatedBy = session.user.email || null;
+      }
+      update.pendingPayout = null;
+      update.pendingPayoutReviewedAt = update.updatedAt;
+      update.pendingPayoutReviewedBy = session.user.email || null;
     }
     await ref.update(update);
 

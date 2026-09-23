@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr } from '@/lib/firebase';
-import { requireAdmin } from '@/lib/adminCollection';
+import { requireAccess } from '@/lib/adminCollection';
+import { CAN } from '@/lib/access';
 import { sendContactNotification } from '@/lib/email';
 import { sendContactWhatsApp } from '@/lib/whatsapp';
 
@@ -29,7 +30,7 @@ export async function POST(request) {
 
 export async function GET() {
   try {
-    const session = await requireAdmin();
+    const session = await requireAccess(CAN.manageOperations);
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const db = getDB();
     const snap = await db.collection('contact_messages').orderBy('createdAt', 'desc').get();
