@@ -7,6 +7,7 @@ import { FiHeart, FiStar, FiShoppingCart } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
+import { cldGrid } from '@/lib/cloudinaryImage';
 import toast from 'react-hot-toast';
 
 export default function ProductCard({ product }) {
@@ -69,9 +70,10 @@ export default function ProductCard({ product }) {
         <Link href={`/product/${id}`} onClick={(e) => images.length > 1 && e.preventDefault()}>
           {images[imgIdx] ? (
             <Image
-              src={images[imgIdx]}
+              src={cldGrid(images[imgIdx])}
               alt={product.name}
               fill
+              unoptimized
               className="object-cover transition-opacity duration-300"
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             />

@@ -4,7 +4,12 @@ import { getDB, snapshotToArr, docToObj } from '@/lib/firebase';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 
-const DEV_BYPASS = process.env.NEXT_PUBLIC_ADMIN_BYPASS === 'true';
+/* NODE_ENV check is the safety net here: NEXT_PUBLIC_* vars are inlined into
+   the client bundle, so a misconfigured Vercel/preview env that leaks this
+   flag into production must not be able to disable admin auth — it only
+   takes effect in a non-production build regardless of how the flag itself
+   is set. */
+const DEV_BYPASS = process.env.NEXT_PUBLIC_ADMIN_BYPASS === 'true' && process.env.NODE_ENV !== 'production';
 
 const MOCK_ADMIN_SESSION = {
   user: { id: 'dev-bypass', email: 'dev-bypass@test.com', name: 'Dev Admin', role: 'admin' },

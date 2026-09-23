@@ -163,6 +163,10 @@ export default function CheckoutPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!items.length) { toast.error('Your cart is empty'); return; }
+    if (!/^[6-9]\d{9}$/.test(form.phone)) {
+      toast.error('Enter a valid 10-digit mobile number');
+      return;
+    }
     setLoading(true);
 
     try {
@@ -334,7 +338,16 @@ export default function CheckoutPage() {
                     </div>
                     <div className="col-span-2 md:col-span-1">
                       <label className="text-xs text-gray-500 mb-1 block">Phone *</label>
-                      <input required type="tel" value={form.phone} onChange={(e) => updateForm('phone', e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
+                      <input
+                        required
+                        type="tel"
+                        value={form.phone}
+                        onChange={(e) => updateForm('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        maxLength={10}
+                        inputMode="numeric"
+                        pattern="[6-9][0-9]{9}"
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500"
+                      />
                     </div>
                     <div className="col-span-2">
                       <label className="text-xs text-gray-500 mb-1 block">Email *</label>

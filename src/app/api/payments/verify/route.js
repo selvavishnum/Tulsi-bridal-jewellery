@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import Razorpay from 'razorpay';
 import { getDB } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
-import { awardLoyaltyPoints } from '@/lib/loyalty';
+import { settlePaidOrder } from '@/lib/settlePayment';
 
 /* Timing-safe hex digest comparison */
 function signatureMatches(expected, received) {
@@ -90,39 +90,12 @@ export async function POST(request) {
       return NextResponse.json({ success: false, message: 'Payment verification failed' }, { status: 400 });
     }
 
-    /* Mark paid and deduct stock atomically, so a partial failure can never
-       leave the order flagged as deducted without the stock actually moving. */
-    const items = (order.items || []).filter((i) => i.product);
-    const paidAt = new Date().toISOString();
-
-    await db.runTransaction(async (tx) => {
-      const freshOrder = await tx.get(orderRef);
-      if (freshOrder.data()?.payment?.status === 'paid') return; // settled by a concurrent request
-
-      const prodRefs = items.map((i) => db.collection('products').doc(i.product));
-      const prodDocs = prodRefs.length ? await Promise.all(prodRefs.map((r) => tx.get(r))) : [];
-
-      tx.update(orderRef, {
-        'payment.status': 'paid',
-        'payment.razorpayPaymentId': razorpayPaymentId,
-        'payment.razorpaySignature': razorpaySignature,
-        'payment.paidAt': paidAt,
-        status: 'confirmed',
-        stockDeducted: true,
-        updatedAt: paidAt,
-      });
-
-      if (!freshOrder.data()?.stockDeducted) {
-        prodDocs.forEach((prodDoc, idx) => {
-          if (!prodDoc.exists) return;
-          const qty = Math.max(0, Math.floor(Number(items[idx].quantity) || 0));
-          tx.update(prodRefs[idx], { stock: Math.max(0, (Number(prodDoc.data().stock) || 0) - qty) });
-        });
-      }
-    });
-
-    /* Points are granted only now that the money has actually arrived */
-    await awardLoyaltyPoints(orderRef).catch((e) => console.error('[Loyalty] award failed:', e.message));
+    /* Mark paid and deduct stock — shared with the Razorpay webhook receiver
+       (src/app/api/payments/webhook/route.js) so there is exactly one code
+       path that ever applies these side effects, no matter which of the two
+       entry points gets there first; its own transaction handles the race
+       between them. */
+    await settlePaidOrder(db, orderRef, { razorpayPaymentId, razorpaySignature });
 
     return NextResponse.json({ success: true, message: 'Payment verified successfully' });
   } catch (error) {

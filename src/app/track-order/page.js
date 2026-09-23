@@ -195,7 +195,7 @@ function TrackOrderContent() {
                 {(order.items || []).map((item, i) => (
                   <div key={i} className="flex items-center gap-3">
                     {item.image && (
-                      <img src={item.image} alt={item.name} className="w-12 h-12 object-cover rounded-lg bg-gray-100 flex-shrink-0" />
+                      <img src={item.image} alt={item.name} className="w-12 h-12 object-cover rounded-lg bg-gray-100 flex-shrink-0" loading="lazy" decoding="async" />
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-gray-800 text-sm truncate">{item.name}</p>

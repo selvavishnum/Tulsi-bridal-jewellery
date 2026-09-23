@@ -11,6 +11,7 @@ import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
 import { cacheGet, cacheSet } from '@/lib/clientCache';
+import { cldGrid } from '@/lib/cloudinaryImage';
 import toast from 'react-hot-toast';
 
 function getCookie(name) {
@@ -179,7 +180,7 @@ function HeroSlider({ slides }) {
   const slide = displaySlides[current];
 
   return (
-    <section className="relative w-full overflow-hidden bg-stone-100" style={{ height: 'calc(100vh - 88px)', minHeight: '520px', maxHeight: '860px' }}>
+    <section className="relative w-full overflow-hidden bg-stone-100 hero-viewport">
       {/* Slide image / gradient background */}
       <div className={`absolute inset-0 transition-opacity duration-500 ${transitioning ? 'opacity-0' : 'opacity-100'}`}>
         {slide.imageUrl ? (
@@ -331,9 +332,10 @@ function ProductCard({ product }) {
       <div className="relative overflow-hidden bg-white aspect-square rounded-t-2xl border border-stone-100 group-hover:border-gold-200/60 transition-colors duration-300">
         {product.images?.[0] ? (
           <Image
-            src={product.images[0]}
+            src={cldGrid(product.images[0])}
             alt={product.name}
             fill
+            unoptimized
             className="object-cover transition-transform duration-700 group-hover:scale-105"
           />
         ) : (
