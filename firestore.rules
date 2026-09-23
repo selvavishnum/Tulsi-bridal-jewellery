@@ -1,0 +1,16 @@
+rules_version = '2';
+
+// All reads and writes go through the Next.js API routes via the Firebase
+// Admin SDK, which bypasses these rules. No browser code talks to Firestore
+// directly, so nothing legitimate needs client access — deny all of it.
+// Without this, whatever rules are live in the Firebase console are the only
+// thing standing between the public web config (project id + API key) and a
+// direct REST read of every collection, including other vendors' data.
+// Deploy: firebase deploy --only firestore:rules
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

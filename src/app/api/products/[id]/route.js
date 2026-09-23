@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDB, docToObj, toPublicProduct } from '@/lib/firebase';
+import { checkProductVendor } from '@/lib/vendorProducts';
 import { requireAdmin } from '@/lib/adminCollection';
 
 export async function GET(request, context) {
@@ -25,11 +26,17 @@ export async function PUT(request, context) {
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const db = getDB();
-    const body = await request.json();
+    /* The admin form posts back the whole product it loaded, including
+       read-only keys — never write those onto the document. */
+    const { id: _id, _id: _legacyId, createdAt: _createdAt, ...body } = await request.json();
     const ref = db.collection('products').doc(id);
     const doc = await ref.get();
     if (!doc.exists) return NextResponse.json({ success: false, message: 'Product not found' }, { status: 404 });
-    await ref.update({ ...body, updatedAt: new Date().toISOString() });
+
+    const vendor = await checkProductVendor(db, { ...doc.data(), ...body });
+    if (vendor.error) return NextResponse.json({ success: false, message: vendor.error }, { status: 400 });
+
+    await ref.update({ ...body, vendorId: vendor.vendorId, supplyCost: vendor.supplyCost, updatedAt: new Date().toISOString() });
     const updated = await ref.get();
     return NextResponse.json({ success: true, data: docToObj(updated) });
   } catch (error) {

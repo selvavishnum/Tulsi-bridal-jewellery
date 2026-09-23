@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr, docToObj, FieldValue } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
+import { reverseOrderSettlements } from '@/lib/vendorLedger';
 
 export async function GET() {
   try {
@@ -19,15 +20,20 @@ export async function PATCH(request) {
     const session = await requireAdmin();
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const body = await request.json();
-    const { id, ...rest } = body;
+    /* Bookkeeping fields are set by this handler only — accepting them from
+       the body would let a replayed request reset stockRestored and restock
+       the same return twice, or re-point the return at another order. */
+    const { id, stockRestored: _sr, stockRestoredAt: _sra, orderId: _oid, items: _items, ...rest } = body;
     if (!id) return NextResponse.json({ success: false, message: 'ID required' }, { status: 400 });
     const db = getDB();
     const ref = db.collection('returns').doc(id);
 
+    let orderId = null;
     await db.runTransaction(async (tx) => {
       const doc = await tx.get(ref);
       if (!doc.exists) throw new Error('Return request not found');
       const current = doc.data();
+      orderId = current.orderId;
       const update = { ...rest, updatedAt: new Date().toISOString() };
 
       /* Restock only once the item has physically come back (not merely
@@ -46,7 +52,17 @@ export async function PATCH(request) {
       tx.update(ref, update);
     });
 
-    return NextResponse.json({ success: true, data: docToObj(await ref.get()) });
+    /* Money went back to the customer, so the vendor's earnings on that
+       order are voided (or clawed back if already paid out). Idempotent. */
+    let settlementError = null;
+    if (orderId && (rest.refundStatus === 'processed' || rest.returnStatus === 'refund_processed')) {
+      await reverseOrderSettlements(db, orderId, { reason: 'refund' }).catch((e) => {
+        settlementError = e.message;
+        console.error('[settlement] reversal failed for order', orderId, e.message);
+      });
+    }
+
+    return NextResponse.json({ success: true, data: docToObj(await ref.get()), ...(settlementError && { settlementError }) });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }

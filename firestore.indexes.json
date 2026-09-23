@@ -1,0 +1,17 @@
+{
+  "indexes": [
+    { "collectionGroup": "products",        "queryScope": "COLLECTION", "fields": [{ "fieldPath": "vendorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "warehouses",      "queryScope": "COLLECTION", "fields": [{ "fieldPath": "vendorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "suppliers",       "queryScope": "COLLECTION", "fields": [{ "fieldPath": "vendorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "accounting",      "queryScope": "COLLECTION", "fields": [{ "fieldPath": "vendorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "employees",       "queryScope": "COLLECTION", "fields": [{ "fieldPath": "vendorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "staff",           "queryScope": "COLLECTION", "fields": [{ "fieldPath": "vendorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "stockLots",       "queryScope": "COLLECTION", "fields": [{ "fieldPath": "vendorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "purchaseOrders",  "queryScope": "COLLECTION", "fields": [{ "fieldPath": "vendorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "purchaseIndents", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "vendorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "rentals",         "queryScope": "COLLECTION", "fields": [{ "fieldPath": "vendorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "vendorOrders",    "queryScope": "COLLECTION", "fields": [{ "fieldPath": "vendorId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "vendorLedger",    "queryScope": "COLLECTION", "fields": [{ "fieldPath": "vendorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] }
+  ],
+  "fieldOverrides": []
+}

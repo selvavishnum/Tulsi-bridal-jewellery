@@ -4,6 +4,7 @@ import { getEffectiveSession } from '@/lib/adminCollection';
 import { sendOrderConfirmation, sendOrderNotificationToAdmin } from '@/lib/email';
 import { sendOrderWhatsAppToAdmin, sendOrderWhatsAppToCustomer } from '@/lib/whatsapp';
 import { getAvailableCouriers, isConfigured as shiprocketConfigured } from '@/lib/shiprocket';
+import { PLATFORM_VENDOR_ID, validateVendorPricing, toCustomerOrder } from '@/lib/settlement';
 
 /* Shipping rules — must match the cart display in src/context/CartContext.js */
 const FREE_SHIPPING_ABOVE = 2000;
@@ -55,7 +56,7 @@ export async function GET(request) {
       }
     }
 
-    let orders = merged.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    let orders = merged.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(toCustomerOrder);
     if (status) orders = orders.filter((o) => o.status === status);
 
     const total = orders.length;
@@ -95,6 +96,11 @@ export async function POST(request) {
        the browser sent is discarded — otherwise a caller could post total: 1
        for a high-value cart and pay ₹1 for it. */
     let computedSubtotal = 0;
+    /* Items are rebuilt from scratch rather than trusting the client's
+       objects — any extra keys the browser sent used to be stored as-is. */
+    const orderItems = [];
+    const vendorFees = {};
+    const vendorCache = new Map();
     for (const item of items) {
       if (!item.product) {
         return NextResponse.json({ success: false, message: 'Each item must reference a product' }, { status: 400 });
@@ -111,11 +117,38 @@ export async function POST(request) {
         return NextResponse.json({ success: false, message: `Insufficient stock for ${prod.name || item.name}` }, { status: 400 });
       }
       const unitPrice = Number(prod.discountPrice) || Number(prod.price) || 0;
+
+      /* Marketplace: snapshot who sells this piece, what the platform
+         retains as supply cost, and the vendor's fee rate at this moment —
+         settlement on delivery uses these, never the product's later values. */
+      const vendorId = prod.vendorId || PLATFORM_VENDOR_ID;
+      let supplyCost = 0;
+      if (vendorId !== PLATFORM_VENDOR_ID) {
+        if (!vendorCache.has(vendorId)) {
+          const vDoc = await db.collection('vendors').doc(vendorId).get();
+          vendorCache.set(vendorId, vDoc.exists ? vDoc.data() : null);
+        }
+        const vendor = vendorCache.get(vendorId);
+        const pricingError = validateVendorPricing({ ...prod, vendorId });
+        if (!vendor || vendor.status === 'suspended' || pricingError) {
+          console.error('[orders POST] vendor product not sellable:', item.product, pricingError || (vendor ? 'vendor suspended' : 'vendor missing'));
+          return NextResponse.json({ success: false, message: `Product no longer available: ${prod.name || item.name}` }, { status: 400 });
+        }
+        supplyCost = Number(prod.supplyCost);
+        vendorFees[vendorId] = Math.max(0, Math.floor(Number(vendor.platformFeeBps) || 0));
+      }
+
       computedSubtotal += unitPrice * item.quantity;
-      /* Store the authoritative values, not the client's copy */
-      item.price = unitPrice;
-      item.name  = prod.name || item.name || '';
-      item.image = prod.images?.[0] || item.image || null;
+      orderItems.push({
+        product: item.product,
+        quantity: item.quantity,
+        price: unitPrice,
+        name: prod.name || '',
+        image: prod.images?.[0] || null,
+        sku: prod.sku || null,
+        vendorId,
+        supplyCost,
+      });
     }
 
     const computedShipping = computedSubtotal >= FREE_SHIPPING_ABOVE ? 0 : SHIPPING_FEE;
@@ -202,7 +235,9 @@ export async function POST(request) {
       orderNumber,
       userId: session?.user?.id || null,
       guestEmail: resolvedEmail,
-      items,
+      items: orderItems,
+      vendorIds: [...new Set(orderItems.map((i) => i.vendorId))],
+      vendorFees,
       shippingAddress: normalizedAddress,
       /* Built server-side — a client-supplied payment object could otherwise
          pre-seed razorpayOrderId/amountDue and defeat payment verification. */
@@ -278,16 +313,17 @@ export async function POST(request) {
        awardLoyaltyPoints() once the order is actually paid. */
 
     const fullOrder = { id: orderRef.id, _id: orderRef.id, ...orderData };
+    const customerOrder = toCustomerOrder(fullOrder);
 
     /* Send emails + WhatsApp — await so they complete before response */
     await Promise.all([
-      sendOrderConfirmation(fullOrder).catch((e) => console.error('[Email] Customer confirmation failed:', e.message)),
+      sendOrderConfirmation(customerOrder).catch((e) => console.error('[Email] Customer confirmation failed:', e.message)),
       sendOrderNotificationToAdmin(fullOrder).catch((e) => console.error('[Email] Admin notification failed:', e.message)),
       sendOrderWhatsAppToAdmin(fullOrder).catch((e) => console.error('[WhatsApp] Admin alert failed:', e.message)),
-      sendOrderWhatsAppToCustomer(fullOrder).catch((e) => console.error('[WhatsApp] Customer alert failed:', e.message)),
+      sendOrderWhatsAppToCustomer(customerOrder).catch((e) => console.error('[WhatsApp] Customer alert failed:', e.message)),
     ]);
 
-    return NextResponse.json({ success: true, data: fullOrder }, { status: 201 });
+    return NextResponse.json({ success: true, data: customerOrder }, { status: 201 });
   } catch (error) {
     const message = error?.error?.description || error?.message || 'Could not place order. Please try again.';
     console.error('[orders POST] failed:', error?.error || error);

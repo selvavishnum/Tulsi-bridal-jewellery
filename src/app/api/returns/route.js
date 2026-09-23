@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
+import { toCustomerOrder } from '@/lib/settlement';
 
 export async function POST(request) {
   try {
@@ -60,7 +61,9 @@ export async function POST(request) {
 
     const ref = db.collection('returns').doc();
     /* Refund value comes from the stored order, never from the request body */
-    const returnItems = order.items || [];
+    /* Customer-safe copy: the stored order items carry the platform's
+       supply cost and vendor id, which must never reach the shopper. */
+    const returnItems = toCustomerOrder({ items: order.items || [] }).items;
     const refundAmount = Number(order.total) || 0;
 
     const doc = {
@@ -113,7 +116,10 @@ export async function GET() {
     for (const doc of [...byUserId.docs, ...byEmail.docs]) {
       if (!seen.has(doc.id)) {
         seen.add(doc.id);
-        results.push({ id: doc.id, ...doc.data() });
+        const r = { id: doc.id, ...doc.data() };
+        // Returns opened before the fix stored raw order items — strip on the way out too.
+        if (Array.isArray(r.items)) r.items = toCustomerOrder({ items: r.items }).items;
+        results.push(r);
       }
     }
     results.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));

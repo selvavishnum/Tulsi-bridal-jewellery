@@ -2,6 +2,17 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getDB, docToObj } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
+import { PLATFORM_VENDOR_ID } from '@/lib/data/scopedDb';
+
+async function vendorLoginGuard(ref) {
+  const snap = await ref.get();
+  if (!snap.exists) return NextResponse.json({ success: false, message: 'Staff member not found' }, { status: 404 });
+  const v = snap.data().vendorId;
+  if (v && v !== PLATFORM_VENDOR_ID) {
+    return NextResponse.json({ success: false, message: 'This is a vendor login — manage it from the Vendors page.' }, { status: 400 });
+  }
+  return null;
+}
 
 export async function PUT(request, context) {
   try {
@@ -10,8 +21,13 @@ export async function PUT(request, context) {
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const { name, role, phone, status, password } = await request.json();
+    if (role === 'Owner') {
+      return NextResponse.json({ success: false, message: 'Owner access comes from ADMIN_EMAILS and cannot be assigned here.' }, { status: 400 });
+    }
     const db = getDB();
     const ref = db.collection('staff').doc(id);
+    const blocked = await vendorLoginGuard(ref);
+    if (blocked) return blocked;
 
     const updateData = {
       ...(name !== undefined && { name }),
@@ -38,7 +54,10 @@ export async function DELETE(request, context) {
     const session = await requireAdmin();
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const db = getDB();
-    await db.collection('staff').doc(id).delete();
+    const ref = db.collection('staff').doc(id);
+    const blocked = await vendorLoginGuard(ref);
+    if (blocked) return blocked;
+    await ref.delete();
     return NextResponse.json({ success: true, message: 'Staff member deleted' });
   } catch (e) { return NextResponse.json({ success: false, message: e.message }, { status: 500 }); }
 }

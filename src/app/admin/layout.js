@@ -10,7 +10,7 @@ import {
   FiDollarSign, FiSettings, FiUserCheck, FiTrendingUp, FiX,
   FiExternalLink, FiChevronRight, FiAlertTriangle, FiCamera, FiMessageSquare,
   FiFolder, FiDownload, FiUpload, FiLayers, FiGrid, FiStar, FiAlertCircle, FiShield,
-  FiShoppingCart,
+  FiShoppingCart, FiBriefcase,
 } from 'react-icons/fi';
 import { GiQueenCrown } from 'react-icons/gi';
 import toast from 'react-hot-toast';
@@ -71,6 +71,7 @@ const NAV_GROUPS = [
   {
     label: 'Management',
     items: [
+      { href: '/admin/vendors',       label: 'Vendors & Payouts', icon: FiBriefcase },
       { href: '/admin/staff',         label: 'Staff & Access',  icon: FiShield },
       { href: '/admin/suppliers',    label: 'Suppliers',       icon: FiTruck },
       { href: '/admin/warehouses',   label: 'Warehouses',      icon: FiArchive },
@@ -256,6 +257,11 @@ export default function AdminLayout({ children }) {
 
     if (status === 'unauthenticated') {
       router.replace('/admin-portal');
+      return null;
+    }
+
+    if (session?.user?.role === 'vendor') {
+      router.replace('/vendor');
       return null;
     }
 

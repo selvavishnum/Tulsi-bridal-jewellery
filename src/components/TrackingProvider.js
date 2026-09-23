@@ -46,7 +46,7 @@ export function TrackingProvider({ children }) {
      against test/scraper traffic inflating session and pageview counts.
      (Not reactive — a session's automation status can't change mid-visit,
      so a plain const is fine here, no state/effect needed to track it.) */
-  const isAdminUser = session?.user?.role === 'admin';
+  const isAdminUser = session?.user?.role === 'admin' || session?.user?.role === 'vendor';
   const isBot = typeof navigator !== 'undefined' && navigator.webdriver === true;
   const skipTracking = isAdminUser || isBot;
 

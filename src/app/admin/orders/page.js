@@ -151,6 +151,7 @@ function ShipmentModal({ order, onClose, onShipped }) {
   const [mode, setMode] = useState('manual'); // 'manual' | 'shiprocket'
   const [trackingNumber, setTrackingNumber] = useState(order.trackingNumber || '');
   const [courierName, setCourierName] = useState(order.courierName || '');
+  const [shippingCost, setShippingCost] = useState(order.shippingCostActual ?? '');
   const [saving, setSaving] = useState(false);
 
   async function save() {
@@ -165,6 +166,7 @@ function ShipmentModal({ order, onClose, onShipped }) {
           manualTracking: true,
           trackingNumber: trackingNumber.trim(),
           courierName,
+          shippingCost: shippingCost === '' ? undefined : shippingCost,
         }),
       });
       const data = await res.json();
@@ -246,7 +248,18 @@ function ShipmentModal({ order, onClose, onShipped }) {
                 placeholder="e.g. 1234567890"
                 className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-gold-400 font-mono"
               />
-              <p className="text-xs text-gray-400 mt-1">Order will be auto-marked as "Shipped" and customer will be notified by email.</p>
+              <p className="text-xs text-gray-400 mt-1">Order will be auto-marked as &ldquo;Shipped&rdquo; and the customer notified by email and WhatsApp.</p>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Courier charge paid (₹)</label>
+              <input
+                type="number" min="0" step="0.01"
+                value={shippingCost}
+                onChange={(e) => setShippingCost(e.target.value)}
+                placeholder="e.g. 72"
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-gold-400"
+              />
+              <p className="text-xs text-gray-400 mt-1">Deducted from vendor earnings for vendor items in this parcel.</p>
             </div>
             <button onClick={save} disabled={saving}
               className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition disabled:opacity-60 flex items-center justify-center gap-2">
@@ -440,10 +453,22 @@ export default function AdminOrdersPage() {
     if (!nextStatus) return;
     if (nextStatus === 'shipped') { setShipModal(order); return; }
     setUpdating(order._id);
-    const res  = await fetch(`/api/orders/${order._id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nextStatus }) });
-    const data = await res.json();
-    if (data.success) { toast.success(`Order → ${nextStatus}`); fetchOrders(); } else toast.error(data.message);
-    setUpdating(null);
+    try {
+      const res  = await fetch(`/api/orders/${order._id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nextStatus }) });
+      const data = await res.json();
+      if (data.success) { toast.success(`Order → ${nextStatus}`); showSettlement(data); fetchOrders(); } else toast.error(data.message);
+    } catch {
+      toast.error('Network error — the order was not updated');
+    } finally {
+      setUpdating(null);
+    }
+  }
+
+  /* Vendor earnings are posted on delivery; tell the admin when that
+     didn't happen so it can be fixed from the Vendors page. */
+  function showSettlement(data) {
+    if (data.settlementError) toast.error(`Vendor earnings not posted: ${data.settlementError}`, { duration: 10000 });
+    else if (data.settlementNote) toast(`Vendor earnings: ${data.settlementNote}`, { duration: 10000 });
   }
 
   async function updateStatus(orderId, status) {
@@ -451,9 +476,13 @@ export default function AdminOrdersPage() {
       const order = orders.find((o) => o._id === orderId);
       if (order) { setShipModal(order); setSelected(null); return; }
     }
-    const res  = await fetch(`/api/orders/${orderId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
-    const data = await res.json();
-    if (data.success) { toast.success('Order updated'); fetchOrders(); setSelected(null); } else toast.error(data.message);
+    try {
+      const res  = await fetch(`/api/orders/${orderId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+      const data = await res.json();
+      if (data.success) { toast.success('Order updated'); showSettlement(data); fetchOrders(); setSelected(null); } else toast.error(data.message);
+    } catch {
+      toast.error('Network error — the order was not updated');
+    }
   }
 
   function selectTab(id) { setActiveTab(id); setSearch(''); setExpanded(null); setSidebar(false); }

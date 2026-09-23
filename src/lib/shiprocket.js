@@ -54,7 +54,7 @@ export async function createShiprocketOrder(order, courier_id = null) {
     pickup_location:    process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary',
     channel_id:         '',
     comment:            'Tulsi Bridal Jewellery',
-    billing_customer_name:  addr.name || 'Customer',
+    billing_customer_name:  addr.name || addr.fullName || 'Customer', // older orders only stored fullName
     billing_last_name:      '',
     billing_address:        addr.street || addr.address || '',
     billing_address_2:      '',
@@ -97,21 +97,49 @@ export async function createShiprocketOrder(order, courier_id = null) {
     return { success: false, message, data: created };
   }
 
-  /* Auto-assign courier if not specified */
-  const shipPayload = {
-    shipment_id:  created.shipment_id,
-    courier_id:   courier_id || null,
-  };
-  const assigned = await srFetch('/courier/assign/awb', { method: 'POST', body: JSON.stringify(shipPayload) });
-
+  const awb = await assignAwb(created.shipment_id, courier_id);
   return {
     success:       true,
     orderId:       created.order_id,
     shipmentId:    created.shipment_id,
-    awb:           assigned.response?.data?.awb_code || null,
-    courierName:   assigned.response?.data?.courier_name || null,
-    data:          { created, assigned },
+    ...awb,
+    data:          { created, assigned: awb.raw },
   };
+}
+
+/* Assigns a courier + AWB to an existing Shiprocket shipment (auto-picks the
+   courier when none is given). Also used to retry after a failed assignment
+   without creating a duplicate Shiprocket order. */
+export async function assignAwb(shipmentId, courier_id = null) {
+  const assigned = await srFetch('/courier/assign/awb', {
+    method: 'POST',
+    body: JSON.stringify({ shipment_id: shipmentId, courier_id: courier_id || null }),
+  });
+  const data = assigned.response?.data || {};
+  return {
+    awb:          data.awb_code || null,
+    courierName:  data.courier_name || null,
+    courierId:    data.courier_company_id || courier_id || null,
+    /* Shiprocket reports why no AWB was issued (no serviceable courier,
+       low wallet balance, …) in message/status fields rather than failing. */
+    awbError:     data.awb_code ? null : (assigned.message || data.awb_assign_error || 'Courier / AWB could not be assigned'),
+    raw:          assigned,
+  };
+}
+
+/* The freight Shiprocket quotes for this parcel with the chosen courier —
+   the platform's actual shipping cost, deducted from vendor earnings. Returns
+   null when it can't be determined; the admin can then enter it by hand. */
+export async function getFreightQuote({ pincode, cod = false, courierId, weight = 0.5 }) {
+  const pickupPincode = process.env.SHIPROCKET_PICKUP_PINCODE;
+  if (!pickupPincode || !pincode || !courierId) return null;
+  const data = await srFetch(
+    `/courier/serviceability/?pickup_postcode=${pickupPincode}&delivery_postcode=${encodeURIComponent(pincode)}&cod=${cod ? 1 : 0}&weight=${weight}`,
+  );
+  const match = (data?.data?.available_courier_companies || [])
+    .find((c) => String(c.courier_company_id) === String(courierId));
+  const rate = Number(match?.rate);
+  return Number.isFinite(rate) && rate >= 0 ? rate : null;
 }
 
 /* ── Track by AWB number ── */
