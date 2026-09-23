@@ -21,6 +21,9 @@ export async function PUT(request, context) {
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const { name, role, phone, status, password } = await request.json();
+    if (role === 'Owner') {
+      return NextResponse.json({ success: false, message: 'Owner access comes from ADMIN_EMAILS and cannot be assigned here.' }, { status: 400 });
+    }
     const db = getDB();
     const ref = db.collection('staff').doc(id);
     const blocked = await vendorLoginGuard(ref);

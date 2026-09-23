@@ -163,10 +163,13 @@ export async function PUT(request, context) {
        refreshed if the real shipping charge is corrected afterwards, and
        reversed if a delivered order is cancelled. Each call is idempotent. */
     let settlementError = null;
+    let settlementNote = null;
     try {
       const deliveredNow = status ? status === 'delivered' : currentOrder.status === 'delivered';
       if (status === 'delivered' || (shippingCostPatch !== undefined && deliveredNow)) {
-        await postDeliverySettlement(db, id, { recalculate: shippingCostPatch !== undefined });
+        const result = await postDeliverySettlement(db, id, { recalculate: shippingCostPatch !== undefined });
+        // e.g. delivered before an online payment was confirmed — say so rather than skip silently
+        if (result.skipped && !/No vendor items/.test(result.skipped)) settlementNote = result.skipped;
       }
       if (status === 'cancelled' && currentOrder.status === 'delivered') {
         await reverseOrderSettlements(db, id, { reason: 'cancelled after delivery' });
@@ -188,7 +191,12 @@ export async function PUT(request, context) {
     }
 
     if (!isAdmin) return NextResponse.json({ success: true, data: toCustomerOrder(updatedOrder) });
-    return NextResponse.json({ success: true, data: updatedOrder, ...(settlementError && { settlementError }) });
+    return NextResponse.json({
+      success: true,
+      data: updatedOrder,
+      ...(settlementError && { settlementError }),
+      ...(settlementNote && { settlementNote }),
+    });
   } catch (error) {
     const statusCode = error instanceof OrderStateError ? 400 : 500;
     return NextResponse.json({ success: false, message: error.message }, { status: statusCode });

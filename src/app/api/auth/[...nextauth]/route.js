@@ -39,10 +39,14 @@ async function resolveAccess(db, email) {
     return { role: 'customer' };
   }
   const staff = active[0];
+  /* 'Owner' is reserved for ADMIN_EMAILS (it unlocks payouts). A staff
+     record claiming it — staff roles are editable by any admin — gets no
+     role label rather than owner powers. */
+  const staffRole = staff.role && staff.role !== 'Owner' ? staff.role : null;
   if (staff.vendorId && staff.vendorId !== PLATFORM_VENDOR_ID) {
-    return { role: 'vendor', vendorId: staff.vendorId, staffRole: staff.role || null };
+    return { role: 'vendor', vendorId: staff.vendorId, staffRole };
   }
-  return { role: 'admin', staffRole: staff.role || null };
+  return { role: 'admin', staffRole };
 }
 
 async function upsertGoogleUser(db, profile) {
@@ -87,31 +91,31 @@ providers.push(
         const db = getDB();
         const email = credentials.email.toLowerCase();
 
-        // Check users collection first
-        const snap = await db.collection('users').where('email', '==', email).limit(1).get();
-        if (!snap.empty) {
+        const access = await resolveAccess(db, email);
+
+        /* Customers sign in with their users-collection password. Anyone with
+           more than customer access must use their staff-record password (or
+           email OTP / Google, which prove they own the address): users
+           passwords come from open registration, which never verifies the
+           email, so trusting them let anyone register a staff member's or
+           owner's address and sign in with their access. */
+        if (access.role === 'customer') {
+          const snap = await db.collection('users').where('email', '==', email).limit(1).get();
+          if (snap.empty) return null;
           const user = { id: snap.docs[0].id, ...snap.docs[0].data() };
           if (!user.isActive || !user.password) return null;
           const isValid = await bcrypt.compare(credentials.password, user.password);
           if (!isValid) return null;
-          const access = await resolveAccess(db, user.email);
-          if (access.role !== user.role) await snap.docs[0].ref.update({ role: access.role });
-          return { id: user.id, name: user.name, email: user.email, ...access };
+          if (user.role !== 'customer') await snap.docs[0].ref.update({ role: 'customer' });
+          return { id: user.id, name: user.name, email: user.email, role: 'customer' };
         }
 
-        // Staff account (platform staff or an outside vendor's login)
-        const staffSnap = await db.collection('staff').where('email', '==', email).limit(1).get();
-        if (!staffSnap.empty) {
-          const staff = { id: staffSnap.docs[0].id, ...staffSnap.docs[0].data() };
-          if (staff.status !== 'Active' || !staff.password) return null;
-          const isValid = await bcrypt.compare(credentials.password, staff.password);
-          if (!isValid) return null;
-          const access = await resolveAccess(db, staff.email);
-          if (access.role === 'customer') return null;
-          return { id: staff.id, name: staff.name, email: staff.email, ...access };
-        }
-
-        return null;
+        const staffSnap = await db.collection('staff').where('email', '==', email).get();
+        const staff = staffSnap.docs.map((d) => ({ id: d.id, ...d.data() })).find((s) => s.status === 'Active' && s.password);
+        if (!staff) return null;
+        const isValid = await bcrypt.compare(credentials.password, staff.password);
+        if (!isValid) return null;
+        return { id: staff.id, name: staff.name, email: staff.email, ...access };
       } catch (err) {
         console.error('Auth credentials error:', err.message);
         return null;

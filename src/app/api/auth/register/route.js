@@ -20,6 +20,17 @@ export async function POST(request) {
     }
 
     const db = getDB();
+    const lower = String(email).trim().toLowerCase();
+    /* Open registration never verifies the email, so it must not be usable
+       for an address that carries more than customer access — the owner's,
+       or a staff member's or vendor's login. Those sign in with their staff
+       password, email OTP or Google. */
+    const owners = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
+      .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+    const staffSnap = await db.collection('staff').where('email', '==', lower).limit(1).get();
+    if (owners.includes(lower) || !staffSnap.empty) {
+      return NextResponse.json({ success: false, message: 'This email belongs to a staff or vendor account — sign in from the staff login instead.' }, { status: 409 });
+    }
     const existing = await db.collection('users').where('email', '==', email.toLowerCase()).limit(1).get();
     if (!existing.empty) {
       return NextResponse.json({ success: false, message: 'Email already registered' }, { status: 409 });

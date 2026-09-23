@@ -16,6 +16,7 @@ const EMPTY_VENDOR = {
 
 function destination(p) {
   if (!p) return 'Not set';
+  if (p.masked !== undefined) return p.masked; // non-owner staff get a masked copy
   if (p.method === 'upi') return `UPI · ${p.upiId}`;
   return `${p.accountName} · A/c ${p.accountNumber} · ${p.ifsc}`;
 }

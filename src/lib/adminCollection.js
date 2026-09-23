@@ -24,16 +24,25 @@ export async function requireAdmin() {
 }
 
 /* Money controls — vendor payouts, vendor bank/UPI details, fee rates.
-   Owner = listed in ADMIN_EMAILS (staffRole 'Owner' is only ever set from
-   that env var, in the auth config). Deliberately NOT staffRole
-   'SuperAdmin': that comes from the staff collection, which any platform
-   staff member can edit, so trusting it would let an employee point a
-   vendor's payouts at their own account. */
+   Owner = the signed-in email is listed in ADMIN_EMAILS, checked directly
+   on every call. Deliberately not any staff role: staff roles live in the
+   staff collection, which any platform admin can edit, so trusting one
+   would let an employee point a vendor's payouts at their own account. */
 export async function requireOwner() {
   const session = await requireAdmin();
   if (!session) return null;
   if (DEV_BYPASS) return session;
-  return session.user.staffRole === 'Owner' ? session : null;
+  const owners = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
+    .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+  return owners.includes(String(session.user.email || '').toLowerCase()) ? session : null;
+}
+
+export function isOwnerSession(session) {
+  if (!session) return false;
+  if (DEV_BYPASS) return true;
+  const owners = (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
+    .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+  return owners.includes(String(session.user?.email || '').toLowerCase());
 }
 
 /* For endpoints that behave differently for admin vs. customer.

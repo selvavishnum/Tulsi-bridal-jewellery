@@ -31,6 +31,9 @@ export async function POST(request) {
        an address saved as typed ("Priya@…") could never log in. */
     const email = String(rawEmail || '').trim().toLowerCase();
 
+    if (role === 'Owner') {
+      return NextResponse.json({ success: false, message: 'Owner access comes from ADMIN_EMAILS and cannot be assigned here.' }, { status: 400 });
+    }
     if (!name || !email || !password) {
       return NextResponse.json({ success: false, message: 'Name, email and password are required' }, { status: 400 });
     }

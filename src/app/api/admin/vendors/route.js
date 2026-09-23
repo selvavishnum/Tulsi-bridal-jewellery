@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getDB } from '@/lib/firebase';
-import { requireAdmin, requireOwner } from '@/lib/adminCollection';
+import { requireAdmin, requireOwner, isOwnerSession } from '@/lib/adminCollection';
+import { maskPayoutDestination } from '@/lib/vendorLedger';
 import { summarizeLedger, PLATFORM_VENDOR_ID } from '@/lib/settlement';
 
 const IFSC = /^[A-Z]{4}0[A-Z0-9]{6}$/;
@@ -46,6 +47,9 @@ export async function GET() {
     const session = await requireAdmin();
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const db = getDB();
+    /* Full bank/UPI details are for the owner who makes the transfers;
+       other staff see only the masked destination. */
+    const owner = isOwnerSession(session);
 
     const [vendorsSnap, ledgerSnap, productsSnap, staffSnap] = await Promise.all([
       db.collection('vendors').get(),
@@ -87,7 +91,7 @@ export async function GET() {
           phone: v.phone || '',
           status: v.status || 'active',
           platformFeePercent: (Number(v.platformFeeBps) || 0) / 100,
-          payout: v.payout || null,
+          payout: !v.payout ? null : owner ? v.payout : { method: v.payout.method, masked: maskPayoutDestination(v.payout) },
           login: loginByVendor.get(d.id) || null,
           productCount: productCount.get(d.id) || 0,
           summary,

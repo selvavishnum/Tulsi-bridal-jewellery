@@ -106,8 +106,45 @@ test('recalculate refreshes unpaid entries after the real shipping charge is rec
 test('delivered → cancelled → delivered again reinstates the voided entry', async () => {
   const db = seed();
   await postDeliverySettlement(db, 'o1');
-  await reverseOrderSettlements(db, 'o1');
+  await reverseOrderSettlements(db, 'o1', { reason: 'cancelled after delivery' });
   assert.equal(ledger(db)[0].status, 'reversed');
   assert.deepEqual(await postDeliverySettlement(db, 'o1'), { posted: 0, updated: 1 });
   assert.equal(ledger(db)[0].status, 'unsettled');
+});
+
+test('a refunded order can never be credited again — not by recalculation, re-delivery, or a refund before delivery', async () => {
+  const db = seed();
+  await postDeliverySettlement(db, 'o1');
+  await reverseOrderSettlements(db, 'o1', { reason: 'refund' });
+  assert.match((await postDeliverySettlement(db, 'o1', { recalculate: true })).skipped, /refunded/);
+  assert.equal(ledger(db)[0].status, 'reversed');
+
+  const early = seed({ status: 'shipped' });
+  await reverseOrderSettlements(early, 'o1', { reason: 'refund' }); // refunded before it was ever delivered
+  early.store.get('orders').get('o1').status = 'delivered';
+  assert.match((await postDeliverySettlement(early, 'o1')).skipped, /refunded/);
+  assert.equal(ledger(early).length, 0);
+});
+
+test('a cancel (unlike a refund) can be undone by re-delivery, even after payout', async () => {
+  const db = seed();
+  await postDeliverySettlement(db, 'o1');
+  await recordVendorPayout(db, { vendorId: 'v1', reference: 'UTR1', now: afterHold });
+  await reverseOrderSettlements(db, 'o1', { reason: 'cancelled after delivery', now: afterHold });
+  assert.equal(summarizeLedger(ledger(db), afterHold).availablePaise, -66800);
+  await postDeliverySettlement(db, 'o1'); // delivered after all
+  assert.equal(summarizeLedger(ledger(db), afterHold).availablePaise, 0, 'clawback voided, nothing owed either way');
+  assert.equal(summarizeLedger(ledger(db), afterHold).paidOutPaise, 66800);
+});
+
+test('re-credited sale after a netted clawback is posted once', async () => {
+  const db = seed();
+  await postDeliverySettlement(db, 'o1');
+  await recordVendorPayout(db, { vendorId: 'v1', reference: 'UTR1', now: afterHold });
+  await reverseOrderSettlements(db, 'o1', { reason: 'cancelled after delivery', now: afterHold });
+  // clawback gets netted into a payout alongside a new sale
+  db.store.get('vendorLedger').set('other__v1', { vendorId: 'v1', type: 'order_settlement', netPaise: 100000, status: 'unsettled', availableAt: new Date(afterHold).toISOString() });
+  await recordVendorPayout(db, { vendorId: 'v1', reference: 'UTR2', now: afterHold });
+  assert.deepEqual(await postDeliverySettlement(db, 'o1'), { posted: 1, updated: 0 });
+  assert.deepEqual(await postDeliverySettlement(db, 'o1'), { posted: 0, updated: 0 });
 });

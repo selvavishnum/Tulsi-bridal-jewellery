@@ -453,10 +453,22 @@ export default function AdminOrdersPage() {
     if (!nextStatus) return;
     if (nextStatus === 'shipped') { setShipModal(order); return; }
     setUpdating(order._id);
-    const res  = await fetch(`/api/orders/${order._id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nextStatus }) });
-    const data = await res.json();
-    if (data.success) { toast.success(`Order → ${nextStatus}`); fetchOrders(); } else toast.error(data.message);
-    setUpdating(null);
+    try {
+      const res  = await fetch(`/api/orders/${order._id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nextStatus }) });
+      const data = await res.json();
+      if (data.success) { toast.success(`Order → ${nextStatus}`); showSettlement(data); fetchOrders(); } else toast.error(data.message);
+    } catch {
+      toast.error('Network error — the order was not updated');
+    } finally {
+      setUpdating(null);
+    }
+  }
+
+  /* Vendor earnings are posted on delivery; tell the admin when that
+     didn't happen so it can be fixed from the Vendors page. */
+  function showSettlement(data) {
+    if (data.settlementError) toast.error(`Vendor earnings not posted: ${data.settlementError}`, { duration: 10000 });
+    else if (data.settlementNote) toast(`Vendor earnings: ${data.settlementNote}`, { duration: 10000 });
   }
 
   async function updateStatus(orderId, status) {
@@ -464,9 +476,13 @@ export default function AdminOrdersPage() {
       const order = orders.find((o) => o._id === orderId);
       if (order) { setShipModal(order); setSelected(null); return; }
     }
-    const res  = await fetch(`/api/orders/${orderId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
-    const data = await res.json();
-    if (data.success) { toast.success('Order updated'); fetchOrders(); setSelected(null); } else toast.error(data.message);
+    try {
+      const res  = await fetch(`/api/orders/${orderId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+      const data = await res.json();
+      if (data.success) { toast.success('Order updated'); showSettlement(data); fetchOrders(); setSelected(null); } else toast.error(data.message);
+    } catch {
+      toast.error('Network error — the order was not updated');
+    }
   }
 
   function selectTab(id) { setActiveTab(id); setSearch(''); setExpanded(null); setSidebar(false); }

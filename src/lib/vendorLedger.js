@@ -40,13 +40,22 @@ export async function postDeliverySettlement(db, orderId, { recalculate = false 
     if (!snap.exists) throw new LedgerError('Order not found');
     const order = { id: snap.id, ...snap.data() };
     if (order.status !== 'delivered') return { posted: 0, updated: 0, skipped: 'Order is not delivered yet' };
-    if (order.payment?.status !== 'paid') return { posted: 0, updated: 0, skipped: 'Order is not paid' };
+    if (order.payment?.status !== 'paid') return { posted: 0, updated: 0, skipped: 'Order is not paid yet — post its vendor earnings from the Vendors page once payment is confirmed' };
+    /* The customer got their money back; nothing — a recalculation, a
+       re-delivery, the admin settle tool — may credit the vendor again. */
+    if (order.vendorRefundedAt) return { posted: 0, updated: 0, skipped: 'Order was refunded — no vendor earnings' };
 
     const settlements = computeVendorSettlements(order);
     if (!settlements.length) return { posted: 0, updated: 0, skipped: 'No vendor items in this order' };
 
     const refs = settlements.map((s) => db.collection('vendorLedger').doc(settlementEntryId(order.id, s.vendorId)));
-    const existing = await Promise.all(refs.map((r) => tx.get(r)));
+    const reversalRefs = settlements.map((s) => db.collection('vendorLedger').doc(reversalEntryId(order.id, s.vendorId)));
+    const redeliveryRefs = settlements.map((s) => db.collection('vendorLedger').doc(`${settlementEntryId(order.id, s.vendorId)}__redelivered`));
+    const [existing, reversals, redeliveries] = await Promise.all([
+      Promise.all(refs.map((r) => tx.get(r))),
+      Promise.all(reversalRefs.map((r) => tx.get(r))),
+      Promise.all(redeliveryRefs.map((r) => tx.get(r))),
+    ]);
 
     const now = new Date().toISOString();
     const deliveredAt = order.deliveredAt || now;
@@ -76,8 +85,19 @@ export async function postDeliverySettlement(db, orderId, { recalculate = false 
       } else if (recalculate && prior === 'unsettled') {
         tx.update(refs[i], doc);
         updated += 1;
+      } else if (prior === 'settled' && reversals[i].exists && reversals[i].data().status !== 'reversed') {
+        /* Paid out, then cancelled (clawback posted), now delivered after all.
+           The original entry is never rewritten — instead undo the clawback:
+           void it if not yet netted, or re-credit the sale if it was. */
+        if (reversals[i].data().status === 'unsettled') {
+          tx.update(reversalRefs[i], { status: 'reversed', reversedAt: now, reversalReason: 'delivered again' });
+          updated += 1;
+        } else if (!redeliveries[i].exists) {
+          tx.set(redeliveryRefs[i], { ...doc, status: 'unsettled', payoutId: null, createdAt: now });
+          posted += 1;
+        }
       }
-      // prior === 'settled': already paid out — never rewritten.
+      // Otherwise prior === 'settled': already paid out — never rewritten.
 
     });
     tx.update(orderRef, { vendorSettlementPostedAt: now });
@@ -92,14 +112,23 @@ export async function postDeliverySettlement(db, orderId, { recalculate = false 
  */
 export async function reverseOrderSettlements(db, orderId, { reason = 'refund', now = Date.now() } = {}) {
   const q = db.collection('vendorLedger').where('orderId', '==', String(orderId));
+  const orderRef = db.collection('orders').doc(String(orderId));
   return db.runTransaction(async (tx) => {
-    const snap = await tx.get(q);
+    const [snap, orderSnap] = await Promise.all([tx.get(q), tx.get(orderRef)]);
     const settlements = snap.docs.filter((d) => d.data().type === 'order_settlement');
     const settledOnes = settlements.filter((d) => d.data().status === 'settled');
-    const reversalRefs = settledOnes.map((d) => db.collection('vendorLedger').doc(reversalEntryId(orderId, d.data().vendorId)));
+    /* One reversal per entry it reverses: `${entryId}__reversal` (for an
+       original settlement that equals reversalEntryId(order, vendor)). */
+    const reversalRefs = settledOnes.map((d) => db.collection('vendorLedger').doc(`${d.id}__reversal`));
     const reversalSnaps = await Promise.all(reversalRefs.map((r) => tx.get(r)));
 
     const at = new Date(now).toISOString();
+    /* A refund is final (unlike a cancel, which a re-delivery can undo), so
+       mark the order — even when no entries exist yet (refunded before it
+       was ever delivered) — and postDeliverySettlement will refuse it. */
+    if (reason === 'refund' && orderSnap.exists && !orderSnap.data().vendorRefundedAt) {
+      tx.update(orderRef, { vendorRefundedAt: at });
+    }
     let voided = 0;
     let clawedBack = 0;
     for (const d of settlements) {
