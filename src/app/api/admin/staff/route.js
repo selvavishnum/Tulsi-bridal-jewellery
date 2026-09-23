@@ -20,11 +20,13 @@ export async function GET() {
       /* role = the tier this record actually grants today (a pre-4-tier role
          like "OrderManager" shows as its mapped tier, or null if it maps to
          none); legacyRole keeps the stored value visible until migration 004. */
-      .map(({ password, ...rest }) => ({
-        ...rest,
-        role: normalizeStaffRole(rest.role),
-        ...(rest.role && normalizeStaffRole(rest.role) !== rest.role && { legacyRole: rest.role }),
-      }))
+      .map(({ password, ...rest }) => {
+        let role = normalizeStaffRole(rest.role);
+        /* Mirror resolveAccess: a SUPER_ADMIN not granted through this page
+           grants nothing, so don't display it as if it did. */
+        if (role === 'SUPER_ADMIN' && !rest.roleGrantedBy) role = null;
+        return { ...rest, role, ...(rest.role && role !== rest.role && { legacyRole: rest.role }) };
+      })
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     return NextResponse.json({ success: true, data });
   } catch (e) { return NextResponse.json({ success: false, message: e.message }, { status: 500 }); }
@@ -57,7 +59,9 @@ export async function POST(request) {
     const hashedPassword = await bcrypt.hash(password, 10);
     const now = new Date().toISOString();
     const ref = db.collection('staff').doc();
-    const doc = { name, email, password: hashedPassword, role, phone: phone || '', status: status || 'Active', createdAt: now, updatedAt: now };
+    /* roleGrantedBy is what makes a staff-record SUPER_ADMIN count (see
+       resolveAccess) — only this SUPER_ADMIN-only route writes it. */
+    const doc = { name, email, password: hashedPassword, role, roleGrantedBy: session.user.email || 'unknown', roleGrantedAt: now, phone: phone || '', status: status || 'Active', createdAt: now, updatedAt: now };
     await ref.set(doc);
 
     const { password: _p, ...safeDoc } = doc;

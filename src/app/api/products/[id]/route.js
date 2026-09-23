@@ -35,6 +35,15 @@ export async function PUT(request, context) {
     const doc = await ref.get();
     if (!doc.exists) return NextResponse.json({ success: false, message: 'Product not found' }, { status: 404 });
 
+    /* Barcodes are generated from the SKU, so it must stay unique — the
+       inventory route already enforced this; this route didn't. */
+    if (body.sku && body.sku !== doc.data().sku) {
+      const dup = await db.collection('products').where('sku', '==', body.sku).limit(1).get();
+      if (!dup.empty && dup.docs[0].id !== id) {
+        return NextResponse.json({ success: false, message: `SKU "${body.sku}" already exists on another product.` }, { status: 409 });
+      }
+    }
+
     if (auth.tier === ROLES.CATALOG_STAFF) {
       /* Restricted fields sent back unchanged (the form round-trips the
          product) are fine; any attempt to change one is refused. */
@@ -43,6 +52,20 @@ export async function PUT(request, context) {
         return NextResponse.json({ success: false, message: `Forbidden fields for catalog staff: ${denied.join(', ')}` }, { status: 403 });
       }
       const allowed = Object.fromEntries(Object.entries(body).filter(([k]) => CATALOG_EDITABLE_PRODUCT_FIELDS.includes(k)));
+      if (allowed.stock !== undefined) {
+        const n = Number(allowed.stock);
+        if (!Number.isInteger(n) || n < 0) return NextResponse.json({ success: false, message: 'Stock must be a whole number ≥ 0' }, { status: 400 });
+        allowed.stock = n;
+        const before = Number(doc.data().stock) || 0;
+        /* Same rule as inventory PATCH: catalog stock corrections are logged
+           for a Super Admin to reconcile against the FIFO cost lots. */
+        if (n !== before) {
+          await db.collection('stockAdjustments').add({
+            productId: id, from: before, to: n, by: auth.session?.user?.email || null, tier: auth.tier,
+            lotsReconciled: false, createdAt: new Date().toISOString(),
+          });
+        }
+      }
       await ref.update({ ...allowed, updatedAt: new Date().toISOString() });
       return NextResponse.json({ success: true, data: stripCostFields(docToObj(await ref.get())) });
     }

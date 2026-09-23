@@ -149,7 +149,7 @@ function printLabel(order) {
 }
 
 /* ── Shipment / Tracking Modal ── */
-function ShipmentModal({ order, onClose, onShipped }) {
+function ShipmentModal({ order, onClose, onShipped, canSetCost }) {
   const [mode, setMode] = useState('manual'); // 'manual' | 'shiprocket'
   const [trackingNumber, setTrackingNumber] = useState(order.trackingNumber || '');
   const [courierName, setCourierName] = useState(order.courierName || '');
@@ -168,7 +168,7 @@ function ShipmentModal({ order, onClose, onShipped }) {
           manualTracking: true,
           trackingNumber: trackingNumber.trim(),
           courierName,
-          shippingCost: shippingCost === '' ? undefined : shippingCost,
+          ...(canSetCost && shippingCost !== '' && { shippingCost }),
         }),
       });
       const data = await res.json();
@@ -252,6 +252,7 @@ function ShipmentModal({ order, onClose, onShipped }) {
               />
               <p className="text-xs text-gray-400 mt-1">Order will be auto-marked as &ldquo;Shipped&rdquo; and the customer notified by email and WhatsApp.</p>
             </div>
+            {canSetCost && (
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Courier charge paid (₹)</label>
               <input
@@ -263,6 +264,7 @@ function ShipmentModal({ order, onClose, onShipped }) {
               />
               <p className="text-xs text-gray-400 mt-1">Deducted from vendor earnings for vendor items in this parcel.</p>
             </div>
+            )}
             <button onClick={save} disabled={saving}
               className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition disabled:opacity-60 flex items-center justify-center gap-2">
               <FiTruck /> {saving ? 'Saving…' : 'Save Tracking & Mark Shipped'}
@@ -786,7 +788,7 @@ export default function AdminOrdersPage() {
                                       <FiPhone className="text-xs" /> WhatsApp Customer
                                     </a>
                                   )}
-                                  <ResendEmailButtons orderId={o._id} />
+                                  {!isFulfilment && <ResendEmailButtons orderId={o._id} />}
                                   <div className="text-xs text-gray-500 space-y-1">
                                     <p><span className="font-medium">Payment:</span> {o.payment?.method} — {o.payment?.status}</p>
                                     {o.trackingNumber && <p><span className="font-medium">Tracking:</span> <span className="font-mono">{o.trackingNumber}</span></p>}
@@ -868,7 +870,7 @@ export default function AdminOrdersPage() {
       )}
 
       {shipModal && (
-        <ShipmentModal order={shipModal} onClose={() => setShipModal(null)} onShipped={fetchOrders} />
+        <ShipmentModal order={shipModal} onClose={() => setShipModal(null)} onShipped={fetchOrders} canSetCost={!isFulfilment} />
       )}
     </div>
   );

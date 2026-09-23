@@ -71,6 +71,7 @@ export function fakeFirestore(seed = {}) {
     collection: (col) => ({
       ...query(col),
       doc: (id = `auto${++autoId}`) => docRef(col, id),
+      add: async (d) => { const ref = docRef(col, `auto${++autoId}`); await ref.set(d); return ref; },
     }),
     async runTransaction(fn) {
       const writes = [];

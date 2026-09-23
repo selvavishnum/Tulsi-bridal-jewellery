@@ -12,7 +12,9 @@ const staffDb = () => fakeFirestore({
   staff: {
     s1: { email: 'ofs@tulsi.test', role: 'ORDER_FULFILLMENT_STAFF', status: 'Active' },
     s2: { email: 'cat@tulsi.test', role: 'CATALOG_STAFF', status: 'Active' },
-    s3: { email: 'sa@tulsi.test', role: 'SUPER_ADMIN', status: 'Active' },
+    s3: { email: 'sa@tulsi.test', role: 'SUPER_ADMIN', status: 'Active', roleGrantedBy: 'owner@tulsi.test' },
+    s12: { email: 'selfmade@tulsi.test', role: 'SUPER_ADMIN', status: 'Active' },   // no provenance
+    s13: { email: 'oldsuper@tulsi.test', role: 'SuperAdmin', status: 'Active' },    // legacy, self-assignable
     s4: { email: 'legacy@tulsi.test', role: 'OrderManager', status: 'Active' },
     s5: { email: 'bm@tulsi.test', role: 'BusinessManager', status: 'Active' },
     s6: { email: 'gone@tulsi.test', role: 'SUPER_ADMIN', status: 'Inactive' },
@@ -36,10 +38,11 @@ test('staff records resolve to their tier; legacy roles map; unmapped ones get n
   assert.equal(await tierOf('legacy@tulsi.test'), ROLES.ORDER_FULFILLMENT_STAFF);
   assert.equal(await tierOf('bm@tulsi.test'), null);
   assert.equal(normalizeStaffRole('ProductManager'), ROLES.CATALOG_STAFF);
+  assert.equal(normalizeStaffRole('SuperAdmin'), null);
 });
 
-test('fails closed: inactive, unknown, self-styled "Owner", duplicates, platform record claiming VENDOR', async () => {
-  for (const email of ['gone@tulsi.test', 'nobody@tulsi.test', 'owner-claim@tulsi.test', 'twice@tulsi.test', 'odd@tulsi.test', '']) {
+test('fails closed: inactive, unknown, self-styled "Owner", duplicates, platform record claiming VENDOR, unproven or legacy Super Admin', async () => {
+  for (const email of ['gone@tulsi.test', 'nobody@tulsi.test', 'owner-claim@tulsi.test', 'twice@tulsi.test', 'odd@tulsi.test', 'selfmade@tulsi.test', 'oldsuper@tulsi.test', '']) {
     assert.equal(await tierOf(email), null, email);
   }
 });
@@ -93,5 +96,5 @@ test('fulfilment and catalog views drop every cost field', () => {
   const f = JSON.stringify(toFulfillmentOrder(order));
   for (const leak of ['supplyCost', 'vendorFees', 'shippingCostActual', 'razorpaySignature', 'amountDue']) assert.ok(!f.includes(leak), leak);
   assert.ok(f.includes('9876543210'), 'fulfilment still gets the shipping phone');
-  assert.ok(!JSON.stringify(stripCostFields({ name: 'x', supplyCost: 1, purchasePrice: 2, costPrice: 3 })).match(/supplyCost|purchasePrice|costPrice/));
+  assert.ok(!JSON.stringify(stripCostFields({ name: 'x', supplyCost: 1, purchasePrice: 2, costPrice: 3, vendorId: 'vA', warehouseId: 'w1', internalNotes: 'n' })).match(/supplyCost|purchasePrice|costPrice|vendorId|warehouseId|internalNotes/));
 });

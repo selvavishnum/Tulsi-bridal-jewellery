@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireVendor } from '@/lib/vendorAuth';
-import { summarizeLedger, RETURN_WINDOW_DAYS } from '@/lib/settlement';
+import { summarizeLedger, retailSalesOf, RETURN_WINDOW_DAYS } from '@/lib/settlement';
 import { maskPayoutDestination } from '@/lib/vendorLedger';
 
 /* GET /api/vendor/summary — the signed-in vendor's retail sales and net
@@ -34,7 +34,7 @@ export async function GET() {
         availableAt: e.availableAt,
         status: e.status,
         held: e.status === 'unsettled' && new Date(e.availableAt).getTime() > now,
-        retailSalesPaise: e.itemsPaise || 0,
+        retailSalesPaise: retailSalesOf(e),
         netPaise: e.netPaise || 0,
       }));
     const payouts = payoutSnap.docs

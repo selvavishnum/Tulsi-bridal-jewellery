@@ -41,12 +41,15 @@ export const ROLE_LABELS = Object.freeze({
   [VENDOR]: 'Vendor',
 });
 
-/* Staff records written before the 4-tier model. BusinessManager (reports
-   and finance) has no least-privilege home below SUPER_ADMIN, so it maps to
-   nothing: that person has no admin access until a SUPER_ADMIN assigns a
-   role. Migration 004 rewrites these to the new names. */
+/* Staff records written before the 4-tier model. Two legacy roles map to
+   nothing (no admin access until a SUPER_ADMIN assigns a role):
+     SuperAdmin      — before this model any staff member could write any
+                       staff role, including their own, so an old
+                       "SuperAdmin" proves nothing; promoting it to the tier
+                       that moves money would reward exactly that.
+     BusinessManager — reports and finance have no home below SUPER_ADMIN.
+   Migration 004 rewrites the rest to the new names. */
 const LEGACY_STAFF_ROLES = Object.freeze({
-  SuperAdmin: SUPER_ADMIN,
   OrderManager: ORDER_FULFILLMENT_STAFF,
   SalesStaff: ORDER_FULFILLMENT_STAFF,
   ProductManager: CATALOG_STAFF,
@@ -82,6 +85,11 @@ export async function resolveAccess(db, email, adminEmails) {
   }
   const tier = normalizeStaffRole(staff.role);
   if (!tier || tier === VENDOR) return { tier: null }; // a platform record can't be a vendor
+  /* SUPER_ADMIN from a staff record only counts if a SUPER_ADMIN granted it
+     through the validated staff API (which stamps roleGrantedBy). A literal
+     "SUPER_ADMIN" written before that API existed — when any staff member
+     could set any role — fails closed. */
+  if (tier === SUPER_ADMIN && !staff.roleGrantedBy) return { tier: null };
   return { tier, staffId: doc.id };
 }
 
@@ -149,9 +157,15 @@ export const CATALOG_EDITABLE_PRODUCT_FIELDS = Object.freeze([
   'stock', 'rentalStock',
 ]);
 
-const COST_FIELDS = ['supplyCost', 'purchasePrice', 'costPrice', 'cost', 'margin', 'supplier', 'supplierId', 'lots', 'stockLots'];
+/* Everything the public product view hides (see PRODUCT_PRIVATE_FIELDS in
+   firebase.js) plus vendor assignment — catalog staff never see more
+   commercial data than an anonymous shopper does. */
+const COST_FIELDS = [
+  'supplyCost', 'purchasePrice', 'costPrice', 'cost', 'margin', 'supplier', 'supplierId',
+  'lots', 'stockLots', 'warehouse', 'warehouseId', 'internalNotes', 'vendorId',
+];
 
-/* Product as catalog staff may see it: no cost or supplier data. */
+/* Product as catalog staff may see it: no cost, supplier or vendor data. */
 export function stripCostFields(product) {
   if (!product) return product;
   const out = { ...product };

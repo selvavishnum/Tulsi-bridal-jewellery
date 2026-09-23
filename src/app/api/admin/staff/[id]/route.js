@@ -32,7 +32,7 @@ export async function PUT(request, context) {
 
     const updateData = {
       ...(name !== undefined && { name }),
-      ...(role !== undefined && { role }),
+      ...(role !== undefined && { role, roleGrantedBy: session.user.email || 'unknown', roleGrantedAt: new Date().toISOString() }),
       ...(phone !== undefined && { phone }),
       ...(status !== undefined && { status }),
       updatedAt: new Date().toISOString(),

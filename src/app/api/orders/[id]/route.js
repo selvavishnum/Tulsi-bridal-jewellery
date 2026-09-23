@@ -102,6 +102,12 @@ export async function PUT(request, context) {
       }
       /* Fulfilment works on confirmed orders only: packing a still-pending
          COD order would skip the confirmation step that deducts stock. */
+      /* Fulfilment staff only touch orders inside the packing/shipping window
+         — not pending (unconfirmed), delivered or cancelled ones, for any
+         field including tracking and notes. */
+      if (isFulfilment && !['confirmed', 'processing', 'shipped'].includes(currentOrder.status)) {
+        throw new OrderStateError(`This order is ${currentOrder.status} — fulfilment can only update confirmed, packed or shipped orders.`);
+      }
       if (isFulfilment && status) {
         const from = currentOrder.status;
         const ok = (status === 'processing' && from === 'confirmed')

@@ -120,6 +120,14 @@ export function computeVendorSettlements(order) {
   return out;
 }
 
+/* Item value of a ledger entry. Reversal entries written before itemsPaise
+   was recorded fall back to gross minus the customer-shipping share (or
+   gross when that isn't recorded either). */
+export function retailSalesOf(e) {
+  if (typeof e?.itemsPaise === 'number') return e.itemsPaise;
+  return (e?.grossPaise || 0) - (e?.customerShippingPaise || 0);
+}
+
 /** Wallet totals from a vendor's ledger entries. */
 export function summarizeLedger(entries, now = Date.now()) {
   const s = {
@@ -129,7 +137,7 @@ export function summarizeLedger(entries, now = Date.now()) {
   };
   for (const e of entries) {
     if (!e || e.status === 'reversed') continue;
-    s.itemsPaise += e.itemsPaise || 0;
+    s.itemsPaise += retailSalesOf(e);
     s.grossPaise += e.grossPaise || 0;
     s.supplyCostPaise += e.supplyCostPaise || 0;
     s.shippingPaise += e.shippingPaise || 0;

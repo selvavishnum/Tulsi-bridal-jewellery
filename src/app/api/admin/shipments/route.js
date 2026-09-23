@@ -45,8 +45,16 @@ export async function POST(request) {
       return NextResponse.json({ success: false, message: 'Only confirmed orders can be shipped — ask a Super Admin to confirm this one first.' }, { status: 400 });
     }
 
+    const isSuper = auth.tier === ROLES.SUPER_ADMIN;
+    const sentCost = shippingCost !== undefined && shippingCost !== '' && shippingCost !== null;
+    /* The courier charge is deducted from vendor payouts, so setting it is a
+       financial action: fulfilment staff book the parcel, a Super Admin
+       records what it cost (or the Shiprocket quote does, automatically). */
+    if (sentCost && !isSuper) {
+      return NextResponse.json({ success: false, message: 'Forbidden: only a Super Admin can record the courier charge' }, { status: 403 });
+    }
     let manualCost;
-    if (shippingCost !== undefined && shippingCost !== '' && shippingCost !== null) {
+    if (sentCost) {
       manualCost = Number(shippingCost);
       if (!Number.isFinite(manualCost) || manualCost < 0) {
         return NextResponse.json({ success: false, message: 'Shipping cost must be a number ≥ 0' }, { status: 400 });
@@ -86,7 +94,7 @@ export async function POST(request) {
       result = await createShiprocketOrder(order, courierId);
       if (!result.success) {
         console.error('[Shiprocket] createShiprocketOrder failed:', JSON.stringify(result.data));
-        return NextResponse.json({ success: false, message: result.message, details: result.data }, { status: 400 });
+        return NextResponse.json({ success: false, message: result.message, ...(isSuper && { details: result.data }) }, { status: 400 });
       }
     }
 
@@ -134,8 +142,11 @@ export async function POST(request) {
     });
     await notifyShipped(orderRef, order.status);
 
-    const { raw: _raw, ...publicResult } = result;
-    return NextResponse.json({ success: true, data: { ...publicResult, shippingCostActual: shippingCostActual ?? null } });
+    const { raw: _raw, data: _data, ...publicResult } = result;
+    return NextResponse.json({
+      success: true,
+      data: { ...publicResult, ...(isSuper && { shippingCostActual: shippingCostActual ?? null }) },
+    });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }

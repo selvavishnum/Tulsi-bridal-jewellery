@@ -1,5 +1,8 @@
 /* 004 — Rewrite pre-4-tier staff roles to the new names.
-     SuperAdmin                      → SUPER_ADMIN
+     SuperAdmin                      → left unchanged, reported: before the
+                                       4-tier model anyone could set it, so it
+                                       grants nothing — re-grant on the Staff
+                                       page if intended
      OrderManager, SalesStaff        → ORDER_FULFILLMENT_STAFF
      ProductManager, InventoryManager→ CATALOG_STAFF
      VendorAdmin (vendor logins)     → VENDOR
@@ -28,7 +31,11 @@ for await (const docs of pages(firestore, 'staff')) {
       unmapped.push(`${d.id} ${s.email} (role: ${s.role ?? 'none'})`);
       continue;
     }
-    if (target === ROLES.SUPER_ADMIN && s.status === 'Active') superAdmins.push(`${s.email}${s.role !== target ? ` (was ${s.role})` : ''}`);
+    if (target === ROLES.SUPER_ADMIN && !s.roleGrantedBy) {
+      unmapped.push(`${d.id} ${s.email} (role: SUPER_ADMIN, but not granted through the Staff page — not honoured)`);
+      continue;
+    }
+    if (target === ROLES.SUPER_ADMIN && s.status === 'Active') superAdmins.push(`${s.email} (granted by ${s.roleGrantedBy})`);
     if (s.role === target) continue;
     console.log(`${APPLY ? 'Update' : 'Would update'} ${d.id} ${s.email}: ${s.role} → ${target}`);
     if (APPLY) await d.ref.update({ role: target, legacyRole: s.role ?? null, updatedAt: new Date().toISOString() });

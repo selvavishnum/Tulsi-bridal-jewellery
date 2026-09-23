@@ -44,10 +44,10 @@ mock.module(src('lib/email.js'), { namedExports: Object.fromEntries(['esc', 'sen
 mock.module(src('lib/whatsapp.js'), { namedExports: Object.fromEntries(['sendOrderWhatsAppToAdmin', 'sendOrderWhatsAppToCustomer', 'sendStatusWhatsApp', 'sendContactWhatsApp', 'sendReviewWhatsApp', 'sendRentalWhatsAppToAdmin', 'sendRentalWhatsAppToCustomer', 'isConfigured'].map((n) => [n, noop])) });
 
 const route = (p) => import(src(`app/api/${p}/route.js`));
-const [analytics, reports, accounting, vendorLedger, settings, staff, orders, orderById, vendorOrderById, vendorOrders, products, productById, adminProducts] = await Promise.all([
+const [analytics, reports, accounting, vendorLedger, settings, staff, orders, orderById, vendorOrderById, vendorOrders, products, productById, adminProducts, shipments, vendors] = await Promise.all([
   route('admin/analytics'), route('reports'), route('admin/accounting'), route('admin/vendor-ledger'), route('admin/settings'),
   route('admin/staff'), route('orders'), route('orders/[id]'), route('vendor/orders/[id]'), route('vendor/orders'),
-  route('products'), route('products/[id]'), route('admin/products'),
+  route('products'), route('products/[id]'), route('admin/products'), route('admin/shipments'), route('admin/vendors'),
 ]);
 
 async function call(mod, method, { url = 'http://tulsi.test/api', body, params = {} } = {}) {
@@ -70,6 +70,8 @@ beforeEach(() => {
       vB: { email: 'vendor-b@vendor.test', role: 'VENDOR', vendorId: 'vB', status: 'Active' },
       legacy: { email: 'ordermgr@tulsi.test', role: 'OrderManager', status: 'Active' },
       bm: { email: 'bizmgr@tulsi.test', role: 'BusinessManager', status: 'Active' },
+      oldsuper: { email: 'oldsuper@tulsi.test', role: 'SuperAdmin', status: 'Active' },
+      selfmade: { email: 'selfmade@tulsi.test', role: 'SUPER_ADMIN', status: 'Active' },
     },
     orders: {
       oA: {
@@ -164,6 +166,8 @@ test('catalog staff: price, supply cost, vendor and delete are 403; copy and sto
   const ok = await call(productById, 'PUT', { params: { id: 'p1' }, body: { description: 'Temple jhumka', stock: 9 } });
   assert.equal(ok.status, 200);
   assert.equal(db.store.get('products').get('p1').stock, 9);
+  const [adj] = [...db.store.get('stockAdjustments').values()];
+  assert.deepEqual([adj.from, adj.to, adj.by], [5, 9, 'cat@tulsi.test'], 'catalog stock change is logged for reconciliation');
   assert.ok(!JSON.stringify(ok.json).includes('supplyCost'));
   assert.ok(!JSON.stringify((await call(adminProducts, 'GET')).json).includes('supplyCost'));
 });
@@ -228,4 +232,38 @@ test('signed out: 401 on admin and vendor endpoints', async () => {
   assert.equal((await call(analytics, 'GET')).status, 403, 'legacy requireAdmin routes answer 403 when signed out');
   assert.equal((await call(adminProducts, 'GET')).status, 401);
   assert.equal((await call(vendorOrderById, 'GET', { params: { id: 'oA' } })).status, 401);
+});
+
+test('review H1: a pre-existing "SuperAdmin" or ungranted SUPER_ADMIN staff record gets no money powers', async () => {
+  for (const email of ['oldsuper@tulsi.test', 'selfmade@tulsi.test']) {
+    signInAs(email);
+    assert.equal((await call(vendorLedger, 'POST', { body: { action: 'payout', vendorId: 'vA', reference: 'UTR' } })).status, 403, email);
+    assert.equal((await call(vendors, 'PUT', { url: 'http://tulsi.test/api/admin/vendors?id=vA', body: { payout: { method: 'upi', upiId: 'thief@okaxis' } } })).status, 403, email);
+  }
+});
+
+test('review H1: a Super Admin granted through the Staff page works, and the grant is stamped', async () => {
+  signInAs('owner@tulsi.test');
+  const res = await call(staff, 'POST', { body: { name: 'Co-owner', email: 'co@tulsi.test', password: 'password1', role: 'SUPER_ADMIN' } });
+  assert.equal(res.status, 201);
+  const rec = [...db.store.get('staff').values()].find((r) => r.email === 'co@tulsi.test');
+  assert.equal(rec.roleGrantedBy, 'owner@tulsi.test');
+  signInAs('co@tulsi.test');
+  assert.equal((await call(analytics, 'GET')).status, 200);
+});
+
+test('review H2: fulfilment staff cannot set the courier charge that is deducted from vendor payouts', async () => {
+  signInAs('ofs@tulsi.test');
+  const res = await call(shipments, 'POST', { body: { orderId: 'oA', manualTracking: true, trackingNumber: 'AWB1', shippingCost: 0 } });
+  assert.equal(res.status, 403);
+  assert.equal(db.store.get('orders').get('oA').shippingCostActual, undefined);
+  const ok = await call(shipments, 'POST', { body: { orderId: 'oA', manualTracking: true, trackingNumber: 'AWB1' } });
+  assert.equal(ok.status, 200, 'booking the parcel itself is still allowed');
+});
+
+test('review L2: fulfilment staff cannot edit tracking or notes outside the packing/shipping window', async () => {
+  db.store.get('orders').get('oA').status = 'delivered';
+  signInAs('ofs@tulsi.test');
+  assert.equal((await call(orderById, 'PUT', { params: { id: 'oA' }, body: { trackingNumber: 'X' } })).status, 400);
+  assert.notEqual(db.store.get('orders').get('oA').trackingNumber, 'X');
 });
