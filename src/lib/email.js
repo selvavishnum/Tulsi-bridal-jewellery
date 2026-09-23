@@ -12,6 +12,11 @@ export function esc(v) {
     .replace(/'/g, '&#39;');
 }
 
+/* Only https image URLs go into an <img> in mail. */
+function safeImg(url) {
+  return typeof url === 'string' && url.startsWith('https://') ? url : '';
+}
+
 /* ── SMTP Transporter ── */
 function createTransporter() {
   return nodemailer.createTransport({
@@ -104,9 +109,9 @@ function itemsTable(items = []) {
   const rows = items.map((item) => `
     <tr style="border-bottom:1px solid #f5f5f4;">
       <td style="padding:10px 0;">
-        ${item.image ? `<img src="${item.image}" alt="${item.name}" width="48" height="48" style="width:48px;height:48px;object-fit:cover;border-radius:8px;border:1px solid #e7e5e4;vertical-align:middle;margin-right:10px;"/>` : ''}
-        <span style="font-size:14px;color:#292524;font-weight:600;">${item.name}</span>
-        <span style="font-size:12px;color:#78716c;margin-left:6px;">× ${item.quantity}</span>
+        ${safeImg(item.image) ? `<img src="${esc(safeImg(item.image))}" alt="${esc(item.name)}" width="48" height="48" style="width:48px;height:48px;object-fit:cover;border-radius:8px;border:1px solid #e7e5e4;vertical-align:middle;margin-right:10px;"/>` : ''}
+        <span style="font-size:14px;color:#292524;font-weight:600;">${esc(item.name)}</span>
+        <span style="font-size:12px;color:#78716c;margin-left:6px;">× ${esc(item.quantity)}</span>
       </td>
       <td style="padding:10px 0;text-align:right;font-size:14px;font-weight:700;color:#8b1a4a;white-space:nowrap;">${fmt((item.price || 0) * item.quantity)}</td>
     </tr>`).join('');
@@ -129,7 +134,7 @@ export async function sendOrderConfirmation(order) {
   const addr = order.shippingAddress || {};
   /* Support both fullName (checkout form) and name (normalized) */
   addr.name = addr.name || addr.fullName || '';
-  const trackUrl = `${BRAND.site}/track-order?orderNumber=${order.orderNumber}&email=${encodeURIComponent(to)}`;
+  const trackUrl = `${BRAND.site}/track-order?orderNumber=${esc(order.orderNumber)}&email=${encodeURIComponent(to)}`;
 
   const html = emailWrapper(`
     <h2 style="margin:0 0 6px;font-family:Georgia,serif;font-size:24px;color:#292524;">Your Order is Confirmed! 🎉</h2>
@@ -140,7 +145,7 @@ export async function sendOrderConfirmation(order) {
       <tr>
         <td style="padding:20px 24px;">
           <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#78716c;">Order Number</p>
-          <p style="margin:0;font-family:monospace;font-size:22px;font-weight:700;color:#8b1a4a;">#${order.orderNumber}</p>
+          <p style="margin:0;font-family:monospace;font-size:22px;font-weight:700;color:#8b1a4a;">#${esc(order.orderNumber)}</p>
           <p style="margin:4px 0 0;font-size:12px;color:#a8a29e;">${new Date(order.createdAt).toLocaleDateString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</p>
         </td>
       </tr>
@@ -170,8 +175,8 @@ export async function sendOrderConfirmation(order) {
 
     <!-- Payment -->
     <p style="margin:20px 0 0;font-size:13px;color:#78716c;">
-      <strong style="color:#292524;">Payment:</strong> ${order.payment?.method?.toUpperCase() || 'COD'} —
-      <span style="color:${order.payment?.status === 'paid' ? '#16a34a' : '#ca8a04'};font-weight:600;">${order.payment?.status || 'Pending'}</span>
+      <strong style="color:#292524;">Payment:</strong> ${esc(order.payment?.method?.toUpperCase() || 'COD')} —
+      <span style="color:${order.payment?.status === 'paid' ? '#16a34a' : '#ca8a04'};font-weight:600;">${esc(order.payment?.status || 'Pending')}</span>
     </p>
 
     <p style="margin:24px 0 0;font-size:14px;color:#57534e;">We'll notify you once your order is shipped. Estimated delivery: <strong style="color:#292524;">4–7 business days</strong>.</p>
@@ -186,7 +191,7 @@ export async function sendOrderConfirmation(order) {
     await transporter.sendMail({
       from: `"${BRAND.name}" <${process.env.SMTP_USER}>`,
       to,
-      subject: `Order Confirmed #${order.orderNumber} | ${BRAND.name}`,
+      subject: `Order Confirmed #${esc(order.orderNumber)} | ${BRAND.name}`,
       html,
     });
   } catch (err) {
@@ -217,19 +222,19 @@ export async function sendOrderNotificationToAdmin(order) {
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff8f0;border:1px solid #e4dfc8;border-radius:12px;margin-bottom:24px;">
       <tr><td style="padding:20px 24px;">
         <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#78716c;">Order</p>
-        <p style="margin:0 0 12px;font-family:monospace;font-size:22px;font-weight:700;color:#8b1a4a;">#${order.orderNumber}</p>
+        <p style="margin:0 0 12px;font-family:monospace;font-size:22px;font-weight:700;color:#8b1a4a;">#${esc(order.orderNumber)}</p>
         <table width="100%" cellpadding="0" cellspacing="0">
           <tr>
             <td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Customer:</strong></td>
-            <td style="font-size:13px;color:#44403c;padding:3px 0;">${addr2.name || '—'}</td>
+            <td style="font-size:13px;color:#44403c;padding:3px 0;">${esc(addr2.name || '—')}</td>
           </tr>
           <tr>
             <td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Email:</strong></td>
-            <td style="font-size:13px;color:#44403c;padding:3px 0;">${customerEmail}</td>
+            <td style="font-size:13px;color:#44403c;padding:3px 0;">${esc(customerEmail)}</td>
           </tr>
           <tr>
             <td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Phone:</strong></td>
-            <td style="font-size:13px;color:#44403c;padding:3px 0;">${addr2.phone || '—'}</td>
+            <td style="font-size:13px;color:#44403c;padding:3px 0;">${esc(addr2.phone || '—')}</td>
           </tr>
           <tr>
             <td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Total:</strong></td>
@@ -237,7 +242,7 @@ export async function sendOrderNotificationToAdmin(order) {
           </tr>
           <tr>
             <td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Payment:</strong></td>
-            <td style="font-size:13px;color:#44403c;padding:3px 0;">${order.payment?.method || '—'} — ${order.payment?.status || '—'}</td>
+            <td style="font-size:13px;color:#44403c;padding:3px 0;">${esc(order.payment?.method || '—')} — ${esc(order.payment?.status || '—')}</td>
           </tr>
           <tr>
             <td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Items:</strong></td>
@@ -258,7 +263,7 @@ export async function sendOrderNotificationToAdmin(order) {
     await transporter.sendMail({
       from: `"${BRAND.name}" <${process.env.SMTP_USER}>`,
       to: adminEmails,
-      subject: `🛍 New Order #${order.orderNumber} — ${fmt(order.total)} | ${BRAND.name}`,
+      subject: `🛍 New Order #${esc(order.orderNumber)} — ${fmt(order.total)} | ${BRAND.name}`,
       html,
     });
   } catch (err) {
@@ -284,7 +289,7 @@ export async function sendStatusUpdateEmail(order, newStatus) {
   const msg = STATUS_MSG[newStatus];
   if (!msg) return;
 
-  const trackUrl = `${BRAND.site}/track-order?orderNumber=${order.orderNumber}&email=${encodeURIComponent(to)}`;
+  const trackUrl = `${BRAND.site}/track-order?orderNumber=${esc(order.orderNumber)}&email=${encodeURIComponent(to)}`;
 
   const html = emailWrapper(`
     <p style="font-size:36px;margin:0 0 12px;">${msg.emoji}</p>
@@ -294,8 +299,8 @@ export async function sendStatusUpdateEmail(order, newStatus) {
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#fdf9ee;border:1px solid #e4dfc8;border-radius:12px;margin-bottom:24px;">
       <tr><td style="padding:18px 22px;">
         <p style="margin:0;font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#78716c;">Order Number</p>
-        <p style="margin:4px 0 0;font-family:monospace;font-size:18px;font-weight:700;color:#8b1a4a;">#${order.orderNumber}</p>
-        ${order.trackingNumber ? `<p style="margin:8px 0 0;font-size:13px;color:#57534e;"><strong>Tracking #:</strong> <span style="font-family:monospace;color:#8b1a4a;">${order.trackingNumber}</span>${order.courierName ? ` (${order.courierName})` : ''}</p>` : ''}
+        <p style="margin:4px 0 0;font-family:monospace;font-size:18px;font-weight:700;color:#8b1a4a;">#${esc(order.orderNumber)}</p>
+        ${order.trackingNumber ? `<p style="margin:8px 0 0;font-size:13px;color:#57534e;"><strong>Tracking #:</strong> <span style="font-family:monospace;color:#8b1a4a;">${esc(order.trackingNumber)}</span>${order.courierName ? ` (${esc(order.courierName)})` : ''}</p>` : ''}
       </td></tr>
     </table>
 
@@ -308,7 +313,7 @@ export async function sendStatusUpdateEmail(order, newStatus) {
     await transporter.sendMail({
       from: `"${BRAND.name}" <${process.env.SMTP_USER}>`,
       to,
-      subject: `${msg.emoji} ${msg.title} — Order #${order.orderNumber}`,
+      subject: `${msg.emoji} ${msg.title} — Order #${esc(order.orderNumber)}`,
       html,
     });
   } catch (err) {
@@ -339,7 +344,7 @@ export async function sendReviewNotification(review) {
         <p style="margin:8px 0 0;font-size:13px;color:#78716c;"><strong style="color:#44403c;">Reviewer:</strong> ${esc(review.reviewerName || 'Anonymous')}</p>
         ${review.reviewerEmail ? `<p style="margin:4px 0 0;font-size:13px;color:#78716c;"><strong style="color:#44403c;">Email:</strong> ${esc(review.reviewerEmail)}</p>` : ''}
         <p style="margin:4px 0 0;font-size:13px;color:#78716c;"><strong style="color:#44403c;">Product:</strong> ${esc(review.productName || review.productId)}</p>
-        <p style="margin:4px 0 0;font-size:13px;color:#78716c;"><strong style="color:#44403c;">Rating:</strong> ${review.rating}/5</p>
+        <p style="margin:4px 0 0;font-size:13px;color:#78716c;"><strong style="color:#44403c;">Rating:</strong> ${esc(review.rating)}/5</p>
         <p style="margin:12px 0 0;font-size:14px;color:#292524;font-style:italic;border-left:3px solid #c9973a;padding-left:12px;">"${esc(review.comment)}"</p>
       </td></tr>
     </table>
@@ -352,7 +357,7 @@ export async function sendReviewNotification(review) {
     await transporter.sendMail({
       from: `"${BRAND.name}" <${process.env.SMTP_USER}>`,
       to: adminEmails,
-      subject: `⭐ New ${review.rating}-star Review — ${review.productName || 'Product'} | ${BRAND.name}`,
+      subject: `⭐ New ${esc(review.rating)}-star Review — ${esc(review.productName || 'Product')} | ${BRAND.name}`,
       html,
     });
   } catch (err) {
@@ -403,7 +408,7 @@ export async function sendContactNotification(msg) {
       from: `"${BRAND.name}" <${process.env.SMTP_USER}>`,
       to: adminEmails,
       replyTo: msg.email,
-      subject: `📩 New Message from ${msg.name}${msg.subject ? ` — ${msg.subject}` : ''} | ${BRAND.name}`,
+      subject: `📩 New Message from ${esc(msg.name)}${msg.subject ? ` — ${esc(msg.subject)}` : ''} | ${BRAND.name}`,
       html,
     });
   } catch (err) {
@@ -421,12 +426,12 @@ export async function sendRentalConfirmation(rental) {
 
   const html = emailWrapper(`
     <h2 style="margin:0 0 6px;font-family:Georgia,serif;font-size:24px;color:#292524;">Rental Booking Confirmed! 🎉</h2>
-    <p style="margin:0 0 24px;font-size:14px;color:#78716c;">Thank you ${cd.name || ''}! Your jewellery rental is booked and confirmed.</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#78716c;">Thank you ${esc(cd.name || '')}! Your jewellery rental is booked and confirmed.</p>
 
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#fdf9ee;border:1px solid #e4dfc8;border-radius:12px;margin-bottom:28px;">
       <tr><td style="padding:20px 24px;">
         <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#78716c;">Booking Number</p>
-        <p style="margin:0;font-family:monospace;font-size:22px;font-weight:700;color:#8b1a4a;">#${rental.rentalNumber}</p>
+        <p style="margin:0;font-family:monospace;font-size:22px;font-weight:700;color:#8b1a4a;">#${esc(rental.rentalNumber)}</p>
         <p style="margin:4px 0 0;font-size:12px;color:#a8a29e;">${new Date(rental.createdAt).toLocaleDateString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}</p>
       </td></tr>
     </table>
@@ -434,29 +439,29 @@ export async function sendRentalConfirmation(rental) {
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f9f8;border-radius:12px;margin-bottom:20px;">
       <tr><td style="padding:18px 22px;">
         <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#44403c;text-transform:uppercase;letter-spacing:0.1em;">Jewellery Details</p>
-        ${rental.productImage ? `<img src="${rental.productImage}" alt="${rental.productName}" width="80" height="80" style="width:80px;height:80px;object-fit:cover;border-radius:10px;border:1px solid #e7e5e4;margin-bottom:10px;display:block;"/>` : ''}
-        <p style="margin:0;font-size:15px;font-weight:700;color:#292524;">${rental.productName}</p>
+        ${safeImg(rental.productImage) ? `<img src="${esc(safeImg(rental.productImage))}" alt="${esc(rental.productName)}" width="80" height="80" style="width:80px;height:80px;object-fit:cover;border-radius:10px;border:1px solid #e7e5e4;margin-bottom:10px;display:block;"/>` : ''}
+        <p style="margin:0;font-size:15px;font-weight:700;color:#292524;">${esc(rental.productName)}</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;">
-          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;width:140px;">Rental Period:</td><td style="font-size:13px;font-weight:600;color:#292524;">${rental.rentalDays} day${rental.rentalDays > 1 ? 's' : ''}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;width:140px;">Rental Period:</td><td style="font-size:13px;font-weight:600;color:#292524;">${esc(rental.rentalDays)} day${rental.rentalDays > 1 ? 's' : ''}</td></tr>
           <tr><td style="font-size:13px;color:#78716c;padding:3px 0;">Start Date:</td><td style="font-size:13px;font-weight:600;color:#292524;">${new Date(rental.rentalStartDate).toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })}</td></tr>
           <tr><td style="font-size:13px;color:#78716c;padding:3px 0;">End Date:</td><td style="font-size:13px;font-weight:600;color:#292524;">${new Date(rental.rentalEndDate).toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })}</td></tr>
-          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;">Rate:</td><td style="font-size:13px;font-weight:600;color:#8b1a4a;">₹${rental.pricePerDay}/day</td></tr>
-          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;">Delivery:</td><td style="font-size:13px;font-weight:600;color:#292524;text-transform:capitalize;">${rental.delivery?.method || 'self'}</td></tr>
-          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;">Return:</td><td style="font-size:13px;font-weight:600;color:#292524;text-transform:capitalize;">${rental.returnMethod?.method || 'self'}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;">Rate:</td><td style="font-size:13px;font-weight:600;color:#8b1a4a;">₹${esc(rental.pricePerDay)}/day</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;">Delivery:</td><td style="font-size:13px;font-weight:600;color:#292524;text-transform:capitalize;">${esc(rental.delivery?.method || 'self')}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;">Return:</td><td style="font-size:13px;font-weight:600;color:#292524;text-transform:capitalize;">${esc(rental.returnMethod?.method || 'self')}</td></tr>
         </table>
       </td></tr>
     </table>
 
     <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:20px;">
-      <tr><td style="padding:7px 0;font-size:13px;color:#78716c;border-bottom:1px solid #f5f5f4;">Rental Cost</td><td style="padding:7px 0;text-align:right;font-size:13px;color:#44403c;border-bottom:1px solid #f5f5f4;">₹${rental.totalRentalCost || 0}</td></tr>
-      <tr><td style="padding:7px 0;font-size:13px;color:#78716c;border-bottom:1px solid #f5f5f4;">Security Deposit <span style="font-size:11px;">(refundable)</span></td><td style="padding:7px 0;text-align:right;font-size:13px;color:#44403c;border-bottom:1px solid #f5f5f4;">₹${rental.securityDeposit || 0}</td></tr>
-      ${rental.deliveryCharge > 0 ? `<tr><td style="padding:7px 0;font-size:13px;color:#78716c;border-bottom:1px solid #f5f5f4;">Delivery Charge</td><td style="padding:7px 0;text-align:right;font-size:13px;color:#44403c;border-bottom:1px solid #f5f5f4;">₹${rental.deliveryCharge}</td></tr>` : ''}
-      ${rental.returnCharge > 0 ? `<tr><td style="padding:7px 0;font-size:13px;color:#78716c;border-bottom:1px solid #f5f5f4;">Return Pickup</td><td style="padding:7px 0;text-align:right;font-size:13px;color:#44403c;border-bottom:1px solid #f5f5f4;">₹${rental.returnCharge}</td></tr>` : ''}
-      <tr><td style="padding:10px 0;font-size:16px;font-weight:700;color:#292524;">Total</td><td style="padding:10px 0;text-align:right;font-size:18px;font-weight:700;color:#8b1a4a;">₹${rental.total || 0}</td></tr>
+      <tr><td style="padding:7px 0;font-size:13px;color:#78716c;border-bottom:1px solid #f5f5f4;">Rental Cost</td><td style="padding:7px 0;text-align:right;font-size:13px;color:#44403c;border-bottom:1px solid #f5f5f4;">₹${esc(rental.totalRentalCost || 0)}</td></tr>
+      <tr><td style="padding:7px 0;font-size:13px;color:#78716c;border-bottom:1px solid #f5f5f4;">Security Deposit <span style="font-size:11px;">(refundable)</span></td><td style="padding:7px 0;text-align:right;font-size:13px;color:#44403c;border-bottom:1px solid #f5f5f4;">₹${esc(rental.securityDeposit || 0)}</td></tr>
+      ${rental.deliveryCharge > 0 ? `<tr><td style="padding:7px 0;font-size:13px;color:#78716c;border-bottom:1px solid #f5f5f4;">Delivery Charge</td><td style="padding:7px 0;text-align:right;font-size:13px;color:#44403c;border-bottom:1px solid #f5f5f4;">₹${esc(rental.deliveryCharge)}</td></tr>` : ''}
+      ${rental.returnCharge > 0 ? `<tr><td style="padding:7px 0;font-size:13px;color:#78716c;border-bottom:1px solid #f5f5f4;">Return Pickup</td><td style="padding:7px 0;text-align:right;font-size:13px;color:#44403c;border-bottom:1px solid #f5f5f4;">₹${esc(rental.returnCharge)}</td></tr>` : ''}
+      <tr><td style="padding:10px 0;font-size:16px;font-weight:700;color:#292524;">Total</td><td style="padding:10px 0;text-align:right;font-size:18px;font-weight:700;color:#8b1a4a;">₹${esc(rental.total || 0)}</td></tr>
     </table>
 
     <p style="margin:0;font-size:13px;color:#78716c;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 16px;">
-      ✅ <strong style="color:#166534;">Security deposit</strong> of ₹${rental.securityDeposit || 0} will be fully refunded after safe return.
+      ✅ <strong style="color:#166534;">Security deposit</strong> of ₹${esc(rental.securityDeposit || 0)} will be fully refunded after safe return.
     </p>
 
     <p style="margin:24px 0 0;font-size:14px;color:#57534e;">We'll contact you before the rental date to coordinate delivery/pickup.</p>
@@ -468,7 +473,7 @@ export async function sendRentalConfirmation(rental) {
     await transporter.sendMail({
       from: `"${BRAND.name}" <${process.env.SMTP_USER}>`,
       to,
-      subject: `Rental Booking Confirmed #${rental.rentalNumber} | ${BRAND.name}`,
+      subject: `Rental Booking Confirmed #${esc(rental.rentalNumber)} | ${BRAND.name}`,
       html,
     });
   } catch (err) {
@@ -496,16 +501,16 @@ export async function sendRentalNotificationToAdmin(rental) {
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff8f0;border:1px solid #e4dfc8;border-radius:12px;margin-bottom:24px;">
       <tr><td style="padding:20px 24px;">
         <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#78716c;">Booking</p>
-        <p style="margin:0 0 12px;font-family:monospace;font-size:22px;font-weight:700;color:#8b1a4a;">#${rental.rentalNumber}</p>
+        <p style="margin:0 0 12px;font-family:monospace;font-size:22px;font-weight:700;color:#8b1a4a;">#${esc(rental.rentalNumber)}</p>
         <table width="100%" cellpadding="0" cellspacing="0">
-          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;width:120px;"><strong style="color:#44403c;">Product:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${rental.productName}</td></tr>
-          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Customer:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${cd.name || '—'}</td></tr>
-          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Email:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${to}</td></tr>
-          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Phone:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${cd.phone || '—'}</td></tr>
-          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Dates:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${rental.rentalStartDate} → ${rental.rentalEndDate} (${rental.rentalDays}d)</td></tr>
-          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Delivery:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;text-transform:capitalize;">${rental.delivery?.method || 'self'}</td></tr>
-          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Total:</strong></td><td style="font-size:16px;font-weight:700;color:#8b1a4a;padding:3px 0;">₹${rental.total || 0}</td></tr>
-          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Payment:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${rental.payment?.method || '—'} — ${rental.payment?.status || '—'}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;width:120px;"><strong style="color:#44403c;">Product:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${esc(rental.productName)}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Customer:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${esc(cd.name || '—')}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Email:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${esc(to)}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Phone:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${esc(cd.phone || '—')}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Dates:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${esc(rental.rentalStartDate)} → ${esc(rental.rentalEndDate)} (${esc(rental.rentalDays)}d)</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Delivery:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;text-transform:capitalize;">${esc(rental.delivery?.method || 'self')}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Total:</strong></td><td style="font-size:16px;font-weight:700;color:#8b1a4a;padding:3px 0;">₹${esc(rental.total || 0)}</td></tr>
+          <tr><td style="font-size:13px;color:#78716c;padding:3px 0;"><strong style="color:#44403c;">Payment:</strong></td><td style="font-size:13px;color:#44403c;padding:3px 0;">${esc(rental.payment?.method || '—')} — ${esc(rental.payment?.status || '—')}</td></tr>
         </table>
       </td></tr>
     </table>
@@ -518,7 +523,7 @@ export async function sendRentalNotificationToAdmin(rental) {
     await transporter.sendMail({
       from: `"${BRAND.name}" <${process.env.SMTP_USER}>`,
       to: adminEmails,
-      subject: `📅 New Rental #${rental.rentalNumber} — ${rental.productName} | ${BRAND.name}`,
+      subject: `📅 New Rental #${esc(rental.rentalNumber)} — ${esc(rental.productName)} | ${BRAND.name}`,
       html,
     });
   } catch (err) {

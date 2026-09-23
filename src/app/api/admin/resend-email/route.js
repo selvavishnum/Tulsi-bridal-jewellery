@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB, docToObj } from '@/lib/firebase';
 import { esc } from '@/lib/email';
-import { requireAccess } from '@/lib/adminCollection';
+import { requireAccess, requireAdmin } from '@/lib/adminCollection';
 import { CAN } from '@/lib/access';
 import { sendRentalConfirmation, sendRentalNotificationToAdmin } from '@/lib/email';
 import nodemailer from 'nodemailer';
@@ -18,6 +18,9 @@ export async function POST(request) {
 
     /* ── Rental resend (uses existing email functions) ── */
     if (rentalId) {
+      /* Rentals are a Super Admin area (Business Manager can resend order mail only). */
+      const sa = await requireAdmin();
+      if (!sa) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
       if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
         return NextResponse.json({ success: false, message: 'SMTP_USER or SMTP_PASS not set in .env.local' });
       }
@@ -80,7 +83,7 @@ export async function POST(request) {
 
     const itemRows = (order.items || []).map((i) =>
       `<tr>
-        <td style="padding:6px 0;font-size:14px;color:#292524;">${i.name} × ${i.quantity}</td>
+        <td style="padding:6px 0;font-size:14px;color:#292524;">${esc(i.name)} × ${esc(i.quantity)}</td>
         <td style="padding:6px 0;font-size:14px;color:#8b1a4a;text-align:right;font-weight:700;">
           ₹${((i.price || 0) * i.quantity).toLocaleString('en-IN')}
         </td>
@@ -110,11 +113,11 @@ export async function POST(request) {
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#fdf9ee;border:1px solid #e4dfc8;border-radius:12px;margin-bottom:20px;">
       <tr><td style="padding:18px 22px;">
         <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#78716c;">Order Number</p>
-        <p style="margin:0;font-family:monospace;font-size:22px;font-weight:700;color:#8b1a4a;">#${order.orderNumber}</p>
+        <p style="margin:0;font-family:monospace;font-size:22px;font-weight:700;color:#8b1a4a;">#${esc(order.orderNumber)}</p>
         <p style="margin:6px 0 0;font-size:13px;color:#78716c;">Customer: <strong style="color:#44403c;">${esc(addr.name)}</strong></p>
-        <p style="margin:3px 0 0;font-size:13px;color:#78716c;">Email: <strong style="color:#44403c;">${customerEmail || '—'}</strong></p>
-        <p style="margin:3px 0 0;font-size:13px;color:#78716c;">Phone: <strong style="color:#44403c;">${addr.phone || '—'}</strong></p>
-        <p style="margin:3px 0 0;font-size:13px;color:#78716c;">Payment: <strong style="color:#44403c;">${order.payment?.method || '—'} — ${order.payment?.status || '—'}</strong></p>
+        <p style="margin:3px 0 0;font-size:13px;color:#78716c;">Email: <strong style="color:#44403c;">${esc(customerEmail || '—')}</strong></p>
+        <p style="margin:3px 0 0;font-size:13px;color:#78716c;">Phone: <strong style="color:#44403c;">${esc(addr.phone || '—')}</strong></p>
+        <p style="margin:3px 0 0;font-size:13px;color:#78716c;">Payment: <strong style="color:#44403c;">${esc(order.payment?.method || '—')} — ${esc(order.payment?.status || '—')}</strong></p>
       </td></tr>
     </table>
 

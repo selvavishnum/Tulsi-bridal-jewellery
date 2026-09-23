@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getDB, FieldValue } from '@/lib/firebase';
+import { getDB } from '@/lib/firebase';
+import { redeemLoyaltyPoints } from '@/lib/loyalty';
 import { getEffectiveSession } from '@/lib/adminCollection';
 
 export async function GET() {
@@ -34,28 +35,21 @@ export async function POST(request) {
        points, and those points are real money via pendingLoyaltyDiscount. */
 
     if (action === 'redeem') {
-      const userDoc = await db.collection('users').doc(session.user.id).get();
-      const currentPoints = userDoc.exists ? (userDoc.data().loyaltyPoints || 0) : 0;
-      const redeemAmt = pointsToRedeem || Math.floor(currentPoints / 50) * 50;
-      if (currentPoints < 50 || redeemAmt < 50) {
-        return NextResponse.json({ success: false, message: 'Need at least 50 points to redeem (= ₹50 discount)' });
+      const settings = (await db.collection('settings').doc('site').get()).data() || {};
+      if (settings.loyaltyEnabled === false) {
+        return NextResponse.json({ success: false, message: 'Loyalty points are paused right now.' }, { status: 400 });
       }
-      const finalRedeem = Math.min(redeemAmt, currentPoints);
-      const discount = (finalRedeem / 50) * 50;
-      /* Park the discount on the user — order creation reads it from here so the
-         amount cannot be inflated by the browser. */
-      await db.collection('users').doc(session.user.id).update({
-        loyaltyPoints: FieldValue.increment(-finalRedeem),
-        pendingLoyaltyDiscount: FieldValue.increment(discount),
-      });
+      /* Read and write in one transaction — see redeemLoyaltyPoints. */
+      const result = await redeemLoyaltyPoints(db, session.user.id, pointsToRedeem);
+      if (result.error) return NextResponse.json({ success: false, message: result.error }, { status: 400 });
       await db.collection('loyaltyTransactions').add({
         userId: session.user.id,
         type: 'redeem',
-        points: -finalRedeem,
-        description: `Redeemed for ₹${discount} discount`,
+        points: -result.pointsRedeemed,
+        description: `Redeemed for ₹${result.discount} discount`,
         createdAt: new Date().toISOString(),
       });
-      return NextResponse.json({ success: true, data: { pointsRedeemed: finalRedeem, discount } });
+      return NextResponse.json({ success: true, data: result });
     }
 
     return NextResponse.json({ success: false, message: 'Invalid action' });

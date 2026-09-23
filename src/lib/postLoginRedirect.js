@@ -1,8 +1,18 @@
 import { getSession } from 'next-auth/react';
 
-/* Only same-site paths — never follow a callbackUrl off the site. */
-export function safeLocalPath(url, fallback) {
-  return typeof url === 'string' && url.startsWith('/') && !url.startsWith('//') ? url : fallback;
+/* Only same-site paths — never follow a callbackUrl off the site.
+   A prefix check alone isn't enough: browsers read "/\\evil.com" and
+   "/%09/evil.com" as "//evil.com". So resolve it the way the browser will
+   and keep it only if it stays on this origin. */
+export function safeLocalPath(url, fallback, origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost') {
+  if (typeof url !== 'string' || !url.startsWith('/') || /[\\\u0000-\u001f\u007f]/.test(url)) return fallback;
+  try {
+    const u = new URL(url, origin);
+    if (u.origin !== origin) return fallback;
+    return `${u.pathname}${u.search}${u.hash}`;
+  } catch {
+    return fallback;
+  }
 }
 
 /**

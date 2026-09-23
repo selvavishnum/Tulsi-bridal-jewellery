@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { getDB, docToObj, FieldValue } from '@/lib/firebase';
 import { sendStatusUpdateEmail } from '@/lib/email';
 import { sendStatusWhatsApp } from '@/lib/whatsapp';
-import { awardLoyaltyPoints } from '@/lib/loyalty';
+import { awardLoyaltyPoints, reverseOrderRewards } from '@/lib/loyalty';
 import { toCustomerOrder } from '@/lib/settlement';
 import { getAccess } from '@/lib/requireRole';
 import { ROLES, CAN, FULFILLMENT_STATUSES, toFulfillmentOrder } from '@/lib/access';
+import { ownsOrder } from '@/lib/orderOwnership';
 import { postDeliverySettlement, reverseOrderSettlements } from '@/lib/vendorLedger';
 
 class OrderStateError extends Error {}
@@ -23,14 +24,8 @@ export async function GET(request, context) {
     const order = docToObj(doc);
     if (CAN.manageOrders.includes(access.tier)) return NextResponse.json({ success: true, data: order });
     if (CAN.viewOrders.includes(access.tier)) return NextResponse.json({ success: true, data: toFulfillmentOrder(order) });
-    /* Same ownership rule as the order list and cancel — a customer who
-       checked out as a guest and later signed in used to see the order in
-       their list but get "Forbidden" opening it. Nullish guarded so a
-       missing field can't match another missing field. */
-    const isOwner =
-      (!!order.userId && order.userId === session.user.id) ||
-      (!!order.guestEmail && order.guestEmail === session.user.email);
-    if (!isOwner) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    /* Same ownership rule as the order list and cancel (orderOwnership.js). */
+    if (!ownsOrder(order, session.user)) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     return NextResponse.json({ success: true, data: toCustomerOrder(order) });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
@@ -78,8 +73,7 @@ export async function PUT(request, context) {
       const orderDoc = await ref.get();
       if (!orderDoc.exists) return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
       const order = orderDoc.data();
-      const isOwner = order.userId === session.user.id || order.guestEmail === session.user.email;
-      if (!isOwner) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+      if (!ownsOrder(order, session.user)) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
       if (!['pending', 'confirmed'].includes(order.status)) {
         return NextResponse.json({ success: false, message: `Order cannot be cancelled — it is already ${order.status}` }, { status: 400 });
       }
@@ -182,6 +176,12 @@ export async function PUT(request, context) {
 
       tx.update(ref, update);
     });
+
+    /* Cancelled: take back points earned, hand back loyalty spent and
+       release the coupon use — once (flags on the order). */
+    if (status === 'cancelled' && currentOrder.status !== 'cancelled') {
+      await reverseOrderRewards(db, ref).catch((e) => console.error('[Loyalty] reversal failed:', e.message));
+    }
 
     /* Awarded only for a paid order, and only once (guarded by pointsAwarded) */
     if (status === 'delivered') {

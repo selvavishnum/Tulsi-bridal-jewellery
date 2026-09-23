@@ -20,23 +20,30 @@ export async function POST(request) {
     if (!session?.user?.id) return NextResponse.json({ success: false });
 
     const {
-      productId, id, name, slug, image, price, category,
+      productId, id,
       dwellSeconds, scrollDepthPercentage, carouselClicks, zoomInteractions,
     } = await request.json();
 
     const resolvedId = productId || id;
-    if (!resolvedId) return NextResponse.json({ success: false });
+    if (typeof resolvedId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(resolvedId)) return NextResponse.json({ success: false });
 
     const db = getDB();
     const now = new Date().toISOString();
 
+    /* Name, image, price and category come from the product itself — never
+       from the request — because staff see them on the customer's profile. */
+    const prodSnap = await db.collection('products').doc(resolvedId).get();
+    if (!prodSnap.exists) return NextResponse.json({ success: false });
+    const p = prodSnap.data();
+    const category = typeof p.category === 'string' && /^[a-z0-9-]{1,40}$/.test(p.category) ? p.category : null;
+
     const lastSeenProduct = {
       id: resolvedId,
-      name: name || null,
-      slug: slug || null,
-      image: image || null,
-      price: price ?? null,
-      category: category || null,
+      name: p.name || null,
+      slug: p.slug || null,
+      image: p.images?.[0] || null,
+      price: Number(p.discountPrice) || Number(p.price) || null,
+      category,
       viewedAt: now,
       dwellSeconds: clampInt(dwellSeconds, 0, MAX_DWELL_SECONDS),
       scrollDepthPercentage: clampInt(scrollDepthPercentage, 0, 100),

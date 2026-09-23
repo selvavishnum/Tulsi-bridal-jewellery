@@ -20,6 +20,16 @@ export async function settlePaidOrder(db, orderRef, { razorpayPaymentId, razorpa
       alreadySettled = true;
       return;
     }
+    /* Paid for an order that was already cancelled (e.g. a second tab):
+       record the money for a refund, but don't revive the order, deduct
+       stock or award points. */
+    if (freshOrder.data()?.status === 'cancelled') {
+      const cancelledUpdate = { 'payment.status': 'paid', 'payment.paidAt': paidAt, paidAfterCancel: true, updatedAt: paidAt };
+      if (razorpayPaymentId) cancelledUpdate['payment.razorpayPaymentId'] = razorpayPaymentId;
+      tx.update(orderRef, cancelledUpdate);
+      alreadySettled = true; // no side effects below
+      return;
+    }
 
     const items = (freshOrder.data().items || []).filter((i) => i.product);
     const prodRefs = items.map((i) => db.collection('products').doc(i.product));

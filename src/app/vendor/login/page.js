@@ -30,7 +30,7 @@ function VendorLogin() {
 
   async function finish(result) {
     if (result?.error) {
-      toast.error(tab === 'otp' ? 'Invalid or expired code.' : 'Wrong email or password.');
+      toast.error(result.error === 'RateLimited' ? 'Too many attempts. Please wait a minute and try again.' : tab === 'otp' ? 'Wrong or expired code.' : 'Wrong email or password.');
       return;
     }
     const next = await destinationAfterSignIn(callbackUrl, '/account');

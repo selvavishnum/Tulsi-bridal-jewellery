@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getDB, FieldValue } from '@/lib/firebase';
+import { getDB } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
 
-const REFERRAL_POINTS = 20;
+import { REFERRAL_POINTS } from '@/lib/loyalty';
 
 export async function POST(request) {
   try {
@@ -11,8 +11,20 @@ export async function POST(request) {
     const { referralCode } = await request.json();
     if (!referralCode) return NextResponse.json({ success: false, message: 'Referral code required' });
     const db = getDB();
+    const settings = (await db.collection('settings').doc('site').get()).data() || {};
+    if (settings.referralEnabled === false) {
+      return NextResponse.json({ success: false, message: 'Referrals are paused right now.' }, { status: 400 });
+    }
 
     const currentUser = await db.collection('users').doc(session.user.id).get();
+    /* Throwaway accounts would farm points: the referee must have proved
+       their email, and can only link before their first paid order. */
+    if (currentUser.data()?.emailVerified !== true) {
+      return NextResponse.json({ success: false, message: 'Verify your email first: sign in once with "Email code", then apply the referral code.' }, { status: 400 });
+    }
+    if ((Number(currentUser.data()?.totalOrders) || 0) > 0) {
+      return NextResponse.json({ success: false, message: 'Referral codes can only be used before your first order.' }, { status: 400 });
+    }
     if (currentUser.data()?.referredBy) {
       return NextResponse.json({ success: false, message: 'You have already used a referral code' });
     }
@@ -26,16 +38,15 @@ export async function POST(request) {
       return NextResponse.json({ success: false, message: 'You cannot use your own referral code' });
     }
 
-    /* Record the link and pay both sides in one transaction. A batch is atomic
-       but not conditional, so concurrent calls would each re-observe an unset
-       referredBy and pay out repeatedly. */
+    /* Record the link only. Both sides are paid when this customer's first
+       order is paid (awardLoyaltyPoints) — a referral with no purchase
+       earns nothing, so fake sign-ups are worthless. Transactional so
+       concurrent calls can't link twice. */
     const applied = await db.runTransaction(async (tx) => {
       const meRef = db.collection('users').doc(session.user.id);
       const me = await tx.get(meRef);
       if (me.data()?.referredBy) return false;
-
-      tx.update(db.collection('users').doc(referrerDoc.id), { loyaltyPoints: FieldValue.increment(REFERRAL_POINTS) });
-      tx.update(meRef, { loyaltyPoints: FieldValue.increment(REFERRAL_POINTS), referredBy: referrerDoc.id });
+      tx.update(meRef, { referredBy: referrerDoc.id, referralRewarded: false, referredAt: new Date().toISOString() });
       return true;
     });
 
@@ -43,18 +54,7 @@ export async function POST(request) {
       return NextResponse.json({ success: false, message: 'You have already used a referral code' });
     }
 
-    await Promise.all([
-      db.collection('loyaltyTransactions').add({
-        userId: referrerDoc.id, type: 'referral_reward', points: REFERRAL_POINTS,
-        description: 'Referral reward — friend joined', createdAt: new Date().toISOString(),
-      }),
-      db.collection('loyaltyTransactions').add({
-        userId: session.user.id, type: 'referral_bonus', points: REFERRAL_POINTS,
-        description: 'Welcome bonus — joined via referral', createdAt: new Date().toISOString(),
-      }),
-    ]);
-
-    return NextResponse.json({ success: true, message: `Referral applied! You and your friend each earned ${REFERRAL_POINTS} points!`, data: { points: REFERRAL_POINTS } });
+    return NextResponse.json({ success: true, message: `Referral applied! You and your friend each get ${REFERRAL_POINTS} points when your first order is paid.`, data: { points: REFERRAL_POINTS } });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }

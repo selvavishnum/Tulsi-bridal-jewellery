@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAccess, ROLES } from '@/lib/requireRole';
+import { ownsOrder } from '@/lib/orderOwnership';
 import crypto from 'crypto';
 import Razorpay from 'razorpay';
 import { getDB } from '@/lib/firebase';
@@ -45,10 +46,7 @@ export async function POST(request) {
 
     /* Only the owner (or an admin) may settle this order.
        Guard against nullish values matching each other. */
-    const isOwner =
-      (!!order.userId && order.userId === session.user.id) ||
-      (!!order.guestEmail && order.guestEmail === session.user.email);
-    if (!isOwner && access.tier !== ROLES.SUPER_ADMIN) {
+    if (!ownsOrder(order, session.user) && access.tier !== ROLES.SUPER_ADMIN) {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }
 
@@ -89,6 +87,24 @@ export async function POST(request) {
       Number(payment.amount) < amountDue
     ) {
       return NextResponse.json({ success: false, message: 'Payment verification failed' }, { status: 400 });
+    }
+    /* "authorized" is a hold on the customer's card, not money received —
+       it lapses if never captured. Capture it now; only a captured payment
+       confirms the order (the payment.captured webhook is the backstop). */
+    if (payment.status === 'authorized') {
+      try {
+        payment = await razorpay.payments.capture(razorpayPaymentId, Number(payment.amount), payment.currency || 'INR');
+      } catch (e) {
+        const again = await razorpay.payments.fetch(razorpayPaymentId).catch(() => null);
+        if (again?.status !== 'captured') {
+          console.error('[verify] capture failed:', e?.error?.description || e.message);
+          return NextResponse.json({ success: false, message: 'Payment is still being confirmed by the bank. Your order will update automatically — please check My Orders in a few minutes.' }, { status: 202 });
+        }
+        payment = again;
+      }
+      if (payment.status !== 'captured') {
+        return NextResponse.json({ success: false, message: 'Payment is still being confirmed. Please check My Orders shortly.' }, { status: 202 });
+      }
     }
 
     /* Mark paid and deduct stock — shared with the Razorpay webhook receiver

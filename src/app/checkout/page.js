@@ -251,8 +251,15 @@ export default function CheckoutPage() {
             orderPlacedRef.current = true;
             dispatch({ type: 'CLEAR_CART' });
             router.push(`/order-success?orderNumber=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(form.email)}`);
+          } else if (verifyRes.status === 202) {
+            /* Money is on hold with the bank and is being captured — the
+               order confirms itself (webhook); don't make them pay again. */
+            orderPlacedRef.current = true;
+            dispatch({ type: 'CLEAR_CART' });
+            toast(verifyData.message, { duration: 15000 });
+            router.push('/account');
           } else {
-            toast.error('Payment verification failed');
+            toast.error(verifyData.message || 'Payment verification failed');
           }
         },
       };

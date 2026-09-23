@@ -10,6 +10,9 @@ export async function uploadImage(dataUrl, folder = 'tulsi-bridal') {
   const result = await cloudinary.uploader.upload(dataUrl, {
     folder,
     resource_type: 'image',
+    /* Raster formats only — Cloudinary would otherwise also store SVG,
+       which can carry script. */
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
     // No quality transformation — store at full quality so zoom stays sharp
   });
   return { url: result.secure_url, public_id: result.public_id, secure_url: result.secure_url };

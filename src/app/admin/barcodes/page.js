@@ -7,6 +7,7 @@ import {
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import { escapeHtml } from '@/lib/escapeHtml';
 
 const MODES = { manual: 'manual', bulk: 'bulk' };
 
@@ -60,8 +61,8 @@ export default function BarcodesPage() {
 
     const labelItems = Array.from({ length: numLabels }, (_, i) => `
       <div class="label">
-        <svg class="barcode" data-barcode="${barcode}"></svg>
-        <div class="label-text">${labelText}</div>
+        <svg class="barcode" data-barcode="${escapeHtml(barcode)}"></svg>
+        <div class="label-text">${escapeHtml(labelText)}</div>
       </div>
     `).join('');
 
@@ -82,8 +83,8 @@ export default function BarcodesPage() {
       const labelText = p.name?.substring(0, 30) || barcodeVal;
       return `
         <div class="label">
-          <svg class="barcode" data-barcode="${barcodeVal}"></svg>
-          <div class="label-text">${labelText}</div>
+          <svg class="barcode" data-barcode="${escapeHtml(barcodeVal)}"></svg>
+          <div class="label-text">${escapeHtml(labelText)}</div>
         </div>
       `;
     }).join('');
@@ -96,8 +97,8 @@ export default function BarcodesPage() {
     const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>${title} — Tulsi Bridal</title>
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
+  <title>${escapeHtml(title)} — Tulsi Bridal</title>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js" crossorigin="anonymous"><\/script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; background: #fff; padding: 10px; }
@@ -150,7 +151,11 @@ export default function BarcodesPage() {
             margin: 4,
           });
         } catch(e) {
-          svg.outerHTML = '<div style="font-size:10px;color:#dc2626;border:1px dashed #fca5a5;padding:4px;">Invalid: ' + val + '</div>';
+          /* textContent, not HTML: the value came from a product SKU. */
+          var bad = document.createElement('div');
+          bad.setAttribute('style', 'font-size:10px;color:#dc2626;border:1px dashed #fca5a5;padding:4px;');
+          bad.textContent = 'Invalid: ' + val;
+          svg.replaceWith(bad);
         }
       });
     });

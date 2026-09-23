@@ -73,15 +73,17 @@ export async function GET() {
     const newThisWeek = users.filter((u) => u.createdAt && new Date(u.createdAt) >= weekStart);
 
     // Most viewed products
-    const productCounts = {};
+    /* A Map, not a plain object: the id is user-supplied data, and an id of
+       "__proto__" or "constructor" would otherwise write onto Object.prototype. */
+    const productCounts = new Map();
     for (const u of users) {
-      if (u.lastSeenProduct?.id) {
-        const key = u.lastSeenProduct.id;
-        if (!productCounts[key]) productCounts[key] = { ...u.lastSeenProduct, views: 0 };
-        productCounts[key].views++;
+      const key = u.lastSeenProduct?.id;
+      if (typeof key === 'string' && key) {
+        if (!productCounts.has(key)) productCounts.set(key, { ...u.lastSeenProduct, views: 0 });
+        productCounts.get(key).views++;
       }
     }
-    const topProducts = Object.values(productCounts)
+    const topProducts = [...productCounts.values()]
       .sort((a, b) => b.views - a.views)
       .slice(0, 6);
 

@@ -44,7 +44,7 @@ function PasswordForm({ callbackUrl }) {
     try {
       if (mode === 'login') {
         const r = await signIn('credentials', { email: form.email, password: form.password, redirect: false });
-        if (r?.error) toast.error('Wrong email or password');
+        if (r?.error) toast.error(r.error === 'RateLimited' ? 'Too many attempts. Please wait a minute and try again.' : 'Wrong email or password');
         else { toast.success('Welcome back!'); window.location.href = await destinationAfterSignIn(callbackUrl, '/'); }
       } else {
         const res = await fetch('/api/auth/register', {
@@ -124,7 +124,7 @@ function OTPForm({ callbackUrl }) {
     try {
       const r = await signIn('otp', { email, otp, redirect: false });
       if (r?.error) {
-        toast.error('Invalid or expired OTP. Try again.');
+        toast.error(r.error === 'RateLimited' ? 'Too many attempts. Please wait a minute and try again.' : 'Wrong or expired code. After 5 wrong tries, request a new code.');
         setOtp('');
       } else {
         toast.success('Signed in! Redirecting…');

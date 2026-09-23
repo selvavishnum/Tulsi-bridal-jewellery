@@ -7,6 +7,9 @@ import { getAvailableCouriers, isConfigured as shiprocketConfigured } from '@/li
 import { PLATFORM_VENDOR_ID, validateVendorPricing, toCustomerOrder, marginFor, vendorShippingOf } from '@/lib/settlement';
 import { getAccess } from '@/lib/requireRole';
 import { CAN, toFulfillmentOrder } from '@/lib/access';
+import { canMatchGuestOrders } from '@/lib/orderOwnership';
+import { normalizeEmail, isValidEmail } from '@/lib/otp';
+import crypto from 'crypto';
 
 /* Shipping rules — must match the cart display in src/context/CartContext.js */
 const FREE_SHIPPING_ABOVE = 2000;
@@ -20,6 +23,44 @@ const MAX_LOYALTY_SHARE = 0.2;
 const COD_MAX_ORDER_VALUE = 20000;
 const COD_FEE = 49;
 const COD_FEE_BELOW = 500;
+
+const MAX_LINES = 50;
+
+class CheckoutError extends Error {}
+
+/* A coupon applies if it's active, unexpired, under its use limit (none
+   set = unlimited), this customer hasn't used it, and the order meets its
+   minimum. */
+function couponUsable(c, subtotal, userKey) {
+  const maxUses = Number(c.maxUses) || 0;
+  return !!c.isActive
+    && (!c.expiresAt || new Date(c.expiresAt) >= new Date())
+    && (maxUses <= 0 || (Number(c.usedCount) || 0) < maxUses)
+    && !(Array.isArray(c.usedBy) && c.usedBy.includes(userKey))
+    && subtotal >= (Number(c.minOrderAmount) || 0);
+}
+
+const ADDRESS_FIELDS = { fullName: 80, name: 80, phone: 15, email: 254, street: 200, address: 200, landmark: 120, city: 60, state: 60, pincode: 6, country: 40 };
+
+/* Only known address fields, strings only, bounded, no markup characters. */
+function parseShippingAddress(input) {
+  const value = {};
+  for (const [k, max] of Object.entries(ADDRESS_FIELDS)) {
+    if (input[k] === undefined || input[k] === null) continue;
+    if (typeof input[k] !== 'string' && typeof input[k] !== 'number') return { error: 'Invalid shipping address' };
+    const v = String(input[k]).trim();
+    if (v.length > max) return { error: `Shipping address ${k} is too long` };
+    if (/[<>]/.test(v)) return { error: 'Shipping address can’t contain < or >' };
+    value[k] = v;
+  }
+  value.name = value.fullName || value.name || '';
+  if (!value.name || !(value.street || value.address) || !value.city || !/^[1-9]\d{5}$/.test(value.pincode || '')) {
+    return { error: 'Enter your name, address, city and a 6-digit pincode' };
+  }
+  if (!/^[+\d][\d\s-]{7,14}$/.test(value.phone || '')) return { error: 'Enter a valid phone number' };
+  if (value.email) value.email = normalizeEmail(value.email);
+  return { value };
+}
 
 export async function GET(request) {
   try {
@@ -50,8 +91,9 @@ export async function GET(request) {
 
     const [byUserId, byEmail] = await Promise.all([
       db.collection('orders').where('userId', '==', session.user.id).get(),
-      session.user.email
-        ? db.collection('orders').where('guestEmail', '==', session.user.email).get()
+      /* Guest orders by email only once the user has proved that email. */
+      canMatchGuestOrders(session.user)
+        ? db.collection('orders').where('guestEmail', '==', String(session.user.email).toLowerCase()).get()
         : Promise.resolve({ docs: [] }),
     ]);
 
@@ -86,18 +128,46 @@ export async function POST(request) {
        deliberately NOT read from the body — they are recomputed below. */
     const { items, shippingAddress, payment, couponCode, guestEmail } = body;
 
-    if (!items?.length || !shippingAddress) {
+    if (!Array.isArray(items) || !items.length || !shippingAddress || typeof shippingAddress !== 'object') {
       return NextResponse.json({ success: false, message: 'Items and shipping address are required' }, { status: 400 });
+    }
+    if (items.length > MAX_LINES) {
+      return NextResponse.json({ success: false, message: `An order can have at most ${MAX_LINES} items.` }, { status: 400 });
     }
 
     /* Quantities must be positive whole numbers — a negative or non-numeric value
        would slip past the stock check below and later inflate/corrupt stock. */
     for (const item of items) {
-      const qty = Number(item.quantity);
+      const qty = Number(item?.quantity);
       if (!Number.isInteger(qty) || qty < 1 || qty > 999) {
-        return NextResponse.json({ success: false, message: `Invalid quantity for ${item.name || 'item'}` }, { status: 400 });
+        return NextResponse.json({ success: false, message: 'Invalid quantity in your cart' }, { status: 400 });
       }
       item.quantity = qty;
+    }
+    /* The same product on two lines is one line: otherwise each line passes
+       the stock check on its own and the order takes more than there is. */
+    const merged = new Map();
+    for (const item of items) {
+      const id = String(item.product || '');
+      if (merged.has(id)) merged.get(id).quantity += item.quantity;
+      else merged.set(id, { product: id, quantity: item.quantity, name: item.name });
+    }
+    const lines = [...merged.values()];
+    if (lines.some((l) => l.quantity > 999)) {
+      return NextResponse.json({ success: false, message: 'Invalid quantity in your cart' }, { status: 400 });
+    }
+
+    /* Whitelisted, typed, length-limited: these values are shown to staff
+       (labels, emails, WhatsApp) and sent to Shiprocket. */
+    const addr = parseShippingAddress(shippingAddress);
+    if (addr.error) return NextResponse.json({ success: false, message: addr.error }, { status: 400 });
+    /* Signed in: confirmations go to the account's own email. A guest's
+       email must be one plain address (no lists of recipients). */
+    const resolvedEmail = session?.user?.email
+      ? String(session.user.email).toLowerCase()
+      : normalizeEmail(guestEmail || addr.value.email);
+    if (!isValidEmail(resolvedEmail)) {
+      return NextResponse.json({ success: false, message: 'Enter a valid email address.' }, { status: 400 });
     }
 
     /* Price the order from the products collection. Anything money-related that
@@ -109,7 +179,7 @@ export async function POST(request) {
     const orderItems = [];
     const vendorFees = {};
     const vendorCache = new Map();
-    for (const item of items) {
+    for (const item of lines) {
       if (!item.product) {
         return NextResponse.json({ success: false, message: 'Each item must reference a product' }, { status: 400 });
       }
@@ -166,6 +236,10 @@ export async function POST(request) {
 
     const computedShipping = computedSubtotal >= FREE_SHIPPING_ABOVE ? 0 : SHIPPING_FEE;
 
+    /* Who is using the coupon, for once-per-customer: the account, or the
+       guest's email. */
+    const couponUserKey = session?.user?.id ? `u:${session.user.id}` : `e:${resolvedEmail}`;
+
     /* Re-validate the coupon against the server-computed subtotal */
     let couponDiscount = 0;
     let resolvedCouponId = null;
@@ -175,11 +249,7 @@ export async function POST(request) {
         .where('code', '==', String(couponCode).toUpperCase()).limit(1).get();
       if (!cSnap.empty) {
         const c = cSnap.docs[0].data();
-        const usable =
-          c.isActive &&
-          (!c.expiresAt || new Date(c.expiresAt) >= new Date()) &&
-          (Number(c.usedCount) || 0) < Number(c.maxUses) &&
-          computedSubtotal >= (Number(c.minOrderAmount) || 0);
+        const usable = couponUsable(c, computedSubtotal, couponUserKey);
         if (usable) {
           couponDiscount = c.type === 'percentage'
             ? Math.round((computedSubtotal * Number(c.value)) / 100)
@@ -222,11 +292,11 @@ export async function POST(request) {
          switched this check off shouldn't block a sale. */
       if (shiprocketConfigured() && siteSettings.codPincodeCheckEnabled !== false) {
         try {
-          const couriers = await getAvailableCouriers(shippingAddress.pincode, true);
+          const couriers = await getAvailableCouriers(addr.value.pincode, true);
           if (Array.isArray(couriers) && couriers.length === 0) {
             return NextResponse.json({
               success: false,
-              message: `Cash on Delivery is not available for pincode ${shippingAddress.pincode}. Please choose online payment.`,
+              message: `Cash on Delivery is not available for pincode ${addr.value.pincode}. Please choose online payment.`,
             }, { status: 400 });
           }
         } catch {}
@@ -234,15 +304,11 @@ export async function POST(request) {
     }
 
     const orderRef = db.collection('orders').doc();
-    const orderNumber = `TBJ${Date.now()}`;
-    const resolvedEmail = guestEmail || session?.user?.email || shippingAddress?.email || null;
+    /* Timestamp + random suffix: not guessable from the order time alone. */
+    const orderNumber = `TBJ${Date.now()}${crypto.randomInt(100, 1000)}`;
 
     /* Normalize address fields: checkout sends fullName, emails expect name */
-    const normalizedAddress = {
-      ...shippingAddress,
-      name:  shippingAddress.fullName || shippingAddress.name || '',
-      email: shippingAddress.email || resolvedEmail || '',
-    };
+    const normalizedAddress = { ...addr.value, email: addr.value.email || resolvedEmail };
 
     const baseOrder = {
       orderNumber,
@@ -273,7 +339,24 @@ export async function POST(request) {
        the same balance. */
     const userRef = session?.user?.id ? db.collection('users').doc(session.user.id) : null;
 
+    const couponRef = resolvedCouponId ? db.collection('coupons').doc(resolvedCouponId) : null;
     const orderData = await db.runTransaction(async (tx) => {
+      /* Coupon limits are enforced here, in the same commit as the order:
+         re-read it, re-check it, and count this use — so maxUses and
+         once-per-customer hold even for parallel checkouts. */
+      let appliedCoupon = couponDiscount;
+      if (couponRef) {
+        const cDoc = await tx.get(couponRef);
+        const c = cDoc.exists ? cDoc.data() : null;
+        if (!c || !couponUsable(c, computedSubtotal, couponUserKey)) {
+          throw new CheckoutError('This coupon is no longer available. Remove it and try again.');
+        }
+        tx.update(couponRef, {
+          usedCount: (Number(c.usedCount) || 0) + 1,
+          usedBy: [...(Array.isArray(c.usedBy) ? c.usedBy : []), couponUserKey],
+          updatedAt: new Date().toISOString(),
+        });
+      }
       let loyaltyDiscount = 0;
       if (userRef) {
         const uDoc = await tx.get(userRef);
@@ -282,9 +365,9 @@ export async function POST(request) {
         loyaltyDiscount = Math.min(parked, Math.floor(computedSubtotal * MAX_LOYALTY_SHARE));
       }
 
-      const discount = Math.min(couponDiscount + loyaltyDiscount, computedSubtotal);
+      const discount = Math.min(appliedCoupon + loyaltyDiscount, computedSubtotal);
       const total = Math.max(0, computedSubtotal - discount + computedShipping + codFee);
-      const data = { ...baseOrder, discount, loyaltyDiscount, total };
+      const data = { ...baseOrder, discount, loyaltyDiscount, total, ...(couponRef && { couponUserKey }) };
 
       tx.set(orderRef, data);
       if (userRef && loyaltyDiscount > 0) {
@@ -338,6 +421,7 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true, data: customerOrder }, { status: 201 });
   } catch (error) {
+    if (error instanceof CheckoutError) return NextResponse.json({ success: false, message: error.message }, { status: 400 });
     const message = error?.error?.description || error?.message || 'Could not place order. Please try again.';
     console.error('[orders POST] failed:', error?.error || error);
     return NextResponse.json({ success: false, message }, { status: 500 });

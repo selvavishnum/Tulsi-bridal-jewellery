@@ -145,7 +145,7 @@ export default function AdminPortalPage() {
     try {
       const r = await signIn('otp', { email, otp, redirect: false });
       if (r?.error) {
-        toast.error('Invalid or expired OTP. Try again.');
+        toast.error(r.error === 'RateLimited' ? 'Too many attempts. Please wait a minute and try again.' : 'Wrong or expired code. After 5 wrong tries, request a new code.');
         setOtp('');
       } else {
         // signIn() with redirect:false awaits until the session cookie is fully written.
@@ -164,7 +164,7 @@ export default function AdminPortalPage() {
     try {
       const r = await signIn('credentials', { email: pwEmail, password, redirect: false });
       if (r?.error) {
-        toast.error('Wrong email or password.');
+        toast.error(r.error === 'RateLimited' ? 'Too many attempts. Please wait a minute and try again.' : 'Wrong email or password.');
       } else {
         window.location.replace(await destinationAfterSignIn(null, '/admin'));
       }
