@@ -52,9 +52,9 @@ export default function AdminPortalPage() {
   const [pwEmail, setPwEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // Already logged-in admin — go straight to dashboard
-  if (status === 'authenticated' && session?.user?.role === 'admin') {
-    router.replace('/admin');
+  // Already logged-in admin or vendor — go straight to their dashboard
+  if (status === 'authenticated' && (session?.user?.role === 'admin' || session?.user?.role === 'vendor')) {
+    router.replace(session.user.role === 'vendor' ? '/vendor' : '/admin');
     return (
       <Screen>
         <div className="flex flex-col items-center gap-3">

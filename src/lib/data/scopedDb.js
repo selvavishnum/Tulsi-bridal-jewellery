@@ -32,6 +32,7 @@ export const VENDOR_SCOPED = new Set([
   'staff',
   'vendorOrders',
   'vendorLedger',
+  'vendorPayouts',
 ]);
 
 export class TenantIsolationError extends Error {

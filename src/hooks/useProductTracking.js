@@ -34,7 +34,7 @@ function scrollPercent() {
    this hook owns state and flushing, the caller just reports events. */
 export function useProductTracking(product) {
   const { data: session } = useSession();
-  const isAdmin = session?.user?.role === 'admin';
+  const isAdmin = session?.user?.role === 'admin' || session?.user?.role === 'vendor';
   const isBot = typeof navigator !== 'undefined' && navigator.webdriver === true;
   const skip = isAdmin || isBot;
 

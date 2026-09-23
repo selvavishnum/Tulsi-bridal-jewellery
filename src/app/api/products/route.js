@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr, toPublicProduct } from '@/lib/firebase';
+import { checkProductVendor } from '@/lib/vendorProducts';
 import { requireAdmin } from '@/lib/adminCollection';
 import { slugify } from '@/lib/utils';
 
@@ -82,6 +83,9 @@ export async function POST(request) {
       return NextResponse.json({ success: false, message: `SKU "${body.sku}" already exists. Use a unique SKU.` }, { status: 409 });
     }
 
+    const vendor = await checkProductVendor(db, body);
+    if (vendor.error) return NextResponse.json({ success: false, message: vendor.error }, { status: 400 });
+
     const productRef = db.collection('products').doc();
     const productData = {
       name: body.name,
@@ -106,6 +110,14 @@ export async function POST(request) {
       color: body.color || '',
       usageInstructions: body.usageInstructions || '',
       isNew: body.isNew || false,
+      /* These were sent by the admin form but silently dropped on create,
+         so a new product lost its purity, tags and AR try-on image. */
+      purity: body.purity || '',
+      tags: Array.isArray(body.tags) ? body.tags : [],
+      shortDescription: body.shortDescription || '',
+      tryOnImage: body.tryOnImage || '',
+      vendorId: vendor.vendorId,
+      supplyCost: vendor.supplyCost,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

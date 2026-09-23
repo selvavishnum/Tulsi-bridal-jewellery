@@ -22,7 +22,7 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 export async function middleware(request) {
   const { pathname } = request.nextUrl;
 
-  if (pathname.startsWith('/api/admin')) {
+  if (pathname.startsWith('/api/admin') || pathname.startsWith('/api/vendor')) {
     if (MUTATING_METHODS.has(request.method)) {
       const origin = request.headers.get('origin') || request.headers.get('referer');
       const host = request.headers.get('host');
@@ -41,7 +41,18 @@ export async function middleware(request) {
     if (DEV_BYPASS) return NextResponse.next();
 
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+    if (token?.role === 'vendor') return NextResponse.redirect(new URL('/vendor', request.url));
     if (!token || token.role !== 'admin') {
+      return NextResponse.redirect(new URL('/admin-portal', request.url));
+    }
+  }
+
+  /* Outside vendors get their own read-only dashboard; the platform admin
+     panel is never reachable with a vendor session. */
+  if (pathname === '/vendor' || pathname.startsWith('/vendor/')) {
+    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+    if (token?.role === 'admin') return NextResponse.redirect(new URL('/admin', request.url));
+    if (!token || token.role !== 'vendor') {
       return NextResponse.redirect(new URL('/admin-portal', request.url));
     }
   }
@@ -50,5 +61,5 @@ export async function middleware(request) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/api/admin/:path*'],
+  matcher: ['/admin/:path*', '/api/admin/:path*', '/vendor/:path*', '/api/vendor/:path*'],
 };

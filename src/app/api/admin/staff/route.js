@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getDB, snapshotToArr } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
+import { PLATFORM_VENDOR_ID } from '@/lib/data/scopedDb';
+
+/* Outside vendors' logins live in this collection too, but are managed from
+   the Vendors page — the platform staff screen neither lists nor edits them. */
+const isVendorLogin = (s) => !!s.vendorId && s.vendorId !== PLATFORM_VENDOR_ID;
 
 export async function GET() {
   try {
@@ -10,6 +15,7 @@ export async function GET() {
     const db = getDB();
     const snap = await db.collection('staff').get();
     const data = snapshotToArr(snap)
+      .filter((s) => !isVendorLogin(s))
       .map(({ password, ...rest }) => rest)
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     return NextResponse.json({ success: true, data });
@@ -20,7 +26,10 @@ export async function POST(request) {
   try {
     const session = await requireAdmin();
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
-    const { name, email, password, role, phone, status } = await request.json();
+    const { name, email: rawEmail, password, role, phone, status } = await request.json();
+    /* Sign-in looks staff up by lowercased email, so store it that way —
+       an address saved as typed ("Priya@…") could never log in. */
+    const email = String(rawEmail || '').trim().toLowerCase();
 
     if (!name || !email || !password) {
       return NextResponse.json({ success: false, message: 'Name, email and password are required' }, { status: 400 });

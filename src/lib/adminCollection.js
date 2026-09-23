@@ -23,6 +23,19 @@ export async function requireAdmin() {
   return session;
 }
 
+/* Money controls — vendor payouts, vendor bank/UPI details, fee rates.
+   Owner = listed in ADMIN_EMAILS (staffRole 'Owner' is only ever set from
+   that env var, in the auth config). Deliberately NOT staffRole
+   'SuperAdmin': that comes from the staff collection, which any platform
+   staff member can edit, so trusting it would let an employee point a
+   vendor's payouts at their own account. */
+export async function requireOwner() {
+  const session = await requireAdmin();
+  if (!session) return null;
+  if (DEV_BYPASS) return session;
+  return session.user.staffRole === 'Owner' ? session : null;
+}
+
 /* For endpoints that behave differently for admin vs. customer.
    In DEV_BYPASS mode, always returns a mock admin session. */
 export async function getEffectiveSession() {

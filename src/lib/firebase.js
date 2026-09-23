@@ -90,6 +90,9 @@ export function newId() {
 const PRODUCT_PRIVATE_FIELDS = [
   'purchasePrice', 'costPrice', 'cost', 'margin', 'supplier', 'supplierId',
   'warehouse', 'warehouseId', 'lots', 'stockLots', 'internalNotes',
+  /* Marketplace: the platform's retained supply cost is its margin, and
+     which vendor lists a piece is a business relationship, not shopper info. */
+  'supplyCost', 'vendorId',
 ];
 export function toPublicProduct(p) {
   if (!p) return p;

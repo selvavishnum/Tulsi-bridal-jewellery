@@ -20,6 +20,7 @@ const EMPTY_FORM = {
   isAvailableForRent: false, featured: false,
   images: [], tags: '', weight: '', purity: '',
   metalType: '', stoneType: '', color: '', usageInstructions: '', isNew: false, tryOnImage: '',
+  vendorId: '', supplyCost: '',
 };
 
 function Field({ label, children, required }) {
@@ -48,7 +49,14 @@ export default function AdminProductsPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [discountAmt, setDiscountAmt] = useState('');
+  const [vendors, setVendors] = useState([]);
   const fileRef = useRef(null);
+
+  useEffect(() => {
+    fetch('/api/admin/vendors').then((r) => r.json())
+      .then((d) => { if (d.success) setVendors(d.data.vendors); })
+      .catch(() => {});
+  }, []);
 
   const upd = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
@@ -119,6 +127,8 @@ export default function AdminProductsPage() {
       usageInstructions: p.usageInstructions || '',
       isNew: p.isNew || false,
       tryOnImage: p.tryOnImage || '',
+      vendorId: p.vendorId && p.vendorId !== 'tulsi' ? p.vendorId : '',
+      supplyCost: p.supplyCost ? p.supplyCost.toString() : '',
     });
     setEditId(p.id || p._id);
     setModalOpen(true);
@@ -143,8 +153,12 @@ export default function AdminProductsPage() {
       const payload = {
         ...form,
         price:         parseFloat(form.price),
-        discountPrice: form.discountPrice ? parseFloat(form.discountPrice) : undefined,
-        rentalPrice:   form.rentalPrice   ? parseFloat(form.rentalPrice)   : undefined,
+        /* 0, not undefined: JSON drops undefined, so clearing the discount
+           on an existing product used to silently keep the old one. */
+        discountPrice: form.discountPrice ? parseFloat(form.discountPrice) : 0,
+        rentalPrice:   form.rentalPrice   ? parseFloat(form.rentalPrice)   : 0,
+        vendorId:      form.vendorId || 'tulsi',
+        supplyCost:    form.vendorId ? parseFloat(form.supplyCost) || 0 : 0,
         stock:         parseInt(form.stock),
         rentalStock:   parseInt(form.rentalStock) || 0,
         weight:        form.weight ? parseFloat(form.weight) : undefined,
@@ -160,6 +174,8 @@ export default function AdminProductsPage() {
         setModalOpen(false);
         fetchProducts();
       } else { toast.error(data.message); }
+    } catch {
+      toast.error('Network error — the product was not saved');
     } finally { setSaving(false); }
   }
 
@@ -385,6 +401,26 @@ export default function AdminProductsPage() {
                   Customer pays {formatPrice(parseFloat(form.price))} (no discount)
                 </div>
               ) : null}
+
+              {/* Marketplace: who sells it, and what the platform retains */}
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Sold by">
+                  <select value={form.vendorId} onChange={(e) => upd('vendorId', e.target.value)} className={sel}>
+                    <option value="">Tulsi (own stock)</option>
+                    {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}{v.status === 'suspended' ? ' (suspended)' : ''}</option>)}
+                  </select>
+                </Field>
+                {form.vendorId && (
+                  <Field label="Supply cost retained (₹)" required>
+                    <input type="number" value={form.supplyCost} onChange={(e) => upd('supplyCost', e.target.value)} className={inp} placeholder="e.g. 3500" min="0" />
+                  </Field>
+                )}
+              </div>
+              {form.vendorId && form.supplyCost && (form.discountPrice || form.price) && (
+                <p className="text-xs text-gray-500 -mt-2">
+                  Per piece: customer pays {formatPrice(parseFloat(form.discountPrice || form.price))} · Tulsi retains {formatPrice(parseFloat(form.supplyCost))} · vendor margin before shipping &amp; fee {formatPrice(parseFloat(form.discountPrice || form.price) - parseFloat(form.supplyCost))}
+                </p>
+              )}
 
               {/* Stock + Weight + Purity */}
               <div className="grid grid-cols-3 gap-4">

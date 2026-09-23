@@ -9,8 +9,8 @@ import { VENDOR_SCOPED, PLATFORM_VENDOR_ID } from '../../src/lib/data/scopedDb.j
 
 const firestore = db();
 
-/* vendorOrders / vendorLedger are new collections, created already scoped. */
-const COLLECTIONS = [...VENDOR_SCOPED].filter((c) => !['vendorOrders', 'vendorLedger'].includes(c));
+/* vendorOrders / vendorLedger / vendorPayouts are new collections, created already scoped. */
+const COLLECTIONS = [...VENDOR_SCOPED].filter((c) => !['vendorOrders', 'vendorLedger', 'vendorPayouts'].includes(c));
 
 const vendor = await firestore.collection('vendors').doc(PLATFORM_VENDOR_ID).get();
 if (!vendor.exists) {

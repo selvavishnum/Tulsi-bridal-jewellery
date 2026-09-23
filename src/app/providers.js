@@ -12,7 +12,7 @@ import { usePathname } from 'next/navigation';
 
 export function Providers({ children }) {
   const pathname = usePathname();
-  const isAdmin = pathname?.startsWith('/admin') || pathname?.startsWith('/admin-portal');
+  const isAdmin = pathname?.startsWith('/admin') || pathname === '/vendor' || pathname?.startsWith('/vendor/');
 
   return (
     <SessionProvider refetchOnWindowFocus={false} refetchInterval={0}>

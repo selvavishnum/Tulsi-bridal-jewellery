@@ -109,6 +109,14 @@ export default function CheckoutPage() {
     }));
   }, [addrChoice, savedAddresses]);
 
+  /* Must run before the early return below: hooks called after a
+     conditional return change the hook count between renders ("Rendered more
+     hooks than during the previous render"), which crashed checkout on a
+     hard refresh or direct link, when the session starts out 'loading'. */
+  useEffect(() => {
+    if (status === 'authenticated' && !items.length && !orderPlacedRef.current) router.push('/cart');
+  }, [status, items.length, router]);
+
   if (status === 'loading' || status === 'unauthenticated') {
     return <div className="min-h-screen flex items-center justify-center"><LoadingSpinner size="lg" /></div>;
   }
@@ -267,10 +275,6 @@ export default function CheckoutPage() {
       setLoading(false);
     }
   }
-
-  useEffect(() => {
-    if (!items.length && !orderPlacedRef.current) router.push('/cart');
-  }, [items.length, router]);
 
   if (!items.length) return null;
 

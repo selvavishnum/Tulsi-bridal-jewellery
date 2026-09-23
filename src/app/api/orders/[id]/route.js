@@ -4,6 +4,10 @@ import { getEffectiveSession, requireAdmin } from '@/lib/adminCollection';
 import { sendStatusUpdateEmail } from '@/lib/email';
 import { sendStatusWhatsApp } from '@/lib/whatsapp';
 import { awardLoyaltyPoints } from '@/lib/loyalty';
+import { toCustomerOrder } from '@/lib/settlement';
+import { postDeliverySettlement, reverseOrderSettlements } from '@/lib/vendorLedger';
+
+class OrderStateError extends Error {}
 
 export async function GET(request, context) {
   try {
@@ -15,10 +19,16 @@ export async function GET(request, context) {
     const doc = await db.collection('orders').doc(id).get();
     if (!doc.exists) return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
     const order = docToObj(doc);
-    if (session.user.role !== 'admin' && order.userId !== session.user.id) {
-      return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
-    }
-    return NextResponse.json({ success: true, data: order });
+    if (session.user.role === 'admin') return NextResponse.json({ success: true, data: order });
+    /* Same ownership rule as the order list and cancel — a customer who
+       checked out as a guest and later signed in used to see the order in
+       their list but get "Forbidden" opening it. Nullish guarded so a
+       missing field can't match another missing field. */
+    const isOwner =
+      (!!order.userId && order.userId === session.user.id) ||
+      (!!order.guestEmail && order.guestEmail === session.user.email);
+    if (!isOwner) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+    return NextResponse.json({ success: true, data: toCustomerOrder(order) });
   } catch (error) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }
@@ -32,11 +42,21 @@ export async function PUT(request, context) {
 
     const db = getDB();
     const body = await request.json();
-    const { status, trackingNumber, courierName, notes } = body;
+    const { status, trackingNumber, courierName, notes, shippingCostActual } = body;
     const ref = db.collection('orders').doc(id);
+    const isAdmin = session.user.role === 'admin';
+
+    let shippingCostPatch;
+    if (isAdmin && shippingCostActual !== undefined && shippingCostActual !== '') {
+      const n = Number(shippingCostActual);
+      if (!Number.isFinite(n) || n < 0) {
+        return NextResponse.json({ success: false, message: 'Shipping cost must be a number ≥ 0' }, { status: 400 });
+      }
+      shippingCostPatch = n;
+    }
 
     /* Non-admin: can only cancel own pending/confirmed orders */
-    if (session.user.role !== 'admin') {
+    if (!isAdmin) {
       if (status !== 'cancelled') {
         return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
       }
@@ -61,6 +81,12 @@ export async function PUT(request, context) {
       const currentDoc = await tx.get(ref);
       if (!currentDoc.exists) throw new Error('Order not found');
       currentOrder = currentDoc.data();
+      /* Re-checked inside the transaction: the check above ran on a read
+         that an admin could have overtaken (e.g. marked it shipped) before
+         this write lands. */
+      if (!isAdmin && !['pending', 'confirmed'].includes(currentOrder.status)) {
+        throw new OrderStateError(`Order cannot be cancelled — it is already ${currentOrder.status}`);
+      }
 
       const update = { updatedAt: new Date().toISOString() };
 
@@ -113,9 +139,17 @@ export async function PUT(request, context) {
           update.stockRestoredAt = new Date().toISOString();
         }
       }
-      if (trackingNumber !== undefined) update.trackingNumber = trackingNumber;
-      if (courierName !== undefined) update.courierName = courierName;
-      if (notes !== undefined) update.notes = notes;
+      /* Fulfilment fields are admin-only — a customer's cancel request used
+         to be able to set its own tracking number, courier and notes. */
+      if (isAdmin) {
+        if (trackingNumber !== undefined) update.trackingNumber = trackingNumber;
+        if (courierName !== undefined) update.courierName = courierName;
+        if (notes !== undefined) update.notes = notes;
+        if (shippingCostPatch !== undefined) {
+          update.shippingCostActual = shippingCostPatch;
+          update.shippingCostSource = 'manual';
+        }
+      }
 
       tx.update(ref, update);
     });
@@ -123,6 +157,23 @@ export async function PUT(request, context) {
     /* Awarded only for a paid order, and only once (guarded by pointsAwarded) */
     if (status === 'delivered') {
       await awardLoyaltyPoints(ref).catch((e) => console.error('[Loyalty] award failed:', e.message));
+    }
+
+    /* Vendor earnings: credited on delivery (held for the return window),
+       refreshed if the real shipping charge is corrected afterwards, and
+       reversed if a delivered order is cancelled. Each call is idempotent. */
+    let settlementError = null;
+    try {
+      const deliveredNow = status ? status === 'delivered' : currentOrder.status === 'delivered';
+      if (status === 'delivered' || (shippingCostPatch !== undefined && deliveredNow)) {
+        await postDeliverySettlement(db, id, { recalculate: shippingCostPatch !== undefined });
+      }
+      if (status === 'cancelled' && currentOrder.status === 'delivered') {
+        await reverseOrderSettlements(db, id, { reason: 'cancelled after delivery' });
+      }
+    } catch (e) {
+      settlementError = e.message;
+      console.error('[settlement] order', id, 'failed:', e.message);
     }
 
     const updated = await ref.get();
@@ -136,8 +187,10 @@ export async function PUT(request, context) {
       ]);
     }
 
-    return NextResponse.json({ success: true, data: updatedOrder });
+    if (!isAdmin) return NextResponse.json({ success: true, data: toCustomerOrder(updatedOrder) });
+    return NextResponse.json({ success: true, data: updatedOrder, ...(settlementError && { settlementError }) });
   } catch (error) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    const statusCode = error instanceof OrderStateError ? 400 : 500;
+    return NextResponse.json({ success: false, message: error.message }, { status: statusCode });
   }
 }

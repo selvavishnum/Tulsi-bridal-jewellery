@@ -180,7 +180,7 @@ export default function CategoriesPage() {
     } catch { toast.error('Delete failed'); }
   }
 
-  function usePreset(name) {
+  function applyPreset(name) {
     setForm((p) => ({ ...p, name, slug: slugify(name) }));
   }
 
@@ -216,7 +216,7 @@ export default function CategoriesPage() {
                 {JEWELLERY_PRESETS.slice(0, 6).map((p) => (
                   <button
                     key={p}
-                    onClick={() => usePreset(p)}
+                    onClick={() => applyPreset(p)}
                     className="px-3 py-1.5 bg-amber-50 text-amber-700 text-xs rounded-lg font-medium hover:bg-amber-100 transition"
                   >
                     {p}
@@ -532,7 +532,7 @@ export default function CategoriesPage() {
                   {JEWELLERY_PRESETS.map((p) => (
                     <button
                       key={p}
-                      onClick={() => usePreset(p)}
+                      onClick={() => applyPreset(p)}
                       className="px-2.5 py-1 bg-amber-50 text-amber-700 text-xs rounded-md font-medium hover:bg-amber-100 transition"
                     >
                       {p}
