@@ -35,9 +35,23 @@ export function TrackingProvider({ children }) {
   const sessionStartRef = useRef(null);
   const cartDebounceRef = useRef(null);
   const userId = session?.user?.id;
+  /* An admin logged in and browsing the storefront as themselves (testing
+     a feature, checking a product page) must not be counted as customer
+     traffic — every effect below is gated on this in addition to the
+     existing /admin path check, which only ever covered the admin UI
+     routes, not an admin's ordinary storefront browsing.
+     navigator.webdriver is set to true by default in every mainstream
+     automation tool (Selenium, Playwright, Puppeteer) unless the script
+     explicitly patches it away — cheap, standard first line of defense
+     against test/scraper traffic inflating session and pageview counts.
+     (Not reactive — a session's automation status can't change mid-visit,
+     so a plain const is fine here, no state/effect needed to track it.) */
+  const isAdminUser = session?.user?.role === 'admin';
+  const isBot = typeof navigator !== 'undefined' && navigator.webdriver === true;
+  const skipTracking = isAdminUser || isBot;
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || skipTracking) return;
 
     sessionStartRef.current = Date.now();
     trackFetch('/api/track/session', { action: 'start' });
@@ -66,19 +80,19 @@ export function TrackingProvider({ children }) {
       window.removeEventListener('beforeunload', sendSessionEnd);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [userId]);
+  }, [userId, skipTracking]);
 
   // Page view tracking (logged-in customers — feeds the per-customer interest data)
   useEffect(() => {
-    if (!userId || !pathname) return;
+    if (!userId || skipTracking || !pathname || pathname.startsWith('/admin')) return;
     trackFetch('/api/track/pageview', { path: pathname, category: extractCategory(pathname) });
-  }, [userId, pathname]);
+  }, [userId, skipTracking, pathname]);
 
   // Site-wide visit tracking — every visitor, logged in or not. This is what
   // answers "how many people visit the website"; the effect above only ever
   // counted customers who were signed in.
   useEffect(() => {
-    if (!pathname || pathname.startsWith('/admin')) return; // don't count your own admin usage
+    if (!pathname || pathname.startsWith('/admin') || skipTracking) return; // don't count your own admin usage, whether from an admin URL or an admin's own storefront browsing
     let visitorId;
     try {
       visitorId = localStorage.getItem('tulsi_visitor_id');
@@ -90,11 +104,11 @@ export function TrackingProvider({ children }) {
       return; // storage unavailable (private mode, etc.) — skip rather than double count
     }
     trackFetch('/api/track/visit', { visitorId });
-  }, [pathname]);
+  }, [pathname, skipTracking]);
 
   // Cart sync — debounced 2 seconds
   useEffect(() => {
-    if (!userId || !items || items.length === 0) return;
+    if (!userId || skipTracking || !items || items.length === 0) return;
 
     clearTimeout(cartDebounceRef.current);
     cartDebounceRef.current = setTimeout(() => {
@@ -102,7 +116,7 @@ export function TrackingProvider({ children }) {
     }, 2000);
 
     return () => clearTimeout(cartDebounceRef.current);
-  }, [userId, items]);
+  }, [userId, skipTracking, items]);
 
   return children;
 }

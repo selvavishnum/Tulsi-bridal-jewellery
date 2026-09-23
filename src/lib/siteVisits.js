@@ -16,3 +16,11 @@ export function lastNDateKeys(n) {
   }
   return out;
 }
+
+/** The UTC instant that corresponds to 00:00 IST "today" — for comparing
+ * against stored UTC timestamps (e.g. `lastLoginAt`) without the ~5.5h skew
+ * that `new Date(); .setHours(0,0,0,0)` introduces (that mutates in the
+ * server process's OWN local timezone, which on Vercel is UTC, not IST). */
+export function istStartOfDay(d = new Date()) {
+  return new Date(`${istDateKey(d)}T00:00:00+05:30`);
+}

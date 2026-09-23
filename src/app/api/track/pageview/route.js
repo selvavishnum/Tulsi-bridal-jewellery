@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getDB, FieldValue } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
+import { isBotRequest } from '@/lib/isBotRequest';
 
 export async function POST(request) {
   try {
+    if (isBotRequest(request)) return NextResponse.json({ success: false });
+
     const session = await getEffectiveSession();
     if (!session?.user?.id) return NextResponse.json({ success: false });
 

@@ -236,6 +236,14 @@ export default function CustomerDetailPage() {
                   {user.lastSeenProduct.price ? formatPrice(user.lastSeenProduct.price) : '—'}
                 </p>
                 <p className="text-xs text-gray-400 mt-0.5">{safeFormat(user.lastSeenProduct.viewedAt)}</p>
+                {(user.lastSeenProduct.dwellSeconds > 0 || user.lastSeenProduct.carouselClicks > 0 || user.lastSeenProduct.zoomInteractions > 0) && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    {user.lastSeenProduct.dwellSeconds > 0 && <>Viewed {user.lastSeenProduct.dwellSeconds}s</>}
+                    {user.lastSeenProduct.scrollDepthPercentage > 0 && <> · scrolled {user.lastSeenProduct.scrollDepthPercentage}%</>}
+                    {user.lastSeenProduct.carouselClicks > 0 && <> · {user.lastSeenProduct.carouselClicks} photo click{user.lastSeenProduct.carouselClicks !== 1 ? 's' : ''}</>}
+                    {user.lastSeenProduct.zoomInteractions > 0 && <> · zoomed {user.lastSeenProduct.zoomInteractions}×</>}
+                  </p>
+                )}
               </div>
               {user.lastSeenProduct.slug && (
                 <Link

@@ -1,12 +1,18 @@
 import { NextResponse } from 'next/server';
 import { getDB, FieldValue } from '@/lib/firebase';
 import { istDateKey } from '@/lib/siteVisits';
+import { isBotRequest } from '@/lib/isBotRequest';
 
 /* Unauthenticated by design — this counts every visitor to the public site,
    not just logged-in customers (that's the gap TrackingProvider left: it
-   skips everything when there's no session). */
+   skips everything when there's no session). Being unauthenticated and
+   the single "how many people visit the site" number is exactly why the
+   bot filter matters most here — this is the route a crawler that ignores
+   robots.txt, or any scripted client, would otherwise inflate. */
 export async function POST(request) {
   try {
+    if (isBotRequest(request)) return NextResponse.json({ success: false });
+
     const { visitorId } = await request.json();
     if (!visitorId || typeof visitorId !== 'string' || visitorId.length > 100) {
       return NextResponse.json({ success: false }, { status: 400 });
