@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr } from '@/lib/firebase';
-import { requireRole, ROLES } from '@/lib/requireRole';
+import { requireRole, ROLES, CAN } from '@/lib/requireRole';
 import { stripCostFields } from '@/lib/access';
 
 // Admin-specific products endpoint — no composite index needed
 export async function GET() {
   try {
-    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    const auth = await requireRole(CAN.editStock);
     if (auth.error) return auth.error;
 
     const db = getDB();

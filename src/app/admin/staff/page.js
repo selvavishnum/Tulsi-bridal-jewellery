@@ -3,24 +3,28 @@ import { useState, useEffect } from 'react';
 import { FiUsers, FiPlus, FiEdit2, FiTrash2, FiX, FiRefreshCw, FiShield } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
-import { ASSIGNABLE_STAFF_ROLES, ROLE_LABELS } from '@/lib/access';
+import { ASSIGNABLE_STAFF_ROLES, ROLE_LABELS, normalizeStaffRole } from '@/lib/access';
 
-/* Three staff tiers only (vendor logins are managed on the Vendors page).
-   The six granular roles this replaced — ProductManager, InventoryManager,
-   OrderManager, SalesStaff, BusinessManager, SuperAdmin — were all full
-   admins in practice; each tier below is enforced by the API. */
+/* Six staff roles (vendor logins are managed on the Vendors page). What
+   each one may do is enforced by the API — see CAN in src/lib/access.js. */
 const ROLES = ASSIGNABLE_STAFF_ROLES;
 
 const ROLE_HELP = {
   SUPER_ADMIN: 'Everything, including ledgers, payouts, supplier costs, settings and staff.',
-  ORDER_FULFILLMENT_STAFF: 'View confirmed orders, print slips, book couriers, mark Packed / Shipped. No costs, finance or settings.',
-  CATALOG_STAFF: 'Product photos, descriptions, categories and stock counts. New products stay drafts until a Super Admin prices them. No prices, orders or customer data.',
+  PRODUCT_MANAGER: 'Products, photos, descriptions, categories, variants and stock. New products stay drafts until a Super Admin prices them. No prices, orders or customer data.',
+  INVENTORY_MANAGER: 'Stock counts, SKUs and barcodes only. Cannot add products or change prices.',
+  BUSINESS_MANAGER: 'Read-only: reports, sales, visitor analytics, orders and customers. No payouts, settings, staff or payment keys.',
+  ORDER_MANAGER: 'View confirmed orders, print slips, book couriers, mark Packed / Shipped. No costs, finance or settings.',
+  SALES_STAFF: 'Look up orders and customers to help buyers. Read-only: cannot change orders.',
 };
 
 const ROLE_COLORS = {
-  SUPER_ADMIN:             'bg-purple-100 text-purple-700',
-  ORDER_FULFILLMENT_STAFF: 'bg-orange-100 text-orange-700',
-  CATALOG_STAFF:           'bg-blue-100 text-blue-700',
+  SUPER_ADMIN:       'bg-purple-100 text-purple-700',
+  PRODUCT_MANAGER:   'bg-blue-100 text-blue-700',
+  INVENTORY_MANAGER: 'bg-cyan-100 text-cyan-700',
+  BUSINESS_MANAGER:  'bg-emerald-100 text-emerald-700',
+  ORDER_MANAGER:     'bg-orange-100 text-orange-700',
+  SALES_STAFF:       'bg-pink-100 text-pink-700',
 };
 
 const STATUS_COLORS = {
@@ -29,7 +33,7 @@ const STATUS_COLORS = {
   'On Leave': 'bg-yellow-100 text-yellow-700',
 };
 
-const EMPTY_FORM = { name: '', email: '', password: '', role: 'CATALOG_STAFF', phone: '', status: 'Active' };
+const EMPTY_FORM = { name: '', email: '', password: '', role: 'SALES_STAFF', phone: '', status: 'Active' };
 
 export default function StaffPage() {
   const [staff, setStaff] = useState([]);
@@ -54,7 +58,7 @@ export default function StaffPage() {
 
   function openAdd() { setForm(EMPTY_FORM); setEditId(null); setShowModal(true); }
   function openEdit(member) {
-    setForm({ name: member.name || '', email: member.email || '', password: '', role: member.role || 'CATALOG_STAFF', phone: member.phone || '', status: member.status || 'Active' });
+    setForm({ name: member.name || '', email: member.email || '', password: '', role: normalizeStaffRole(member.role) || 'SALES_STAFF', phone: member.phone || '', status: member.status || 'Active' });
     setEditId(member.id);
     setShowModal(true);
   }
@@ -176,9 +180,9 @@ export default function StaffPage() {
                   <td className="px-4 py-3 text-gray-600">{member.phone || '—'}</td>
                   <td className="px-4 py-3 text-gray-400 text-sm tracking-widest">••••••</td>
                   <td className="px-4 py-3">
-                    {member.role ? (
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${ROLE_COLORS[member.role] || 'bg-gray-100 text-gray-700'}`}>
-                        {ROLE_LABELS[member.role] || member.role}
+                    {normalizeStaffRole(member.role) ? (
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${ROLE_COLORS[normalizeStaffRole(member.role)] || 'bg-gray-100 text-gray-700'}`}>
+                        {ROLE_LABELS[normalizeStaffRole(member.role)]}
                       </span>
                     ) : (
                       <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700">No access — assign a role</span>

@@ -1,21 +1,29 @@
 /* ─────────────────────────────────────────────
-   Access model — 4 strict tiers, least privilege, deny by default.
+   Access model — six staff roles plus vendors, least privilege, deny by
+   default.
 
-     SUPER_ADMIN              Everything: ledgers, payouts, supplier costs,
-                              settings, staff. Granted by ADMIN_EMAILS, or
-                              by a staff record that only a SUPER_ADMIN can
-                              create or edit.
-     ORDER_FULFILLMENT_STAFF  Orders to pack and ship: view, print, mark
-                              Packed / Shipped, book the courier. Nothing
-                              about costs, margins, payouts or settings.
-     CATALOG_STAFF            Product media, descriptions, categories and
-                              stock counts. No prices, costs, orders or
-                              customer data. New products start as drafts
-                              until a SUPER_ADMIN prices and publishes them.
-     VENDOR                   Their own products and orders, retail sales
-                              and net payout balance only (/vendor portal).
+     SUPER_ADMIN        Everything: ledgers, payouts, supplier costs,
+                        settings, staff. Granted by ADMIN_EMAILS, or by a
+                        staff record that only a SUPER_ADMIN can create or
+                        edit.
+     ORDER_MANAGER      Orders to pack and ship: view, print, mark Packed /
+                        Shipped, book the courier. No costs, margins,
+                        payouts or settings.
+     SALES_STAFF        Look up orders and customers to answer buyers.
+                        Read-only: no status changes, no courier booking.
+     PRODUCT_MANAGER    Products, categories, variants, photos and stock.
+                        No prices, costs, orders or customer data. New
+                        products start as drafts until a SUPER_ADMIN
+                        prices and publishes them.
+     INVENTORY_MANAGER  Stock counts and barcodes only. Can't create or
+                        rename products, or touch prices.
+     BUSINESS_MANAGER   Read-only reports, sales, visitor analytics,
+                        orders and customers. Moves no money and changes
+                        nothing: no payouts, settings, staff or gateway keys.
+     VENDOR             Their own products and orders, retail sales and net
+                        payout balance only (/vendor portal).
 
-   The tier is resolved from its source (ADMIN_EMAILS or the staff record)
+   The role is resolved from its source (ADMIN_EMAILS or the staff record)
    on every API request — see requireRole.js — never trusted from the
    session token alone. Pure module: no Next.js or '@/…' imports, so the
    edge middleware and `node --test` can both use it.
@@ -24,37 +32,63 @@ import { PLATFORM_VENDOR_ID } from './data/scopedDb.js';
 
 export const ROLES = Object.freeze({
   SUPER_ADMIN: 'SUPER_ADMIN',
-  ORDER_FULFILLMENT_STAFF: 'ORDER_FULFILLMENT_STAFF',
-  CATALOG_STAFF: 'CATALOG_STAFF',
+  PRODUCT_MANAGER: 'PRODUCT_MANAGER',
+  INVENTORY_MANAGER: 'INVENTORY_MANAGER',
+  BUSINESS_MANAGER: 'BUSINESS_MANAGER',
+  ORDER_MANAGER: 'ORDER_MANAGER',
+  SALES_STAFF: 'SALES_STAFF',
   VENDOR: 'VENDOR',
 });
-const { SUPER_ADMIN, ORDER_FULFILLMENT_STAFF, CATALOG_STAFF, VENDOR } = ROLES;
+const { SUPER_ADMIN, PRODUCT_MANAGER, INVENTORY_MANAGER, BUSINESS_MANAGER, ORDER_MANAGER, SALES_STAFF, VENDOR } = ROLES;
 
-/* Roles a SUPER_ADMIN can give a platform staff member on the Staff page.
-   Vendor logins are created on the Vendors page instead. */
-export const ASSIGNABLE_STAFF_ROLES = Object.freeze([SUPER_ADMIN, ORDER_FULFILLMENT_STAFF, CATALOG_STAFF]);
+/* Roles a SUPER_ADMIN can give a platform staff member on the Staff page,
+   in the order the dropdown shows them. Vendor logins are created on the
+   Vendors page instead. */
+export const ASSIGNABLE_STAFF_ROLES = Object.freeze([
+  SUPER_ADMIN, PRODUCT_MANAGER, INVENTORY_MANAGER, BUSINESS_MANAGER, ORDER_MANAGER, SALES_STAFF,
+]);
 
 export const ROLE_LABELS = Object.freeze({
   [SUPER_ADMIN]: 'Super Admin',
-  [ORDER_FULFILLMENT_STAFF]: 'Order Fulfillment',
-  [CATALOG_STAFF]: 'Catalog',
+  [PRODUCT_MANAGER]: 'Product Manager',
+  [INVENTORY_MANAGER]: 'Inventory Manager',
+  [BUSINESS_MANAGER]: 'Business Manager',
+  [ORDER_MANAGER]: 'Order Manager',
+  [SALES_STAFF]: 'Sales Staff',
   [VENDOR]: 'Vendor',
 });
 
-/* Staff records written before the 4-tier model. Two legacy roles map to
-   nothing (no admin access until a SUPER_ADMIN assigns a role):
-     SuperAdmin      — before this model any staff member could write any
-                       staff role, including their own, so an old
-                       "SuperAdmin" proves nothing; promoting it to the tier
-                       that moves money would reward exactly that.
-     BusinessManager — reports and finance have no home below SUPER_ADMIN.
-   Migration 004 rewrites the rest to the new names. */
+/* Who may do what. API routes and pages check these groups, so adding a
+   role means deciding its place here, once. SUPER_ADMIN is in every group. */
+export const CAN = Object.freeze({
+  /* Read every order (non-SUPER_ADMIN get the cost-free fulfilment view). */
+  viewOrders: Object.freeze([SUPER_ADMIN, ORDER_MANAGER, SALES_STAFF, BUSINESS_MANAGER]),
+  /* Mark Packed / Shipped, add tracking, book the courier. */
+  fulfilOrders: Object.freeze([SUPER_ADMIN, ORDER_MANAGER]),
+  /* Customer list and profiles. */
+  viewCustomers: Object.freeze([SUPER_ADMIN, SALES_STAFF, BUSINESS_MANAGER]),
+  /* Create and edit products, categories, variants and photos. */
+  editCatalog: Object.freeze([SUPER_ADMIN, PRODUCT_MANAGER]),
+  /* See the product list and set stock counts. */
+  editStock: Object.freeze([SUPER_ADMIN, PRODUCT_MANAGER, INVENTORY_MANAGER]),
+  /* Sales reports and visitor analytics (read-only). */
+  viewReports: Object.freeze([SUPER_ADMIN, BUSINESS_MANAGER]),
+});
+
+/* Staff records written under earlier role names. Legacy "SuperAdmin"
+   maps to nothing: before roles were validated any staff member could
+   write any role, including their own, so it proves nothing — a SUPER_ADMIN
+   re-grants it on the Staff page (which records who granted it). */
 const LEGACY_STAFF_ROLES = Object.freeze({
-  OrderManager: ORDER_FULFILLMENT_STAFF,
-  SalesStaff: ORDER_FULFILLMENT_STAFF,
-  ProductManager: CATALOG_STAFF,
-  InventoryManager: CATALOG_STAFF,
+  ProductManager: PRODUCT_MANAGER,
+  InventoryManager: INVENTORY_MANAGER,
+  BusinessManager: BUSINESS_MANAGER,
+  OrderManager: ORDER_MANAGER,
+  SalesStaff: SALES_STAFF,
   VendorAdmin: VENDOR,
+  // The short-lived 4-tier names
+  ORDER_FULFILLMENT_STAFF: ORDER_MANAGER,
+  CATALOG_STAFF: PRODUCT_MANAGER,
 });
 
 export function normalizeStaffRole(raw) {
@@ -104,13 +138,17 @@ export function sessionRoleFor(tier) {
    listed is SUPER_ADMIN only. ── */
 const PAGE_RULES = [
   ['/admin/inventory/lots', [SUPER_ADMIN]], // stock-lot costs
-  ['/admin/orders', [SUPER_ADMIN, ORDER_FULFILLMENT_STAFF]],
-  ['/admin/products', [SUPER_ADMIN, CATALOG_STAFF]],
-  ['/admin/categories', [SUPER_ADMIN, CATALOG_STAFF]],
-  ['/admin/variants', [SUPER_ADMIN, CATALOG_STAFF]],
-  ['/admin/inventory', [SUPER_ADMIN, CATALOG_STAFF]],
-  ['/admin/barcodes', [SUPER_ADMIN, CATALOG_STAFF]],
-  ['/admin/photo-editor', [SUPER_ADMIN, CATALOG_STAFF]],
+  ['/admin/orders', CAN.viewOrders],
+  ['/admin/customers', CAN.viewCustomers],
+  ['/admin/products', CAN.editCatalog],
+  ['/admin/categories', CAN.editCatalog],
+  ['/admin/variants', CAN.editCatalog],
+  ['/admin/photo-editor', CAN.editCatalog],
+  ['/admin/inventory', CAN.editStock],
+  ['/admin/barcodes', CAN.editStock],
+  ['/admin/analytics', CAN.viewReports],
+  ['/admin/reports', CAN.viewReports],
+  ['/admin/sales', CAN.viewReports],
   ['/admin', [SUPER_ADMIN]],
 ];
 
@@ -119,11 +157,16 @@ export function canViewAdminPath(tier, pathname) {
   return !!rule && rule[1].includes(tier);
 }
 
+const HOME = {
+  [SUPER_ADMIN]: '/admin',
+  [PRODUCT_MANAGER]: '/admin/products',
+  [INVENTORY_MANAGER]: '/admin/inventory',
+  [BUSINESS_MANAGER]: '/admin/reports',
+  [ORDER_MANAGER]: '/admin/orders',
+  [SALES_STAFF]: '/admin/orders',
+};
 export function adminHomeFor(tier) {
-  if (tier === SUPER_ADMIN) return '/admin';
-  if (tier === ORDER_FULFILLMENT_STAFF) return '/admin/orders';
-  if (tier === CATALOG_STAFF) return '/admin/products';
-  return null;
+  return HOME[tier] || null;
 }
 
 /* ── Order fulfilment ── */

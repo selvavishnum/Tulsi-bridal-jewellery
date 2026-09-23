@@ -6,7 +6,7 @@ import { sendOrderWhatsAppToAdmin, sendOrderWhatsAppToCustomer } from '@/lib/wha
 import { getAvailableCouriers, isConfigured as shiprocketConfigured } from '@/lib/shiprocket';
 import { PLATFORM_VENDOR_ID, validateVendorPricing, toCustomerOrder } from '@/lib/settlement';
 import { getAccess } from '@/lib/requireRole';
-import { ROLES, toFulfillmentOrder } from '@/lib/access';
+import { ROLES, CAN, toFulfillmentOrder } from '@/lib/access';
 
 /* Shipping rules — must match the cart display in src/context/CartContext.js */
 const FREE_SHIPPING_ABOVE = 2000;
@@ -34,13 +34,13 @@ export async function GET(request) {
     const limit = parseInt(searchParams.get('limit') || '10');
     const status = searchParams.get('status');
 
-    /* All orders: SUPER_ADMIN, and fulfilment staff without cost/margin
-       fields. Catalog staff and vendors fall through to the customer view
-       below (their own purchases only) — they have no order access. */
-    if (access.tier === ROLES.SUPER_ADMIN || access.tier === ROLES.ORDER_FULFILLMENT_STAFF) {
+    /* All orders: SUPER_ADMIN in full; order, sales and business staff
+       without cost/margin fields. Catalog/inventory staff and vendors fall
+       through to the customer view below (their own purchases only). */
+    if (CAN.viewOrders.includes(access.tier)) {
       const snap = await db.collection('orders').orderBy('createdAt', 'desc').get();
       let orders = snap.docs.map((d) => ({ id: d.id, _id: d.id, ...d.data() }));
-      if (access.tier === ROLES.ORDER_FULFILLMENT_STAFF) orders = orders.map(toFulfillmentOrder);
+      if (access.tier !== ROLES.SUPER_ADMIN) orders = orders.map(toFulfillmentOrder);
       if (status) orders = orders.filter((o) => o.status === status);
       const total = orders.length;
       const pages = Math.ceil(total / limit);

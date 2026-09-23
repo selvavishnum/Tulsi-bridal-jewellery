@@ -26,7 +26,7 @@ export default function InventoryPage() {
   const { data: session } = useSession();
   /* Catalog staff adjust stock counts and SKUs; price, discount and
      visibility are Super Admin decisions (the API refuses them). */
-  const isCatalog = session?.user?.tier === ROLES.CATALOG_STAFF;
+  const isCatalog = !!session?.user?.tier && session.user.tier !== ROLES.SUPER_ADMIN; // product/inventory staff: no prices or costs
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');

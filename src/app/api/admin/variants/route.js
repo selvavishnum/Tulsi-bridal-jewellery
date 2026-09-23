@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr, docToObj } from '@/lib/firebase';
-import { requireRole, ROLES } from '@/lib/requireRole';
+import { requireRole, CAN } from '@/lib/requireRole';
 
 export async function GET() {
   try {
-    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    const auth = await requireRole(CAN.editCatalog);
     if (auth.error) return auth.error;
     const { session } = auth;
     const db = getDB();
@@ -17,7 +17,7 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    const auth = await requireRole(CAN.editCatalog);
     if (auth.error) return auth.error;
     const { session } = auth;
     const body = await request.json();
@@ -41,7 +41,7 @@ export async function POST(request) {
 
 export async function PUT(request) {
   try {
-    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    const auth = await requireRole(CAN.editCatalog);
     if (auth.error) return auth.error;
     const { session } = auth;
     const body = await request.json();
@@ -58,7 +58,7 @@ export async function PUT(request) {
 
 export async function DELETE(request) {
   try {
-    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    const auth = await requireRole(CAN.editCatalog);
     if (auth.error) return auth.error;
     const { session } = auth;
     const { searchParams } = new URL(request.url);

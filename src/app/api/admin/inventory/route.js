@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr, docToObj } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
-import { requireRole, ROLES } from '@/lib/requireRole';
+import { requireRole, ROLES, CAN } from '@/lib/requireRole';
 import { stripCostFields } from '@/lib/access';
 import { fifoDeduct } from '@/lib/fifoDeduct';
 
 export async function GET(request) {
   try {
-    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    const auth = await requireRole(CAN.editStock);
     if (auth.error) return auth.error;
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
@@ -37,7 +37,7 @@ export async function GET(request) {
 
 export async function PATCH(request) {
   try {
-    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.CATALOG_STAFF]);
+    const auth = await requireRole(CAN.editStock);
     if (auth.error) return auth.error;
     const body = await request.json();
     const { id, sku, mrp, discPct, inStock, showMe } = body;

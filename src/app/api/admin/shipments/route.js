@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '@/lib/firebase';
-import { requireRole, ROLES } from '@/lib/requireRole';
+import { requireRole, ROLES, CAN } from '@/lib/requireRole';
 import { createShiprocketOrder, assignAwb, getFreightQuote, trackShiprocketAWB, isConfigured } from '@/lib/shiprocket';
 import { sendStatusUpdateEmail } from '@/lib/email';
 import { sendStatusWhatsApp } from '@/lib/whatsapp';
@@ -24,7 +24,7 @@ async function notifyShipped(orderRef, previousStatus) {
    as shippingCostActual and deducted from vendor earnings on delivery. */
 export async function POST(request) {
   try {
-    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.ORDER_FULFILLMENT_STAFF]);
+    const auth = await requireRole(CAN.fulfilOrders);
     if (auth.error) return auth.error;
     const { session } = auth;
 
@@ -41,7 +41,7 @@ export async function POST(request) {
     }
     /* Fulfilment staff ship confirmed orders only (a pending COD order hasn't
        had its stock deducted yet); re-shipping to fix tracking is fine. */
-    if (auth.tier === ROLES.ORDER_FULFILLMENT_STAFF && !['confirmed', 'processing', 'shipped'].includes(order.status)) {
+    if (auth.tier !== ROLES.SUPER_ADMIN && !['confirmed', 'processing', 'shipped'].includes(order.status)) {
       return NextResponse.json({ success: false, message: 'Only confirmed orders can be shipped — ask a Super Admin to confirm this one first.' }, { status: 400 });
     }
 
@@ -155,7 +155,7 @@ export async function POST(request) {
 /* GET /api/admin/shipments?orderId=xxx — Get tracking status */
 export async function GET(request) {
   try {
-    const auth = await requireRole([ROLES.SUPER_ADMIN, ROLES.ORDER_FULFILLMENT_STAFF]);
+    const auth = await requireRole(CAN.fulfilOrders);
     if (auth.error) return auth.error;
     const { session } = auth;
 
