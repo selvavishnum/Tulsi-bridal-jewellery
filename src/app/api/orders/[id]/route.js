@@ -3,6 +3,7 @@ import { getDB, docToObj, FieldValue } from '@/lib/firebase';
 import { getEffectiveSession, requireAdmin } from '@/lib/adminCollection';
 import { sendStatusUpdateEmail } from '@/lib/email';
 import { sendStatusWhatsApp } from '@/lib/whatsapp';
+import { awardLoyaltyPoints } from '@/lib/loyalty';
 
 export async function GET(request, context) {
   try {
