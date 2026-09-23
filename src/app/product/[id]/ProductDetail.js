@@ -14,6 +14,7 @@ import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
 import { cldBase, cldZoom, cldThumb } from '@/lib/cloudinaryImage';
+import { useProductTracking } from '@/hooks/useProductTracking';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
 
@@ -361,10 +362,13 @@ export default function ProductDetail() {
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedImage, setSelectedImage] = useState(0);
+  const [selectedImage, setSelectedImageRaw] = useState(0);
   const [qty, setQty] = useState(1);
   const [zoomOpen, setZoomOpen] = useState(false);
   const [zoomIndex, setZoomIndex] = useState(0);
+
+  const { recordCarouselClick, recordZoomInteraction } = useProductTracking(product);
+  function setSelectedImage(next) { recordCarouselClick(); setSelectedImageRaw(next); }
 
   const [reviews, setReviews] = useState([]);
   const [reviewStats, setReviewStats] = useState({ average: 0, count: 0 });
@@ -523,7 +527,7 @@ export default function ProductDetail() {
         <div className="lg:hidden bg-white">
           <div
             className="relative w-full aspect-square overflow-hidden bg-white cursor-zoom-in"
-            onClick={() => { setZoomIndex(selectedImage); setZoomOpen(true); }}
+            onClick={() => { recordZoomInteraction(); setZoomIndex(selectedImage); setZoomOpen(true); }}
             onTouchStart={onMobileSwipeStart}
             onTouchEnd={onMobileSwipeEnd}
           >
@@ -589,8 +593,8 @@ export default function ProductDetail() {
               {/* Main image with slide arrows */}
               <div
                 className="relative aspect-square rounded-2xl overflow-hidden bg-white border border-stone-100 mb-3 group cursor-zoom-in"
-                onClick={() => { if (product.images?.[selectedImage]) { setZoomIndex(selectedImage); setZoomOpen(true); } }}
-                onMouseEnter={() => setLoupeHover(true)}
+                onClick={() => { if (product.images?.[selectedImage]) { recordZoomInteraction(); setZoomIndex(selectedImage); setZoomOpen(true); } }}
+                onMouseEnter={() => { recordZoomInteraction(); setLoupeHover(true); }}
                 onMouseLeave={() => setLoupeHover(false)}
                 onMouseMove={onLoupeMove}
               >

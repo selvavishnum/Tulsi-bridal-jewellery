@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
+import { istStartOfDay } from '@/lib/siteVisits';
 
 export async function GET() {
   try {
@@ -13,7 +14,13 @@ export async function GET() {
 
     const now = Date.now();
     const thirtyMin = 30 * 60 * 1000;
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    /* IST midnight, not server-local midnight — the Vercel serverless
+       process runs in UTC, so .setHours(0,0,0,0) on a plain `new Date()`
+       would put the day boundary 5.5h off from what "today" means to an
+       admin looking at this from India (e.g. a 1am IST login would land
+       in "yesterday", and the boundary would roll over at 5:30am IST
+       instead of midnight). */
+    const todayStart = istStartOfDay();
     const weekStart  = new Date(now - 7 * 24 * 60 * 60 * 1000);
 
     // Active users (seen in last 30 min)
