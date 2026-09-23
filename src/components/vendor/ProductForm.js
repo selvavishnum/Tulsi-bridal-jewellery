@@ -14,7 +14,7 @@ const label = (s) => s.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase(
 
 const BLANK = {
   name: '', sku: '', category: 'necklace', material: '', description: '', images: [],
-  price: '', discountPrice: '', stock: '0', weight: '', color: '', occasion: '',
+  price: '', discountPrice: '', shippingCharge: '', stock: '0', weight: '', color: '', occasion: '',
 };
 
 function Field({ label: text, hint, children }) {
@@ -33,7 +33,7 @@ export default function ProductForm({ product }) {
   const router = useRouter();
   const editing = !!product;
   const [form, setForm] = useState(() => (product
-    ? { ...BLANK, ...product, price: String(product.price || ''), discountPrice: product.discountPrice ? String(product.discountPrice) : '', stock: String(product.stock ?? 0) }
+    ? { ...BLANK, ...product, price: String(product.price || ''), discountPrice: product.discountPrice ? String(product.discountPrice) : '', stock: String(product.stock ?? 0), shippingCharge: product.shippingCharge === null || product.shippingCharge === undefined ? '' : String(product.shippingCharge) }
     : BLANK));
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(0);
@@ -78,6 +78,7 @@ export default function ProductForm({ product }) {
       name: form.name, sku: form.sku.trim(), category: form.category, material: form.material,
       description: form.description, images: form.images,
       price: Number(form.price), discountPrice: form.discountPrice === '' ? 0 : Number(form.discountPrice),
+      shippingCharge: form.shippingCharge === '' ? null : Number(form.shippingCharge),
       stock: Number(form.stock), weight: form.weight, color: form.color, occasion: form.occasion,
     };
     if (!editing && !body.sku) delete body.sku;
@@ -156,12 +157,15 @@ export default function ProductForm({ product }) {
 
       <section className="bg-white rounded-xl border border-stone-200 p-4 sm:p-5 space-y-4">
         <h2 className="font-semibold text-stone-800">Price and stock</h2>
-        <div className="grid sm:grid-cols-3 gap-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Field label="Retail price (₹) *">
             <input required type="number" min="1" step="0.01" inputMode="decimal" value={form.price} onChange={(e) => upd('price', e.target.value)} className={`${field} tabular-nums`} />
           </Field>
           <Field label="Offer price (₹)" hint={offerPct ? `${offerPct}% off — customers pay ${inr(offer)}` : 'Leave blank for no offer'}>
             <input type="number" min="0" step="0.01" inputMode="decimal" value={form.discountPrice} onChange={(e) => upd('discountPrice', e.target.value)} className={`${field} tabular-nums`} />
+          </Field>
+          <Field label="Your shipping charge (₹ per piece)" hint="Deducted from your payout. Blank = actual courier cost.">
+            <input type="number" min="0" step="0.01" inputMode="decimal" value={form.shippingCharge} onChange={(e) => upd('shippingCharge', e.target.value)} className={`${field} tabular-nums`} />
           </Field>
           <Field label="Stock quantity">
             <input type="number" min="0" step="1" inputMode="numeric" value={form.stock} onChange={(e) => upd('stock', e.target.value)} className={`${field} tabular-nums`} />

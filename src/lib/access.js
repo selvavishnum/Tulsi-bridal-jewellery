@@ -183,7 +183,7 @@ export function toFulfillmentOrder(order) {
   } = order;
   const out = { ...rest };
   if (Array.isArray(order.items)) {
-    out.items = order.items.map(({ supplyCost: _s, vendorId: _v, ...i }) => i);
+    out.items = order.items.map(({ supplyCost: _s, vendorId: _v, vendorShipping: _vs, ...i }) => i);
   }
   if (order.payment) {
     const { razorpaySignature: _sig, amountDue: _ad, ...payment } = order.payment;
@@ -206,6 +206,7 @@ export const CATALOG_EDITABLE_PRODUCT_FIELDS = Object.freeze([
 const COST_FIELDS = [
   'supplyCost', 'purchasePrice', 'costPrice', 'cost', 'margin', 'supplier', 'supplierId',
   'lots', 'stockLots', 'warehouse', 'warehouseId', 'internalNotes', 'vendorId',
+  'marginMode', 'marginPercent', 'vendorShipping',
 ];
 
 /* Product as catalog staff may see it: no cost, supplier or vendor data. */

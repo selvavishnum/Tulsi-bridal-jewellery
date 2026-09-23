@@ -48,11 +48,11 @@ export default function VendorOrdersPage() {
       <Card title="How your earnings add up">
         <dl className="text-sm tabular-nums max-w-md divide-y divide-stone-100">
           <div className="flex justify-between py-2"><dt className="text-stone-600">Total sold</dt><dd className="font-semibold">{inrPaise(s.totalSoldPaise)}</dd></div>
-          <div className="flex justify-between py-2"><dt className="text-stone-600">− Logistics (courier)</dt><dd>{inrPaise(-s.logisticsPaise)}</dd></div>
-          <div className="flex justify-between py-2"><dt className="text-stone-600">− Supply cost &amp; Tulsi fee</dt><dd>{inrPaise(-s.chargesPaise)}</dd></div>
+          <div className="flex justify-between py-2"><dt className="text-stone-600">− Shipping</dt><dd>{inrPaise(-s.logisticsPaise)}</dd></div>
+          <div className="flex justify-between py-2"><dt className="text-stone-600">− Tulsi margin &amp; fee</dt><dd>{inrPaise(-s.chargesPaise)}</dd></div>
           <div className="flex justify-between py-2"><dt className="font-semibold text-stone-800">= Net earnings</dt><dd className="font-bold text-wine-700">{inrPaise(s.netPaise)}</dd></div>
         </dl>
-        <p className="text-xs text-stone-400 mt-2">Delivered orders only. Total sold includes any delivery charge the customer paid for your pieces. Refunds after a payout are recovered from your next earnings.</p>
+        <p className="text-xs text-stone-400 mt-2">Delivered orders only. Shipping is the charge you set per piece, or the actual courier cost where you haven't set one. Refunds after a payout are recovered from your next earnings.</p>
       </Card>
 
       <div className="flex gap-1.5" role="tablist">
@@ -112,8 +112,8 @@ export default function VendorOrdersPage() {
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-stone-400">
                   <th className="py-2 pr-3">Order</th><th className="pr-3">Delivered</th>
-                  <th className="pr-3 text-right">Sold</th><th className="pr-3 text-right">Logistics</th>
-                  <th className="pr-3 text-right">Supply &amp; fee</th><th className="pr-3 text-right">Net</th><th>Status</th>
+                  <th className="pr-3 text-right">Sold</th><th className="pr-3 text-right">Shipping</th>
+                  <th className="pr-3 text-right">Margin &amp; fee</th><th className="pr-3 text-right">Net</th><th>Status</th>
                 </tr>
               </thead>
               <tbody className="tabular-nums">

@@ -10,7 +10,7 @@ const date = (iso) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'n
 const inp = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400 bg-white';
 
 const EMPTY_VENDOR = {
-  name: '', contactName: '', phone: '', email: '', password: '', platformFeePercent: '0',
+  name: '', contactName: '', phone: '', email: '', password: '', platformFeePercent: '0', defaultMarginPercent: '',
   payoutMethod: 'upi', upiId: '', accountName: '', accountNumber: '', ifsc: '',
 };
 
@@ -98,6 +98,7 @@ export default function VendorsPage() {
         ...EMPTY_VENDOR,
         name: v.name, contactName: v.contactName, phone: v.phone,
         platformFeePercent: String(v.platformFeePercent),
+        defaultMarginPercent: v.defaultMarginPercent ? String(v.defaultMarginPercent) : '',
         status: v.status,
         loginActive: v.login?.status === 'Active',
         payoutMethod: v.payout?.method || 'upi',
@@ -119,7 +120,7 @@ export default function VendorsPage() {
       : { method: 'bank', accountName: v.accountName, accountNumber: v.accountNumber, ifsc: v.ifsc };
     const body = {
       name: v.name, contactName: v.contactName, phone: v.phone,
-      platformFeePercent: v.platformFeePercent, payout: payoutBody,
+      platformFeePercent: v.platformFeePercent, defaultMarginPercent: v.defaultMarginPercent, payout: payoutBody,
       ...(form.mode === 'create'
         ? { email: v.email, password: v.password }
         : { status: v.status, loginActive: v.loginActive, ...(v.newPassword && { newPassword: v.newPassword }) }),
@@ -217,7 +218,7 @@ export default function VendorsPage() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           {[
             ['Vendor sales collected', t.grossPaise],
-            ['Supply cost retained', t.supplyCostPaise],
+            ['Margin retained', t.supplyCostPaise],
             ['Shipping recovered', t.shippingPaise],
             ['Platform fees earned', t.platformFeePaise],
             ['Owed to vendors', t.availablePaise + t.pendingPaise],
@@ -248,7 +249,7 @@ export default function VendorsPage() {
                     <StatusChip status={v.status} />
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {v.productCount} product{v.productCount !== 1 ? 's' : ''} · fee {v.platformFeePercent}% · login {v.login ? `${v.login.email} (${v.login.status})` : 'none'}
+                    {v.productCount} product{v.productCount !== 1 ? 's' : ''} · fee {v.platformFeePercent}%{v.defaultMarginPercent ? ` · default margin ${v.defaultMarginPercent}%` : ''} · login {v.login ? `${v.login.email} (${v.login.status})` : 'none'}
                   </p>
                   <p className="text-xs text-gray-500">Pays to: {destination(v.payout)}</p>
                   {v.pickupAddress && (
@@ -256,7 +257,7 @@ export default function VendorsPage() {
                   )}
                   {v.inReviewCount > 0 && (
                     <a href="/admin/products" className="inline-block mt-1 text-xs font-semibold text-blue-700 hover:underline">
-                      {v.inReviewCount} new product{v.inReviewCount !== 1 ? 's' : ''} to review — set supply cost and publish →
+                      {v.inReviewCount} new product{v.inReviewCount !== 1 ? 's' : ''} to review — check the margin and publish →
                     </a>
                   )}
                   {v.pendingPayout && (
@@ -305,7 +306,7 @@ export default function VendorsPage() {
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4 text-sm">
                         {[
                           ['Gross collected', ledger.summary.grossPaise],
-                          ['Supply cost', -ledger.summary.supplyCostPaise],
+                          ['Margin', -ledger.summary.supplyCostPaise],
                           ['Shipping', -ledger.summary.shippingPaise],
                           ['Platform fee', -ledger.summary.platformFeePaise],
                           ['Net earned', ledger.summary.netPaise],
@@ -318,7 +319,7 @@ export default function VendorsPage() {
                           <thead className="text-gray-400 uppercase tracking-wide">
                             <tr className="text-left">
                               <th className="py-2 pr-3">Order</th><th className="pr-3">Delivered</th>
-                              <th className="pr-3 text-right">Collected</th><th className="pr-3 text-right">Supply</th>
+                              <th className="pr-3 text-right">Collected</th><th className="pr-3 text-right">Margin</th>
                               <th className="pr-3 text-right">Shipping</th><th className="pr-3 text-right">Fee</th>
                               <th className="pr-3 text-right">Net</th><th className="pr-3">Status</th><th />
                             </tr>
@@ -333,7 +334,7 @@ export default function VendorsPage() {
                                 <td className="pr-3">{date(e.deliveredAt || e.createdAt)}</td>
                                 <td className="pr-3 text-right">{inr(e.grossPaise)}</td>
                                 <td className="pr-3 text-right">{inr(e.supplyCostPaise)}</td>
-                                <td className="pr-3 text-right">{inr(e.shippingPaise)}{e.shippingSource === 'estimate' && <span className="ml-1 text-amber-600" title="Estimated — no actual courier charge recorded">est.</span>}</td>
+                                <td className="pr-3 text-right">{inr(e.shippingPaise)}{e.shippingSource === 'estimate' && <span className="ml-1 text-amber-600" title="Estimated — no actual courier charge recorded">est.</span>}{e.shippingSource === 'vendor_set' && <span className="ml-1 text-gray-400" title="The vendor's own shipping charge">set</span>}</td>
                                 <td className="pr-3 text-right">{inr(e.platformFeePaise)}</td>
                                 <td className={`pr-3 text-right font-semibold ${e.netPaise < 0 ? 'text-red-600' : ''}`}>{inr(e.netPaise)}</td>
                                 <td className="pr-3"><StatusChip status={e.status} />{e.status === 'unsettled' && <span className="block text-gray-400 mt-0.5">from {date(e.availableAt)}</span>}</td>
@@ -403,6 +404,10 @@ export default function VendorsPage() {
             )}
             <label className="block text-xs font-semibold text-gray-500">Platform fee (% of item sales)
               <input id="v-fee" type="number" min="0" max="50" step="0.01" value={form.values.platformFeePercent} onChange={(e) => setField('platformFeePercent', e.target.value)} className={`${inp} mt-1`} />
+            </label>
+            <label className="block text-xs font-semibold text-gray-500">Default margin % for products this vendor adds
+              <input id="v-margin" type="number" min="0" max="99.99" step="0.01" placeholder="Blank = set each product’s margin yourself" value={form.values.defaultMarginPercent} onChange={(e) => setField('defaultMarginPercent', e.target.value)} className={`${inp} mt-1`} />
+              <span className="block font-normal text-gray-400 mt-1">Tulsi keeps this % of the selling price on each new piece. You can still change any product&apos;s margin.</span>
             </label>
             <div className="border-t border-gray-100 pt-3">
               <p className="text-xs font-semibold text-gray-500 mb-2">Payout destination</p>

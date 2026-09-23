@@ -4,7 +4,7 @@ import { getEffectiveSession } from '@/lib/adminCollection';
 import { sendOrderConfirmation, sendOrderNotificationToAdmin } from '@/lib/email';
 import { sendOrderWhatsAppToAdmin, sendOrderWhatsAppToCustomer } from '@/lib/whatsapp';
 import { getAvailableCouriers, isConfigured as shiprocketConfigured } from '@/lib/shiprocket';
-import { PLATFORM_VENDOR_ID, validateVendorPricing, toCustomerOrder } from '@/lib/settlement';
+import { PLATFORM_VENDOR_ID, validateVendorPricing, toCustomerOrder, marginFor, vendorShippingOf } from '@/lib/settlement';
 import { getAccess } from '@/lib/requireRole';
 import { ROLES, CAN, toFulfillmentOrder } from '@/lib/access';
 
@@ -127,10 +127,11 @@ export async function POST(request) {
       const unitPrice = Number(prod.discountPrice) || Number(prod.price) || 0;
 
       /* Marketplace: snapshot who sells this piece, what the platform
-         retains as supply cost, and the vendor's fee rate at this moment —
+         retains as margin, the vendor's shipping charge and fee rate at this moment —
          settlement on delivery uses these, never the product's later values. */
       const vendorId = prod.vendorId || PLATFORM_VENDOR_ID;
       let supplyCost = 0;
+      let vendorShipping = null;
       if (vendorId !== PLATFORM_VENDOR_ID) {
         if (!vendorCache.has(vendorId)) {
           const vDoc = await db.collection('vendors').doc(vendorId).get();
@@ -142,7 +143,8 @@ export async function POST(request) {
           console.error('[orders POST] vendor product not sellable:', item.product, pricingError || (vendor ? 'vendor suspended' : 'vendor missing'));
           return NextResponse.json({ success: false, message: `Product no longer available: ${prod.name || item.name}` }, { status: 400 });
         }
-        supplyCost = Number(prod.supplyCost);
+        supplyCost = marginFor(prod, unitPrice); // per piece, fixed or % of this price
+        vendorShipping = vendorShippingOf(prod);
         vendorFees[vendorId] = Math.max(0, Math.floor(Number(vendor.platformFeeBps) || 0));
       }
 
@@ -156,6 +158,9 @@ export async function POST(request) {
         sku: prod.sku || null,
         vendorId,
         supplyCost,
+        /* Only when the vendor set their own shipping charge — otherwise
+           settlement deducts the actual courier cost. */
+        ...(vendorShipping !== null && { vendorShipping }),
       });
     }
 

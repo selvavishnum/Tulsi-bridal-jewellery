@@ -5,7 +5,7 @@ import { maskPayoutDestination } from '@/lib/vendorLedger';
 
 /* GET /api/vendor/summary — the signed-in vendor's ledger:
      Total sold − Logistics − Tulsi charges = Net earnings
-   "Tulsi charges" is supply cost and platform fee combined, per order and
+   "Tulsi charges" is the margin (supplyCost) and platform fee combined, per order and
    in total — never per product, and never the fee rate — so the platform's
    retained margin stays internal while the vendor can still reconcile
    every rupee (sold − net was always derivable from what they see). */

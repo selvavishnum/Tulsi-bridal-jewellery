@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireVendor, requireActiveVendor, logVendorStockChange } from '@/lib/vendorAuth';
 import { parseVendorProduct, toVendorProduct, vendorPriceFloorError } from '@/lib/vendorCatalog';
+import { marginFor } from '@/lib/settlement';
 
 /* Another vendor's product and a missing id get the same 404, so ids can't
    be probed (scopedDb.get returns null for both). */
@@ -20,9 +21,9 @@ export async function GET(request, context) {
   }
 }
 
-/* PUT /api/vendor/products/:id — edit listing, retail price, offer price
-   and stock. Price changes on a live piece take effect immediately but may
-   not go below the supply cost Tulsi retains. */
+/* PUT /api/vendor/products/:id — edit listing, retail price, offer price,
+   shipping charge and stock. Price changes on a live piece take effect
+   immediately but must still cover Tulsi's margin plus the shipping charge. */
 export async function PUT(request, context) {
   try {
     const ctx = await requireActiveVendor();
@@ -35,8 +36,11 @@ export async function PUT(request, context) {
     if (parsed.error) return NextResponse.json({ success: false, message: parsed.error }, { status: parsed.status });
     const data = parsed.data;
 
-    const floor = vendorPriceFloorError({ ...current, ...data });
+    const merged = { ...current, ...data };
+    const floor = vendorPriceFloorError(merged);
     if (floor) return NextResponse.json({ success: false, message: floor }, { status: 400 });
+    /* A percentage margin follows the vendor's price. */
+    if (current.marginMode === 'percent') data.supplyCost = marginFor(merged);
 
     if (data.sku !== undefined && data.sku !== current.sku) {
       if (!data.sku) return NextResponse.json({ success: false, message: 'SKU cannot be empty.' }, { status: 400 });

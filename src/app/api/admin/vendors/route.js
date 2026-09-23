@@ -10,6 +10,15 @@ function adminEmails() {
     .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
 }
 
+/* Default margin % for this vendor's new self-listed products; 0 = none
+   (Tulsi sets each product's margin at review). */
+function parseMarginPercent(v) {
+  if (v === undefined || v === null || v === '') return 0;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n >= 100) return null;
+  return Math.round(n * 100) / 100;
+}
+
 function parseFeeBps(percent) {
   const n = Number(percent);
   if (!Number.isFinite(n) || n < 0 || n > 50) return null;
@@ -69,6 +78,7 @@ export async function GET() {
           phone: v.phone || '',
           status: v.status || 'active',
           platformFeePercent: (Number(v.platformFeeBps) || 0) / 100,
+          defaultMarginPercent: Number(v.defaultMarginPercent) || 0,
           payout: v.payout || null,
           /* A bank/UPI change the vendor asked for — not used for payouts
              until a Super Admin approves it below. */
@@ -108,6 +118,8 @@ export async function POST(request) {
     if (feeBps === null) return NextResponse.json({ success: false, message: 'Platform fee must be between 0% and 50%.' }, { status: 400 });
     const { payout, error } = parsePayout(body.payout);
     if (error) return NextResponse.json({ success: false, message: error }, { status: 400 });
+    const defaultMarginPercent = parseMarginPercent(body.defaultMarginPercent);
+    if (defaultMarginPercent === null) return NextResponse.json({ success: false, message: 'Default margin must be from 0% to under 100%.' }, { status: 400 });
 
     if (adminEmails().includes(email)) {
       return NextResponse.json({ success: false, message: 'That email belongs to a store owner.' }, { status: 400 });
@@ -132,6 +144,7 @@ export async function POST(request) {
       phone: String(body.phone || '').trim(),
       status: 'active',
       platformFeeBps: feeBps,
+      defaultMarginPercent,
       payout,
       createdAt: now,
       updatedAt: now,
@@ -188,6 +201,11 @@ export async function PUT(request) {
       const bps = parseFeeBps(body.platformFeePercent);
       if (bps === null) return NextResponse.json({ success: false, message: 'Platform fee must be between 0% and 50%.' }, { status: 400 });
       update.platformFeeBps = bps;
+    }
+    if (body.defaultMarginPercent !== undefined) {
+      const pct = parseMarginPercent(body.defaultMarginPercent);
+      if (pct === null) return NextResponse.json({ success: false, message: 'Default margin must be from 0% to under 100%.' }, { status: 400 });
+      update.defaultMarginPercent = pct;
     }
     if (body.payout !== undefined) {
       const { payout, error } = parsePayout(body.payout);

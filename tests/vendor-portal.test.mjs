@@ -52,7 +52,7 @@ async function call(mod, method, { url = 'http://tulsi.test/api', body, params =
   return { status: res.status, json: await res.json() };
 }
 
-const SECRETS = ['supplyCost', 'platformFeeBps', 'razorpay', 'rzp_', 'accountNumber', 'restockQty', 'submittedBy'];
+const SECRETS = ['supplyCost', 'marginMode', 'marginPercent', 'vendorShipping', 'platformFeeBps', 'razorpay', 'rzp_', 'accountNumber', 'restockQty', 'submittedBy'];
 const assertNoSecrets = (payload, where) => {
   const s = JSON.stringify(payload);
   for (const k of SECRETS) assert.ok(!s.includes(k), `${where} leaked ${k}`);
@@ -221,6 +221,39 @@ test('orders: a vendor never sees another vendor’s orders', async () => {
   const res = await call(vendorOrders, 'GET');
   assert.equal(res.status, 200);
   assert.deepEqual(res.json.data, []);
+});
+
+test('margin: vendor can’t set it; a % margin follows the vendor’s price; vendor default % applies to new pieces', async () => {
+  signInAs('a@vendor.test');
+  for (const body of [{ marginMode: 'fixed' }, { marginPercent: 1 }, { vendorShipping: 0 }]) {
+    assert.equal((await call(productById, 'PUT', { params: { id: 'pA' }, body })).status, 403, JSON.stringify(body));
+  }
+  db.store.get('products').get('pA').marginMode = 'percent';
+  db.store.get('products').get('pA').marginPercent = 20;
+  const res = await call(productById, 'PUT', { params: { id: 'pA' }, body: { price: 3000 } });
+  assert.equal(res.status, 200);
+  assert.equal(db.store.get('products').get('pA').supplyCost, 600, '20% of the new ₹3,000');
+  assertNoSecrets(res.json, 'percent edit');
+  assert.ok(!JSON.stringify(res.json).includes('marginPercent'));
+
+  db.store.get('vendors').get('vA').defaultMarginPercent = 25;
+  const created = await call(products, 'POST', { body: { name: 'Choker', category: 'necklace', price: 4000 } });
+  assert.equal(created.status, 201);
+  const stored = db.store.get('products').get(created.json.data.id);
+  assert.deepEqual([stored.marginMode, stored.marginPercent, stored.supplyCost], ['percent', 25, 1000]);
+});
+
+test('vendor shipping charge: set per piece, must fit within price after margin, cleared with blank', async () => {
+  signInAs('a@vendor.test'); // pA: ₹2,000, fixed margin ₹1,200
+  const ok = await call(productById, 'PUT', { params: { id: 'pA' }, body: { shippingCharge: 100 } });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.json.data.shippingCharge, 100);
+  assert.equal(db.store.get('products').get('pA').vendorShipping, 100);
+  const tooMuch = await call(productById, 'PUT', { params: { id: 'pA' }, body: { shippingCharge: 900 } });
+  assert.equal(tooMuch.status, 400);
+  assert.ok(!tooMuch.json.message.includes('1200') && !tooMuch.json.message.includes('1,200'), 'margin leaked');
+  const cleared = await call(productById, 'PUT', { params: { id: 'pA' }, body: { shippingCharge: '' } });
+  assert.equal(cleared.json.data.shippingCharge, null);
 });
 
 test('customers, staff and signed-out callers are refused by every vendor endpoint', async () => {

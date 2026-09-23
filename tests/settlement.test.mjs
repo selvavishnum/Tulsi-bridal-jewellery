@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   allocate, computeVendorSettlements, summarizeLedger,
-  toVendorOrderView, toCustomerOrder, validateVendorPricing, PLATFORM_VENDOR_ID,
+  toVendorOrderView, toCustomerOrder, validateVendorPricing, marginFor, PLATFORM_VENDOR_ID,
 } from '../src/lib/settlement.js';
 
 test('allocate splits exactly, never losing or inventing a paisa', () => {
@@ -133,10 +133,46 @@ test('customers never see supply cost or vendor settlement fields', () => {
   assert.equal(mixedOrder.items[0].supplyCost, 900, 'must not mutate the stored order');
 });
 
-test('vendor products must carry a supply cost and not sell below it', () => {
+test('vendor products must carry a margin (₹ or %) and the price must cover margin + vendor shipping', () => {
   assert.equal(validateVendorPricing({ price: 1000 }), null);
   assert.equal(validateVendorPricing({ vendorId: PLATFORM_VENDOR_ID, price: 1000 }), null);
-  assert.match(validateVendorPricing({ vendorId: 'v1', price: 1000 }), /supply cost/);
-  assert.match(validateVendorPricing({ vendorId: 'v1', price: 1000, discountPrice: 700, supplyCost: 800 }), /below the supply cost/);
+  assert.match(validateVendorPricing({ vendorId: 'v1', price: 1000 }), /margin/);
+  assert.match(validateVendorPricing({ vendorId: 'v1', price: 1000, discountPrice: 700, supplyCost: 800 }), /doesn't cover the margin/);
   assert.equal(validateVendorPricing({ vendorId: 'v1', price: 1000, supplyCost: 800 }), null);
+  // percentage margin
+  assert.match(validateVendorPricing({ vendorId: 'v1', price: 1000, marginMode: 'percent', marginPercent: 0 }), /percentage/);
+  assert.match(validateVendorPricing({ vendorId: 'v1', price: 1000, marginMode: 'percent', marginPercent: 100 }), /percentage/);
+  assert.equal(validateVendorPricing({ vendorId: 'v1', price: 1000, marginMode: 'percent', marginPercent: 20 }), null);
+  // vendor shipping must fit in what's left
+  assert.equal(validateVendorPricing({ vendorId: 'v1', price: 1000, supplyCost: 800, vendorShipping: 200 }), null);
+  assert.match(validateVendorPricing({ vendorId: 'v1', price: 1000, supplyCost: 800, vendorShipping: 201 }), /vendor shipping/);
+  assert.match(validateVendorPricing({ vendorId: 'v1', price: 1000, supplyCost: 800, vendorShipping: -1 }), /shipping/);
+});
+
+test('marginFor: fixed ₹ or % of the selling price', () => {
+  assert.equal(marginFor({ supplyCost: 400, price: 2000 }), 400);
+  assert.equal(marginFor({ marginMode: 'percent', marginPercent: 20, price: 2000 }), 400);
+  assert.equal(marginFor({ marginMode: 'percent', marginPercent: 20, price: 2000, discountPrice: 1500 }), 300, 'follows the offer price');
+  assert.equal(marginFor({ marginMode: 'percent', marginPercent: 12.5, price: 999 }), 124.88);
+});
+
+test('vendor-set shipping: vendor pays their per-piece charge; the customer shipping fee stays with Tulsi', () => {
+  // The user's example: ₹2,000 piece, 20% margin (₹400), vendor shipping ₹100, courier actually ₹80
+  const [s] = computeVendorSettlements({
+    shippingCost: 99, shippingCostActual: 80,
+    items: [{ product: 'p', price: 2000, quantity: 1, vendorId: 'v1', supplyCost: 400, vendorShipping: 100 }],
+  });
+  assert.equal(s.shippingSource, 'vendor_set');
+  assert.equal(s.customerShippingPaise, 0);
+  assert.equal(s.shippingPaise, 10000);
+  assert.equal(s.netPaise, 150000); // 2000 − 400 − 100 = ₹1,500
+
+  // per piece: two pieces pay shipping twice
+  const [two] = computeVendorSettlements({ items: [{ product: 'p', price: 2000, quantity: 2, vendorId: 'v1', supplyCost: 400, vendorShipping: 100 }] });
+  assert.equal(two.netPaise, 300000);
+
+  // older orders without the snapshot keep the courier split
+  const [old] = computeVendorSettlements({ shippingCost: 0, shippingCostActual: 80, items: [{ product: 'p', price: 2000, quantity: 1, vendorId: 'v1', supplyCost: 400 }] });
+  assert.equal(old.shippingSource, 'actual');
+  assert.equal(old.netPaise, 152000);
 });

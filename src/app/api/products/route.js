@@ -133,6 +133,9 @@ export async function POST(request) {
       tryOnImage: body.tryOnImage || '',
       vendorId: vendor.vendorId,
       supplyCost: vendor.supplyCost,
+      marginMode: vendor.marginMode,
+      marginPercent: vendor.marginPercent,
+      vendorShipping: vendor.vendorShipping,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

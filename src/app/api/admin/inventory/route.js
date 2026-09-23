@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/adminCollection';
 import { requireRole, ROLES, CAN } from '@/lib/requireRole';
 import { stripCostFields } from '@/lib/access';
 import { fifoDeduct } from '@/lib/fifoDeduct';
+import { marginFor } from '@/lib/settlement';
 
 export async function GET(request) {
   try {
@@ -87,6 +88,11 @@ export async function PATCH(request) {
     if (showMe !== undefined) {
       updateData.showMe = showMe;
       updateData.isActive = showMe; // keep in sync so shop pages respect hidden flag
+    }
+    if (updateData.price !== undefined || updateData.discountPrice !== undefined) {
+      /* A percentage margin follows the price. */
+      const cur = (await ref.get()).data() || {};
+      if (cur.marginMode === 'percent') updateData.supplyCost = marginFor({ ...cur, ...updateData });
     }
     await ref.update(updateData);
     const saved = docToObj(await ref.get());

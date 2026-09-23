@@ -3,7 +3,7 @@
    own products, and what they may read back.
 
    Whitelist, not blacklist: a vendor write may only carry the fields in
-   VENDOR_EDITABLE_FIELDS. Anything else (supplyCost, vendorId, isActive,
+   VENDOR_EDITABLE_FIELDS. Anything else (supplyCost = margin, vendorId, isActive,
    showMe, featured, reviewStatus, …) is refused with 403 rather than
    silently dropped, so tampering is visible. Ownership (vendorId) is
    enforced one layer down, by scopedDb.
@@ -16,7 +16,7 @@ export const PRODUCT_MATERIALS = Object.freeze(['gold', 'silver', 'gold-plated',
 
 export const VENDOR_EDITABLE_FIELDS = Object.freeze([
   'name', 'sku', 'category', 'material', 'description', 'shortDescription', 'images',
-  'price', 'discountPrice', 'stock',
+  'price', 'discountPrice', 'stock', 'shippingCharge',
   'weight', 'color', 'occasion', 'purity', 'metalType', 'stoneType', 'usageInstructions', 'tags',
 ]);
 
@@ -87,6 +87,18 @@ export function parseVendorProduct(body, current = null) {
     data.stock = n;
   }
 
+  /* Per-piece shipping the vendor pays out of their payout. Blank = none
+     set (then Tulsi deducts the actual courier cost). Stored as vendorShipping. */
+  if (body.shippingCharge !== undefined) {
+    if (body.shippingCharge === '' || body.shippingCharge === null) {
+      data.vendorShipping = null;
+    } else {
+      const n = Number(body.shippingCharge);
+      if (!Number.isFinite(n) || n < 0 || n > 100000) return fail('Shipping charge must be ₹0 or more.');
+      data.vendorShipping = Math.round(n * 100) / 100;
+    }
+  }
+
   if (body.images !== undefined) {
     if (!Array.isArray(body.images) || body.images.length > MAX_IMAGES) return fail(`Add up to ${MAX_IMAGES} images.`);
     const existing = new Set(current?.images || []);
@@ -107,15 +119,21 @@ export function parseVendorProduct(body, current = null) {
   return { data };
 }
 
-/* A vendor's selling price may not fall below the supply cost Tulsi
-   retains — otherwise the platform ships the piece and keeps nothing.
-   The message deliberately doesn't say what that floor is. */
+/* A vendor's selling price must cover Tulsi's margin plus the vendor's own
+   shipping charge — otherwise the platform ships the piece and keeps
+   nothing, or the vendor ends up owing money on the sale. The message
+   deliberately doesn't say what the margin is. Mirrors
+   validateVendorPricing in settlement.js (which also checks the margin is set). */
 export function vendorPriceFloorError(merged) {
-  const supply = Number(merged?.supplyCost) || 0;
-  if (supply <= 0) return null; // draft: Tulsi hasn't set it yet
-  const selling = Number(merged.discountPrice) || Number(merged.price) || 0;
-  if (selling < supply) {
-    return 'That price is below the minimum agreed with Tulsi for this piece. Contact Tulsi to change it.';
+  const selling = Number(merged?.discountPrice) || Number(merged?.price) || 0;
+  const margin = merged?.marginMode === 'percent'
+    ? Math.round(selling * (Number(merged.marginPercent) || 0)) / 100
+    : Number(merged?.supplyCost) || 0; // 0 on a draft Tulsi hasn't priced yet
+  const ship = Number(merged?.vendorShipping) || 0;
+  if (selling < margin + ship) {
+    return margin > 0
+      ? 'That price is below the minimum agreed with Tulsi for this piece (including your shipping charge). Contact Tulsi to change it.'
+      : 'The selling price must be at least your shipping charge.';
   }
   return null;
 }
@@ -129,7 +147,7 @@ export function vendorProductStatus(p) {
 }
 
 /* A product as its vendor sees it: their own listing fields only — no
-   supply cost, no platform flags, no stock-lot or warehouse data. */
+   margin, no platform flags, no stock-lot or warehouse data. */
 export function toVendorProduct(id, p) {
   return {
     id,
@@ -143,6 +161,7 @@ export function toVendorProduct(id, p) {
     price: Number(p.price) || 0,
     discountPrice: Number(p.discountPrice) || 0,
     stock: Number(p.stock) || 0,
+    shippingCharge: typeof p.vendorShipping === 'number' ? p.vendorShipping : null,
     weight: p.weight || '',
     color: p.color || '',
     occasion: p.occasion || '',

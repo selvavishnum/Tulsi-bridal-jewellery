@@ -78,7 +78,7 @@ export async function PUT(request, context) {
     const review = merged.reviewStatus === 'pending' && merged.isActive !== false
       ? { reviewStatus: 'approved', reviewedBy: auth.session?.user?.email || null, reviewedAt: new Date().toISOString() }
       : {};
-    await ref.update({ ...body, ...review, vendorId: vendor.vendorId, supplyCost: vendor.supplyCost, updatedAt: new Date().toISOString() });
+    await ref.update({ ...body, ...review, vendorId: vendor.vendorId, supplyCost: vendor.supplyCost, marginMode: vendor.marginMode, marginPercent: vendor.marginPercent, vendorShipping: vendor.vendorShipping, updatedAt: new Date().toISOString() });
     const updated = await ref.get();
     return NextResponse.json({ success: true, data: docToObj(updated) });
   } catch (error) {
