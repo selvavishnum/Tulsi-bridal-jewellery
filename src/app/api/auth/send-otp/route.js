@@ -1,45 +1,30 @@
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { getDB } from '@/lib/firebase';
 import { sendOTPEmail } from '@/lib/email';
+import { generateOtp, saveOtp, normalizeEmail, isValidEmail } from '@/lib/otp';
+import { hitAll, clientIp, LIMITS, tooManyRequests } from '@/lib/rateLimit';
 
-/* Must be a CSPRNG — this code is a full authentication factor.
-   Math.random() is predictable and would let an observer derive live codes. */
-function generateOTP() {
-  return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
-}
-
-function friendlyError(err) {
-  const msg = err?.message || '';
-  if (msg.includes('NOT_FOUND') || msg.includes('5 ')) {
-    return 'Firebase database not found. Please create a Firestore database in Firebase Console → Build → Firestore Database → Create database.';
-  }
-  if (msg.includes('PERMISSION_DENIED') || msg.includes('7 ')) {
-    return 'Firebase permission denied. Check your FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in Vercel settings.';
-  }
-  if (msg.includes('credential') || msg.includes('private key')) {
-    return 'Firebase credentials error. Re-paste FIREBASE_PRIVATE_KEY in Vercel — include the full key with \\n characters.';
-  }
-  return msg || 'Server error. Check Vercel logs.';
-}
-
+/* POST /api/auth/send-otp — emails a 6-digit sign-in code.
+   Rate limited per address (3 per 15 min) and per IP (10 per hour): stops
+   inbox bombing, and stops an attacker cycling fresh codes to widen a
+   guessing attack (each code also dies after 5 wrong tries — see otp.js). */
 export async function POST(request) {
   try {
-    const { email } = await request.json();
-    if (!email || !email.includes('@')) {
-      return NextResponse.json({ success: false, message: 'Valid email required' }, { status: 400 });
+    const body = await request.json().catch(() => ({}));
+    const email = normalizeEmail(body?.email);
+    if (!isValidEmail(email)) {
+      return NextResponse.json({ success: false, message: 'Enter a valid email address.' }, { status: 400 });
     }
 
     const db = getDB();
-    const code = generateOTP();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    const limited = await hitAll(db, [
+      [`otp-send:email:${email}`, LIMITS.otpSendEmail],
+      [`otp-send:ip:${clientIp(request.headers)}`, LIMITS.otpSendIp],
+    ]);
+    if (!limited.allowed) return tooManyRequests(limited.retryAfterSec, 'Too many codes requested. Please wait a few minutes and try again.');
 
-    const old = await db.collection('otp_codes').where('email', '==', email.toLowerCase()).get();
-    const batch = db.batch();
-    old.docs.forEach((d) => batch.delete(d.ref));
-    const newRef = db.collection('otp_codes').doc();
-    batch.set(newRef, { email: email.toLowerCase(), code, expiresAt, createdAt: new Date().toISOString() });
-    await batch.commit();
+    const code = generateOtp();
+    await saveOtp(db, email, code);
 
     /* Deliver over email only. The code must never reach the logs — anyone with
        log access could otherwise sign in as any user, including an admin. */
@@ -48,15 +33,12 @@ export async function POST(request) {
       return false;
     });
     if (!sent) {
-      return NextResponse.json(
-        { success: false, message: 'Could not send the code right now. Please try again shortly.' },
-        { status: 502 }
-      );
+      return NextResponse.json({ success: false, message: 'Could not send the code right now. Please try again shortly.' }, { status: 502 });
     }
-
-    return NextResponse.json({ success: true, message: `OTP sent to ${email}. It expires in 10 minutes.` });
+    return NextResponse.json({ success: true, message: 'Code sent. It expires in 10 minutes.' });
   } catch (error) {
+    /* Details go to the server log only — not to the browser. */
     console.error('[send-otp error]', error.message);
-    return NextResponse.json({ success: false, message: friendlyError(error) }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Could not send the code right now. Please try again shortly.' }, { status: 500 });
   }
 }

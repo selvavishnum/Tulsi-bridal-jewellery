@@ -79,6 +79,7 @@ export function fakeFirestore(seed = {}) {
         get: async (target) => (target.kind === 'doc' ? target.get() : target.get()),
         set: (ref, d) => { writes.push(() => colMap(ref.col).set(ref.id, structuredClone(d))); },
         update: (ref, d) => { writes.push(() => applyUpdate(ref.col, ref.id, d)); },
+        delete: (ref) => { writes.push(() => colMap(ref.col).delete(ref.id)); },
       };
       const result = await fn(tx);
       for (const w of writes) w();

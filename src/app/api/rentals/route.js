@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAccess, ROLES } from '@/lib/requireRole';
 import { getDB, snapshotToArr } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
+import { normalizeEmail, isValidEmail } from '@/lib/otp';
 import { calculateRentalDays } from '@/lib/utils';
 import { sendRentalConfirmation, sendRentalNotificationToAdmin } from '@/lib/email';
 import { sendRentalWhatsAppToAdmin, sendRentalWhatsAppToCustomer } from '@/lib/whatsapp';
@@ -39,7 +40,8 @@ export async function GET(request) {
 
     return NextResponse.json({ success: true, data: { rentals: rentals.slice(0, limit), total: rentals.length } });
   } catch (error) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    console.error('[rentals]', error.message);
+    return NextResponse.json({ success: false, message: 'Could not complete the booking. Please try again.' }, { status: 500 });
   }
 }
 
@@ -50,14 +52,38 @@ export async function POST(request) {
     const body = await request.json();
     const { productId, rentalStartDate, rentalEndDate, customerDetails, payment, guestEmail, delivery, returnMethod, total: clientTotal } = body;
 
+    if (!productId || typeof productId !== 'string') return NextResponse.json({ success: false, message: 'Product required' }, { status: 400 });
+    /* Dates: real, today or later, end after start, at most 60 days. */
+    const DAY = 24 * 60 * 60 * 1000;
+    const start = new Date(rentalStartDate);
+    const end = new Date(rentalEndDate);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start < today || end <= start || end - start > 60 * DAY) {
+      return NextResponse.json({ success: false, message: 'Choose a start date from today and an end date after it (up to 60 days).' }, { status: 400 });
+    }
+    /* Customer details are shown to staff and put into emails — plain,
+       bounded strings only; the confirmation goes to one valid address. */
+    const cd = {};
+    for (const [k, max] of Object.entries({ name: 80, phone: 15, email: 254, address: 300, city: 60, state: 60, pincode: 6, notes: 500 })) {
+      const v = customerDetails?.[k];
+      if (v === undefined || v === null || v === '') continue;
+      if (typeof v !== 'string' || v.length > max || /[<>]/.test(v)) return NextResponse.json({ success: false, message: `Invalid ${k}` }, { status: 400 });
+      cd[k] = v.trim();
+    }
+    if (!cd.name || !cd.phone) return NextResponse.json({ success: false, message: 'Name and phone are required' }, { status: 400 });
+    const resolvedEmail = session?.user?.email
+      ? String(session.user.email).toLowerCase()
+      : normalizeEmail(guestEmail || cd.email);
+    if (!isValidEmail(resolvedEmail)) return NextResponse.json({ success: false, message: 'Enter a valid email address.' }, { status: 400 });
+
     const prodDoc = await db.collection('products').doc(productId).get();
     if (!prodDoc.exists) return NextResponse.json({ success: false, message: 'Product not found' }, { status: 404 });
     const product = prodDoc.data();
-    if (!product.isAvailableForRent || product.rentalStock < 1) {
+    if (product.isActive === false || product.showMe === false || !product.isAvailableForRent || !(Number(product.rentalStock) >= 1)) {
       return NextResponse.json({ success: false, message: 'Product not available for rent' }, { status: 400 });
     }
 
-    const rentalDays = calculateRentalDays(rentalStartDate, rentalEndDate);
+    const rentalDays = Math.max(1, calculateRentalDays(rentalStartDate, rentalEndDate) || 0);
     const pricePerDay = product.rentalPrice || 0;
     const totalRentalCost = pricePerDay * rentalDays;
     const securityDeposit = Math.round((product.price || 0) * 0.3);
@@ -69,8 +95,6 @@ export async function POST(request) {
     const returnCharge   = DELIVERY_RATES[returnMethodName];
     const total = Math.max(0, totalRentalCost + securityDeposit + deliveryCharge + returnCharge);
 
-    const resolvedEmail = guestEmail || session?.user?.email || customerDetails?.email || null;
-
     const rentalRef = db.collection('rentals').doc();
     const rentalData = {
       rentalNumber: `TBJr${Date.now()}`,
@@ -79,8 +103,8 @@ export async function POST(request) {
       productId,
       productName: product.name,
       productImage: product.images?.[0] || null,
-      rentalStartDate,
-      rentalEndDate,
+      rentalStartDate: start.toISOString().slice(0, 10),
+      rentalEndDate: end.toISOString().slice(0, 10),
       rentalDays,
       pricePerDay,
       securityDeposit,
@@ -90,7 +114,7 @@ export async function POST(request) {
       deliveryCharge,
       returnCharge,
       total,
-      customerDetails: customerDetails || {},
+      customerDetails: cd,
       /* Built server-side — never persist a client-supplied payment object */
       payment: {
         method: ['razorpay', 'cod'].includes(payment?.method) ? payment.method : 'cod',
@@ -116,6 +140,7 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true, data: fullRental }, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    console.error('[rentals]', error.message);
+    return NextResponse.json({ success: false, message: 'Could not complete the booking. Please try again.' }, { status: 500 });
   }
 }

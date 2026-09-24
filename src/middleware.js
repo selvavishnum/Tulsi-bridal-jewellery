@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { canViewAdminPath, adminHomeFor } from '@/lib/access';
+import { SECURE_COOKIES } from '@/lib/authCookies';
 
 /* Defense-in-depth on top of the per-route requireAdmin() checks (which
    remain the real authority — every /api/admin handler still calls it):
@@ -41,7 +42,7 @@ export async function middleware(request) {
   if (pathname.startsWith('/admin') && pathname !== '/admin-portal') {
     if (DEV_BYPASS) return NextResponse.next();
 
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET, secureCookie: SECURE_COOKIES });
     if (token?.role === 'vendor') return NextResponse.redirect(new URL('/vendor/dashboard', request.url));
     if (!token || token.role !== 'admin') {
       return NextResponse.redirect(new URL('/admin-portal', request.url));
@@ -63,7 +64,7 @@ export async function middleware(request) {
      vendor session (above), and /api/vendor/* re-checks the vendor from
      the database on every call regardless. */
   if (pathname === '/vendor' || pathname.startsWith('/vendor/')) {
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET, secureCookie: SECURE_COOKIES });
     if (pathname === '/vendor/login') {
       return token?.role === 'vendor'
         ? NextResponse.redirect(new URL('/vendor/dashboard', request.url))

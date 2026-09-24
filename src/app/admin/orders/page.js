@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useSession } from 'next-auth/react';
 import { ROLES, FULFILLMENT_STATUSES } from '@/lib/access';
+import { escapeHtml } from '@/lib/escapeHtml';
 
 const STATUS_BADGE = {
   pending: 'warning', confirmed: 'success', processing: 'gold',
@@ -31,27 +32,32 @@ const COURIERS = [
 ];
 
 /* ── Print Delivery Label ── */
+/* Every value below comes from a shopper (address) or a vendor (product
+   name) and is written into a same-origin popup — escaped, so it can only
+   ever be text, never markup that runs with the staff member's session. */
 function printLabel(order) {
+  const e = escapeHtml;
   const addr = order.shippingAddress || {};
-  const name    = addr.fullName || addr.name || order.user?.name || order.guestEmail || '—';
-  const phone   = addr.phone || '—';
-  const street  = addr.street || '—';
-  const city    = addr.city   || '';
-  const state   = addr.state  || '';
-  const pincode = addr.pincode || '';
-  const email   = addr.email || order.guestEmail || '';
+  const name    = e(addr.fullName || addr.name || order.user?.name || order.guestEmail || '—');
+  const phone   = e(addr.phone || '—');
+  const street  = e(addr.street || addr.address || '—');
+  const city    = e(addr.city   || '');
+  const state   = e(addr.state  || '');
+  const pincode = e(addr.pincode || '');
+  const email   = e(addr.email || order.guestEmail || '');
+  const orderNo = e(order.orderNumber);
   const dateStr = order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
-  const payLine = `${(order.payment?.method || 'online').toUpperCase()} — ${(order.payment?.status || 'pending').toUpperCase()}`;
+  const payLine = e(`${(order.payment?.method || 'online').toUpperCase()} — ${(order.payment?.status || 'pending').toUpperCase()}`);
 
   const itemsHtml = (order.items || [])
-    .map((it) => `<tr><td style="padding:3px 6px;">${it.name}</td><td style="padding:3px 6px;text-align:center;">× ${it.quantity}</td><td style="padding:3px 6px;text-align:right;">₹${((it.price || 0) * it.quantity).toLocaleString('en-IN')}</td></tr>`)
+    .map((it) => `<tr><td style="padding:3px 6px;">${e(it.name)}</td><td style="padding:3px 6px;text-align:center;">× ${e(it.quantity)}</td><td style="padding:3px 6px;text-align:right;">₹${e(((Number(it.price) || 0) * (Number(it.quantity) || 0)).toLocaleString('en-IN'))}</td></tr>`)
     .join('');
 
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>Label — Order #${order.orderNumber}</title>
+<title>Label — Order #${orderNo}</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
   body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#000;}
@@ -99,7 +105,7 @@ function printLabel(order) {
 
   <!-- Order bar -->
   <div class="order-bar">
-    <span class="order-num">ORDER #${order.orderNumber}</span>
+    <span class="order-num">ORDER #${orderNo}</span>
     <span style="font-size:7pt;">${dateStr}</span>
     <span style="font-size:8pt;font-weight:700;">${payLine}</span>
   </div>
@@ -122,12 +128,12 @@ function printLabel(order) {
       <thead><tr><th>Item</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th></tr></thead>
       <tbody>${itemsHtml}</tbody>
     </table>
-    <div class="total-row">Total: ₹${(order.total || 0).toLocaleString('en-IN')}</div>
+    <div class="total-row">Total: ₹${e((Number(order.total) || 0).toLocaleString('en-IN'))}</div>
   </div>
 
   <!-- Barcode / order number -->
   <div>
-    <div class="barcode">${String(order.orderNumber).padStart(8, '0')}</div>
+    <div class="barcode">${e(String(order.orderNumber).padStart(8, '0'))}</div>
     <div class="barcode-label">ORDER NUMBER — SCAN AT DELIVERY</div>
   </div>
 

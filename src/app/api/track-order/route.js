@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getDB, snapshotToArr } from '@/lib/firebase';
+import { getDB } from '@/lib/firebase';
+import { hit, clientIp, LIMITS, tooManyRequests } from '@/lib/rateLimit';
 
 export async function GET(request) {
   try {
@@ -12,11 +13,14 @@ export async function GET(request) {
     }
 
     const db = getDB();
-    const snap = await db.collection('orders').where('orderNumber', '==', orderNumber).limit(1).get();
+    const limited = await hit(db, `track:ip:${clientIp(request.headers)}`, LIMITS.trackOrder);
+    if (!limited.allowed) return tooManyRequests(limited.retryAfterSec, 'Too many lookups. Please try again later.');
 
-    if (snap.empty) {
-      return NextResponse.json({ success: false, message: 'Order not found. Please check your order number.' }, { status: 404 });
-    }
+    const snap = await db.collection('orders').where('orderNumber', '==', orderNumber).limit(1).get();
+    /* One answer for "no such order" and "wrong email", so order numbers
+       can't be confirmed without the matching email. */
+    const notFound = () => NextResponse.json({ success: false, message: 'No order matches that order number and email.' }, { status: 404 });
+    if (snap.empty) return notFound();
 
     const doc = snap.docs[0];
     const order = { id: doc.id, ...doc.data() };
@@ -24,9 +28,7 @@ export async function GET(request) {
     // Verify email matches — check guestEmail, shippingAddress email/fullName email, or userId email
     const orderEmail = (order.guestEmail || order.shippingAddress?.email || '').toLowerCase();
     const shippingEmail = (order.shippingAddress?.email || '').toLowerCase();
-    if (orderEmail !== email && shippingEmail !== email) {
-      return NextResponse.json({ success: false, message: 'Email does not match this order.' }, { status: 403 });
-    }
+    if (orderEmail !== email && shippingEmail !== email) return notFound();
 
     // Return only safe public fields
     return NextResponse.json({
@@ -48,15 +50,17 @@ export async function GET(request) {
         payment: { method: order.payment?.method, status: order.payment?.status },
         shippingAddress: {
           name:    order.shippingAddress?.name || order.shippingAddress?.fullName || '',
-          street:  order.shippingAddress?.street || '',
+
           city:    order.shippingAddress?.city || '',
           state:   order.shippingAddress?.state || '',
           pincode: order.shippingAddress?.pincode || '',
-          phone:   order.shippingAddress?.phone || '',
+          /* Street and full phone aren't needed to track a parcel. */
+          phone:   order.shippingAddress?.phone ? `••••••${String(order.shippingAddress.phone).slice(-4)}` : '',
         },
       },
     });
   } catch (error) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    console.error('[track-order]', error.message);
+    return NextResponse.json({ success: false, message: 'Could not look up the order right now.' }, { status: 500 });
   }
 }

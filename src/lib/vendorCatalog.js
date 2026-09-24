@@ -48,6 +48,8 @@ export function parseVendorProduct(body, current = null) {
     if (v.length > max) return fail(`${field} must be at most ${max} characters.`);
     data[field] = v;
   }
+  /* Titles end up in staff print-outs and emails: no markup characters. */
+  if (data.name && /[<>]/.test(data.name)) return fail('Product title can’t contain < or >.');
   if (!current && !data.name) return fail('Product title is required.');
   if (current && body.name !== undefined && !data.name) return fail('Product title is required.');
   if (data.sku !== undefined && data.sku !== '' && !SKU.test(data.sku)) {

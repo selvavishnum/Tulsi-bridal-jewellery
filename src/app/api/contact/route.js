@@ -4,16 +4,27 @@ import { requireAccess } from '@/lib/adminCollection';
 import { CAN } from '@/lib/access';
 import { sendContactNotification } from '@/lib/email';
 import { sendContactWhatsApp } from '@/lib/whatsapp';
+import { normalizeEmail, isValidEmail } from '@/lib/otp';
+import { hit, clientIp, LIMITS, tooManyRequests } from '@/lib/rateLimit';
 
 export async function POST(request) {
   try {
-    const { name, email, phone, subject, message } = await request.json();
-    if (!name || !email || !message) {
-      return NextResponse.json({ success: false, message: 'Name, email and message are required' }, { status: 400 });
+    const body = await request.json().catch(() => ({}));
+    /* Plain bounded strings only — each message emails and WhatsApps staff. */
+    const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+    const name = str(body.name, 80);
+    const email = normalizeEmail(body.email);
+    const phone = str(body.phone, 15);
+    const subject = str(body.subject, 150);
+    const message = str(body.message, 3000);
+    if (!name || !message || !isValidEmail(email)) {
+      return NextResponse.json({ success: false, message: 'Name, a valid email and a message are required' }, { status: 400 });
     }
     const db = getDB();
+    const limited = await hit(db, `contact:ip:${clientIp(request.headers)}`, LIMITS.contact);
+    if (!limited.allowed) return tooManyRequests(limited.retryAfterSec, 'Too many messages. Please try again later, or call us.');
     const ref = db.collection('contact_messages').doc();
-    const msgData = { name, email, phone: phone || '', subject: subject || '', message, read: false, createdAt: new Date().toISOString() };
+    const msgData = { name, email, phone, subject, message, read: false, createdAt: new Date().toISOString() };
     await ref.set(msgData);
 
     /* Notify admin + staff — email + WhatsApp */
@@ -24,7 +35,8 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    console.error('[contact]', error.message);
+    return NextResponse.json({ success: false, message: 'Could not send your message. Please try again.' }, { status: 500 });
   }
 }
 

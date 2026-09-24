@@ -4,6 +4,18 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { getDB } from '@/lib/firebase';
 import { resolveAccess as resolveTier, sessionRoleFor } from '@/lib/access';
 import bcrypt from 'bcryptjs';
+import { verifyOtp, normalizeEmail } from '@/lib/otp';
+import { hitAll, clientIp, LIMITS } from '@/lib/rateLimit';
+import { SECURE_COOKIES } from '@/lib/authCookies';
+
+/* Thrown from authorize(): NextAuth hands the message to the client as
+   `error`, so the login forms can say "wait a minute" instead of
+   "wrong password". */
+const RATE_LIMITED = 'RateLimited';
+
+/* Compared against when there's no account, so an unknown email takes as
+   long as a wrong password (no timing oracle for which emails exist). */
+const DUMMY_HASH = bcrypt.hashSync('timing-equaliser', 10);
 
 /* How often a signed-in admin/vendor session re-checks that the person is
    still allowed in. Sessions last 30 days; without this, deactivating a
@@ -26,6 +38,15 @@ async function resolveAccess(db, email) {
   return { role: sessionRoleFor(access.tier), tier: access.tier || null, vendorId: access.vendorId || null };
 }
 
+/* The real owner of an address just proved it (email code / Google). If
+   the account was made by an unverified password registration, that
+   password may be an attacker's who registered this address first — drop
+   it, so only the owner can get in from now on. */
+function claimVerifiedEmail(existing) {
+  if (existing.emailVerified === true) return {};
+  return { emailVerified: true, emailVerifiedAt: new Date().toISOString(), ...(existing.password && { password: null, passwordClearedReason: 'unverified registration' }) };
+}
+
 async function upsertGoogleUser(db, profile) {
   const email = profile.email.toLowerCase();
   const access = await resolveAccess(db, email);
@@ -33,13 +54,13 @@ async function upsertGoogleUser(db, profile) {
   const snap = await db.collection('users').where('email', '==', email).limit(1).get();
   if (!snap.empty) {
     const doc = snap.docs[0];
-    await doc.ref.update({ name: profile.name, googleId: profile.sub, role: access.role, updatedAt: new Date().toISOString() });
-    return { id: doc.id, ...doc.data(), ...access };
+    await doc.ref.update({ name: profile.name, googleId: profile.sub, role: access.role, ...claimVerifiedEmail(doc.data()), updatedAt: new Date().toISOString() });
+    return { id: doc.id, ...doc.data(), ...access, emailVerified: true };
   }
   const ref = db.collection('users').doc();
   const userData = {
     name: profile.name, email, googleId: profile.sub,
-    avatar: profile.picture, role: access.role, isActive: true, createdAt: new Date().toISOString(),
+    avatar: profile.picture, role: access.role, isActive: true, emailVerified: true, createdAt: new Date().toISOString(),
   };
   await ref.set(userData);
   return { id: ref.id, ...userData, ...access };
@@ -62,12 +83,17 @@ providers.push(
       email: { label: 'Email', type: 'email' },
       password: { label: 'Password', type: 'password' },
     },
-    async authorize(credentials) {
+    async authorize(credentials, req) {
       if (!credentials?.email || !credentials?.password) return null;
+      const db = getDB();
+      const email = normalizeEmail(credentials.email);
+      /* Brute-force guard: 5 tries a minute per account, 20 per IP. */
+      const limited = await hitAll(db, [
+        [`login:email:${email}`, LIMITS.loginEmail],
+        [`login:ip:${clientIp(req?.headers)}`, LIMITS.loginIp],
+      ]);
+      if (!limited.allowed) throw new Error(RATE_LIMITED);
       try {
-        const db = getDB();
-        const email = credentials.email.toLowerCase();
-
         const access = await resolveAccess(db, email);
 
         /* Customers sign in with their users-collection password. Anyone with
@@ -78,20 +104,17 @@ providers.push(
            owner's address and sign in with their access. */
         if (access.role === 'customer') {
           const snap = await db.collection('users').where('email', '==', email).limit(1).get();
-          if (snap.empty) return null;
-          const user = { id: snap.docs[0].id, ...snap.docs[0].data() };
-          if (!user.isActive || !user.password) return null;
-          const isValid = await bcrypt.compare(credentials.password, user.password);
-          if (!isValid) return null;
+          const user = snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+          const isValid = await bcrypt.compare(credentials.password, user?.password || DUMMY_HASH);
+          if (!user || !user.isActive || !user.password || !isValid) return null;
           if (user.role !== 'customer') await snap.docs[0].ref.update({ role: 'customer' });
-          return { id: user.id, name: user.name, email: user.email, role: 'customer' };
+          return { id: user.id, name: user.name, email: user.email, role: 'customer', emailVerified: user.emailVerified === true };
         }
 
         const staffSnap = await db.collection('staff').where('email', '==', email).get();
         const staff = staffSnap.docs.map((d) => ({ id: d.id, ...d.data() })).find((s) => s.status === 'Active' && s.password);
-        if (!staff) return null;
-        const isValid = await bcrypt.compare(credentials.password, staff.password);
-        if (!isValid) return null;
+        const isValid = await bcrypt.compare(credentials.password, staff?.password || DUMMY_HASH);
+        if (!staff || !isValid) return null;
         return { id: staff.id, name: staff.name, email: staff.email, ...access };
       } catch (err) {
         console.error('Auth credentials error:', err.message);
@@ -106,37 +129,38 @@ providers.push(
       email: { label: 'Email', type: 'email' },
       otp: { label: 'OTP Code', type: 'text' },
     },
-    async authorize(credentials) {
+    async authorize(credentials, req) {
       if (!credentials?.email || !credentials?.otp) return null;
+      const db = getDB();
+      const email = normalizeEmail(credentials.email);
+      /* Each code dies after 5 wrong guesses (verifyOtp); these limits stop
+         guessing across freshly requested codes too. */
+      const limited = await hitAll(db, [
+        [`otp:email:${email}`, LIMITS.otpVerifyEmail],
+        [`otp:ip:${clientIp(req?.headers)}`, LIMITS.otpVerifyIp],
+      ]);
+      if (!limited.allowed) throw new Error(RATE_LIMITED);
       try {
-        const db = getDB();
-        const snap = await db.collection('otp_codes')
-          .where('email', '==', credentials.email.toLowerCase()).limit(5).get();
-        if (snap.empty) return null;
-        const otpDoc = snap.docs.find((d) => d.data().code === credentials.otp.trim());
-        if (!otpDoc) return null;
-        const { expiresAt } = otpDoc.data();
-        if (new Date(expiresAt) < new Date()) { await otpDoc.ref.delete(); return null; }
-        await otpDoc.ref.delete();
+        if (!(await verifyOtp(db, email, credentials.otp))) return null;
 
-        const userSnap = await db.collection('users')
-          .where('email', '==', credentials.email.toLowerCase()).limit(1).get();
+        const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
         if (!userSnap.empty) {
           const u = { id: userSnap.docs[0].id, ...userSnap.docs[0].data() };
-          const access = await resolveAccess(db, u.email);
-          if (access.role !== u.role) await userSnap.docs[0].ref.update({ role: access.role });
-          return { id: u.id, name: u.name, email: u.email, ...access };
+          if (u.isActive === false) return null;
+          const access = await resolveAccess(db, email);
+          await userSnap.docs[0].ref.update({ role: access.role, ...claimVerifiedEmail(u) });
+          return { id: u.id, name: u.name, email, ...access, emailVerified: true };
         }
         // First OTP login — create user
         const ref = db.collection('users').doc();
-        const access = await resolveAccess(db, credentials.email);
+        const access = await resolveAccess(db, email);
         const userData = {
-          name: credentials.email.split('@')[0],
-          email: credentials.email.toLowerCase(),
-          role: access.role, isActive: true, createdAt: new Date().toISOString(),
+          name: email.split('@')[0],
+          email,
+          role: access.role, isActive: true, emailVerified: true, createdAt: new Date().toISOString(),
         };
         await ref.set(userData);
-        return { id: ref.id, ...userData, ...access };
+        return { id: ref.id, ...userData, ...access, emailVerified: true };
       } catch (err) {
         console.error('OTP auth error:', err.message);
         return null;
@@ -150,12 +174,17 @@ export const authOptions = {
   callbacks: {
     async signIn({ user, account, profile }) {
       if (account?.provider === 'google') {
+        /* Access is granted by email, so the email must be one Google has
+           verified — otherwise an unverified Google account named after an
+           owner/staff address would inherit their access. */
+        if (profile?.email_verified !== true) return false;
         try {
           const db = getDB();
           const dbUser = await upsertGoogleUser(db, profile);
           user.id = dbUser.id;
           user.role = dbUser.role;
           user.tier = dbUser.tier || null;
+          user.emailVerified = true;
           if (dbUser.vendorId) user.vendorId = dbUser.vendorId;
         } catch (err) {
           console.error('Google signIn error:', err.message);
@@ -170,6 +199,7 @@ export const authOptions = {
         token.role = user.role;
         token.tier = user.tier || null;
         token.vendorId = user.vendorId || null;
+        token.emailVerified = user.emailVerified === true;
         token.accessCheckedAt = Date.now();
         return token;
       }
@@ -193,6 +223,7 @@ export const authOptions = {
         session.user.id = token.id;
         session.user.role = token.role;
         session.user.tier = token.tier || null;
+        session.user.emailVerified = token.emailVerified === true;
         if (token.vendorId) session.user.vendorId = token.vendorId;
       }
       return session;
@@ -200,6 +231,18 @@ export const authOptions = {
   },
   pages: { signIn: '/login', error: '/auth-error' },
   session: { strategy: 'jwt', maxAge: 30 * 24 * 60 * 60 },
+  /* Session cookie: HttpOnly (no script access), Secure on https, and
+     SameSite=Strict — never sent on a request another site starts, so no
+     cross-site request can act with a signed-in session. Same name NextAuth
+     uses by default, so middleware's getToken() finds it. The short-lived
+     OAuth state/PKCE/CSRF cookies keep NextAuth's Lax default: Google's
+     redirect back to /api/auth/callback is cross-site and needs them. */
+  cookies: {
+    sessionToken: {
+      name: `${SECURE_COOKIES ? '__Secure-' : ''}next-auth.session-token`,
+      options: { httpOnly: true, sameSite: 'strict', path: '/', secure: SECURE_COOKIES },
+    },
+  },
   /* No fallback on purpose. A hardcoded default would sign every session token
      with a value that is public in this repo, letting anyone mint an admin JWT. */
   secret: process.env.NEXTAUTH_SECRET,

@@ -16,7 +16,12 @@ export async function POST(request) {
 
     const formData = await request.formData();
     const file = formData.get('file');
-    if (!file) return NextResponse.json({ success: false, message: 'No file provided' }, { status: 400 });
+    if (!file || typeof file === 'string') return NextResponse.json({ success: false, message: 'No file provided' }, { status: 400 });
+    /* Raster images only — an SVG can carry script. Same rule as vendor uploads. */
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      return NextResponse.json({ success: false, message: 'Use a JPG, PNG or WebP image.' }, { status: 400 });
+    }
+    if (file.size > 15 * 1024 * 1024) return NextResponse.json({ success: false, message: 'Image must be 15 MB or smaller.' }, { status: 400 });
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);

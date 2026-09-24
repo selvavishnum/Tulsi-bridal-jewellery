@@ -6,6 +6,7 @@ import {
 } from 'react-icons/fi';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { formatPrice } from '@/lib/utils';
+import { escapeHtml } from '@/lib/escapeHtml';
 
 const CATEGORIES = [
   '', 'necklace', 'earrings', 'bangles', 'bracelet', 'ring', 'maang-tikka',
@@ -56,7 +57,7 @@ export default function StockCheckerPage() {
       const sp = p.discountPrice || p.price || 0;
       return `
         <tr>
-          <td>${p.name}</td>
+          <td>${escapeHtml(p.name)}</td>
           <td>₹${(p.price || 0).toLocaleString('en-IN')}</td>
           <td>${disc > 0 ? disc + '%' : '—'}</td>
           <td>₹${sp.toLocaleString('en-IN')}</td>

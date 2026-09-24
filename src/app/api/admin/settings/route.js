@@ -22,6 +22,12 @@ export async function POST(request) {
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     const db = getDB();
     const body = await request.json();
+    /* This document is publicly readable (GET above), so it must never
+       hold credentials — those live in environment variables. */
+    const secretish = Object.keys(body || {}).filter((k) => /secret|password|token|api_?key|private/i.test(k));
+    if (secretish.length) {
+      return NextResponse.json({ success: false, message: `Don't store credentials in site settings (${secretish.join(', ')}). Use environment variables.` }, { status: 400 });
+    }
     await db.collection('settings').doc('site').set({ ...body, updatedAt: new Date().toISOString() }, { merge: true });
     return NextResponse.json({ success: true, message: 'Settings saved' });
   } catch (e) { return NextResponse.json({ success: false, message: e.message }, { status: 500 }); }

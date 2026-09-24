@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDB, docToObj } from '@/lib/firebase';
 import { requireAccess } from '@/lib/adminCollection';
 import { CAN } from '@/lib/access';
+import { parseCouponInput, checkCouponValue } from '@/lib/coupons';
 
 export async function DELETE(request, context) {
   try {
@@ -24,9 +25,18 @@ export async function PUT(request, context) {
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const db = getDB();
-    const body = await request.json();
+    const parsed = parseCouponInput(await request.json(), { partial: true });
+    if (parsed.error) return NextResponse.json({ success: false, message: parsed.error }, { status: 400 });
     const ref = db.collection('coupons').doc(id);
-    await ref.update({ ...body, updatedAt: new Date().toISOString() });
+    const current = await ref.get();
+    if (!current.exists) return NextResponse.json({ success: false, message: 'Coupon not found' }, { status: 404 });
+    const bad = checkCouponValue({ ...current.data(), ...parsed.data });
+    if (bad) return NextResponse.json({ success: false, message: bad }, { status: 400 });
+    if (parsed.data.code && parsed.data.code !== current.data().code) {
+      const dup = await db.collection('coupons').where('code', '==', parsed.data.code).limit(1).get();
+      if (!dup.empty) return NextResponse.json({ success: false, message: 'That code already exists.' }, { status: 409 });
+    }
+    await ref.update({ ...parsed.data, updatedAt: new Date().toISOString() });
     const updated = await ref.get();
     return NextResponse.json({ success: true, data: docToObj(updated) });
   } catch (error) {

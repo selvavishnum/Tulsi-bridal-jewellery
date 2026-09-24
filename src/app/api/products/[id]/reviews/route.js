@@ -3,6 +3,8 @@ import { getDB, snapshotToArr } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
 import { sendReviewNotification } from '@/lib/email';
 import { sendReviewWhatsApp } from '@/lib/whatsapp';
+import { normalizeEmail, isValidEmail } from '@/lib/otp';
+import { hit, clientIp, LIMITS, tooManyRequests } from '@/lib/rateLimit';
 
 export async function GET(request, context) {
   try {
@@ -24,6 +26,14 @@ export async function GET(request, context) {
   }
 }
 
+async function boughtIt(db, userId, productId) {
+  const snap = await db.collection('orders').where('userId', '==', userId).get();
+  return snap.docs.some((d) => {
+    const o = d.data();
+    return o.payment?.status === 'paid' && o.status !== 'cancelled' && (o.items || []).some((it) => it.product === productId);
+  });
+}
+
 export async function POST(request, context) {
   try {
     const { id } = await context.params;
@@ -31,19 +41,24 @@ export async function POST(request, context) {
     const body = await request.json();
     const { rating, comment, guestName, guestEmail } = body;
 
-    if (!rating || rating < 1 || rating > 5) {
+    if (!Number.isInteger(Number(rating)) || rating < 1 || rating > 5) {
       return NextResponse.json({ success: false, message: 'Rating must be 1–5' }, { status: 400 });
     }
-    if (!comment?.trim()) {
-      return NextResponse.json({ success: false, message: 'Review comment required' }, { status: 400 });
+    if (typeof comment !== 'string' || !comment.trim() || comment.length > 2000) {
+      return NextResponse.json({ success: false, message: 'Write a review of up to 2000 characters' }, { status: 400 });
+    }
+    if (guestName !== undefined && (typeof guestName !== 'string' || guestName.length > 60)) {
+      return NextResponse.json({ success: false, message: 'Name is too long' }, { status: 400 });
     }
 
     const db = getDB();
+    const limited = await hit(db, `review:ip:${clientIp(request.headers)}`, LIMITS.review);
+    if (!limited.allowed) return tooManyRequests(limited.retryAfterSec, 'Too many reviews. Please try again later.');
     const prodDoc = await db.collection('products').doc(id).get();
     if (!prodDoc.exists) return NextResponse.json({ success: false, message: 'Product not found' }, { status: 404 });
 
     const reviewerName  = session?.user?.name  || guestName  || 'Anonymous';
-    const reviewerEmail = session?.user?.email || guestEmail || null;
+    const reviewerEmail = session?.user?.email || (typeof guestEmail === 'string' && isValidEmail(normalizeEmail(guestEmail)) ? normalizeEmail(guestEmail) : null);
     const userId        = session?.user?.id    || null;
 
     /* One review per user per product (for logged-in users) */
@@ -66,7 +81,9 @@ export async function POST(request, context) {
       reviewerEmail,
       rating: Number(rating),
       comment: comment.trim(),
-      verified: !!userId,
+      /* "Verified purchase" only if this account actually bought it and
+         the order was paid. */
+      verified: userId ? await boughtIt(db, userId, id) : false,
       createdAt: new Date().toISOString(),
     };
     await ref.set(review);

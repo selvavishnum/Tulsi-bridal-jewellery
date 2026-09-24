@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAccess, ROLES } from '@/lib/requireRole';
+import { ownsOrder } from '@/lib/orderOwnership';
 import Razorpay from 'razorpay';
 import { getDB } from '@/lib/firebase';
 
@@ -28,15 +29,15 @@ export async function POST(request) {
 
     /* Only the owner (or an admin) may start a payment for this order.
        Guard against nullish values matching each other. */
-    const isOwner =
-      (!!order.userId && order.userId === session.user.id) ||
-      (!!order.guestEmail && order.guestEmail === session.user.email);
-    if (!isOwner && access.tier !== ROLES.SUPER_ADMIN) {
+    if (!ownsOrder(order, session.user) && access.tier !== ROLES.SUPER_ADMIN) {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }
 
     if (order.payment?.status === 'paid') {
       return NextResponse.json({ success: false, message: 'Order is already paid' }, { status: 400 });
+    }
+    if (order.status === 'cancelled') {
+      return NextResponse.json({ success: false, message: 'This order was cancelled.' }, { status: 400 });
     }
 
     /* Admin can pause online payment site-wide (e.g. while Razorpay KYC is

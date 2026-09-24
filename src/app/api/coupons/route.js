@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr } from '@/lib/firebase';
 import { requireAccess } from '@/lib/adminCollection';
 import { CAN } from '@/lib/access';
+import { parseCouponInput, checkCouponValue } from '@/lib/coupons';
 
 export async function GET(request) {
   try {
@@ -22,17 +23,17 @@ export async function POST(request) {
     if (!session) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
 
     const db = getDB();
-    const body = await request.json();
+    const parsed = parseCouponInput(await request.json());
+    if (parsed.error) return NextResponse.json({ success: false, message: parsed.error }, { status: 400 });
+    const bad = checkCouponValue(parsed.data);
+    if (bad) return NextResponse.json({ success: false, message: bad }, { status: 400 });
+    const dup = await db.collection('coupons').where('code', '==', parsed.data.code).limit(1).get();
+    if (!dup.empty) return NextResponse.json({ success: false, message: 'That code already exists.' }, { status: 409 });
     const ref = db.collection('coupons').doc();
     const couponData = {
-      code: (body.code || '').toUpperCase(),
-      type: body.type || 'percentage',
-      value: Number(body.value) || 0,
-      minOrderAmount: Number(body.minOrderAmount) || 0,
-      maxUses: Number(body.usageLimit || body.maxUses) || 100,
+      ...parsed.data,
       usedCount: 0,
-      expiresAt: body.validUntil || body.expiresAt || null,
-      isActive: true,
+      isActive: parsed.data.isActive ?? true,
       usedBy: [],
       createdAt: new Date().toISOString(),
     };
