@@ -90,6 +90,8 @@ export async function GET() {
           status: v.status || 'active',
           platformFeePercent: (Number(v.platformFeeBps) || 0) / 100,
           defaultMarginPercent: Number(v.defaultMarginPercent) || 0,
+          selfFulfil: v.selfFulfil === true,
+          shiprocketPickupLocation: v.shiprocketPickupLocation || '',
           payout: v.payout || null,
           /* A bank/UPI change the vendor asked for — not used for payouts
              until a Super Admin approves it below. */
@@ -156,6 +158,8 @@ export async function POST(request) {
       status: 'active',
       platformFeeBps: feeBps,
       defaultMarginPercent,
+      selfFulfil: body.selfFulfil === true,
+      shiprocketPickupLocation: String(body.shiprocketPickupLocation || '').trim().replace(/[<>]/g, '').slice(0, 60),
       payout,
       createdAt: now,
       updatedAt: now,
@@ -212,6 +216,15 @@ export async function PUT(request) {
       const bps = parseFeeBps(body.platformFeePercent);
       if (bps === null) return NextResponse.json({ success: false, message: 'Platform fee must be between 0% and 50%.' }, { status: 400 });
       update.platformFeeBps = bps;
+    }
+    /* "Vendor ships their own orders": on orders made up only of this
+       vendor's pieces, the vendor gets the delivery address and packs,
+       ships and updates them from the Vendor Portal. */
+    if (body.selfFulfil !== undefined) update.selfFulfil = body.selfFulfil === true;
+    if (body.shiprocketPickupLocation !== undefined) {
+      const loc = String(body.shiprocketPickupLocation || '').trim();
+      if (loc.length > 60 || /[<>]/.test(loc)) return NextResponse.json({ success: false, message: 'Pickup nickname must be up to 60 characters.' }, { status: 400 });
+      update.shiprocketPickupLocation = loc;
     }
     if (body.defaultMarginPercent !== undefined) {
       const pct = parseMarginPercent(body.defaultMarginPercent);

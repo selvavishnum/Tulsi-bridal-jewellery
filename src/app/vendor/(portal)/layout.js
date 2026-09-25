@@ -10,7 +10,8 @@ const TABS = [
   { href: '/vendor/dashboard', label: 'Dashboard' },
   { href: '/vendor/products', label: 'Products' },
   { href: '/vendor/inventory', label: 'Inventory' },
-  { href: '/vendor/orders', label: 'Orders & Earnings' },
+  { href: '/vendor/orders', label: 'Orders' },
+  { href: '/vendor/earnings', label: 'Earnings' },
   { href: '/vendor/profile', label: 'Store Profile' },
 ];
 

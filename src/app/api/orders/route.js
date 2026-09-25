@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDB, FieldValue, snapshotToArr } from '@/lib/firebase';
 import { getEffectiveSession } from '@/lib/adminCollection';
 import { sendOrderConfirmation, sendOrderNotificationToAdmin } from '@/lib/email';
+import { notifyVendorsOfOrder } from '@/lib/vendorNotify';
 import { sendOrderWhatsAppToAdmin, sendOrderWhatsAppToCustomer } from '@/lib/whatsapp';
 import { getAvailableCouriers, isConfigured as shiprocketConfigured } from '@/lib/shiprocket';
 import { PLATFORM_VENDOR_ID, validateVendorPricing, toCustomerOrder, marginFor, vendorShippingOf } from '@/lib/settlement';
@@ -417,6 +418,10 @@ export async function POST(request) {
       sendOrderNotificationToAdmin(fullOrder).catch((e) => console.error('[Email] Admin notification failed:', e.message)),
       sendOrderWhatsAppToAdmin(fullOrder).catch((e) => console.error('[WhatsApp] Admin alert failed:', e.message)),
       sendOrderWhatsAppToCustomer(customerOrder).catch((e) => console.error('[WhatsApp] Customer alert failed:', e.message)),
+      /* Vendors hear about a COD order now; an online one when it's paid (settlePayment). */
+      ...(fullOrder.payment.method === 'cod' && fullOrder.vendorIds.some((v) => v !== PLATFORM_VENDOR_ID)
+        ? [notifyVendorsOfOrder(db, orderRef.id).catch((e) => console.error('[Email] Vendor notification failed:', e.message))]
+        : []),
     ]);
 
     return NextResponse.json({ success: true, data: customerOrder }, { status: 201 });

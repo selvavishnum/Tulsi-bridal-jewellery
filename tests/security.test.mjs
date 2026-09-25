@@ -44,7 +44,7 @@ mock.module(src('lib/firebase.js'), {
 const noop = async () => {};
 mock.module(src('lib/email.js'), {
   namedExports: {
-    ...Object.fromEntries(['sendOrderConfirmation', 'sendOrderNotificationToAdmin', 'sendStatusUpdateEmail', 'sendReviewNotification', 'sendContactNotification', 'sendRentalConfirmation', 'sendRentalNotificationToAdmin', 'isConfigured'].map((n) => [n, noop])),
+    ...Object.fromEntries(['sendOrderConfirmation', 'sendOrderNotificationToAdmin', 'sendStatusUpdateEmail', 'sendReviewNotification', 'sendContactNotification', 'sendRentalConfirmation', 'sendRentalNotificationToAdmin', 'sendVendorOrderNotification', 'isConfigured'].map((n) => [n, noop])),
     esc: (v) => String(v ?? ''),
     sendOTPEmail: async (to, code) => { sentMail.push({ to, code }); return true; },
   },

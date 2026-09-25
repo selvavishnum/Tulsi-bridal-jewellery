@@ -220,7 +220,7 @@ test('orders: a vendor never sees another vendor’s orders', async () => {
   signInAs('a@vendor.test');
   const res = await call(vendorOrders, 'GET');
   assert.equal(res.status, 200);
-  assert.deepEqual(res.json.data, []);
+  assert.deepEqual(res.json.data.orders, []);
 });
 
 test('margin: vendor can’t set it; a % margin follows the vendor’s price; vendor default % applies to new pieces', async () => {
