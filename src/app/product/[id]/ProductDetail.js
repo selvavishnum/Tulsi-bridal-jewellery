@@ -354,15 +354,18 @@ function ImageZoomModal({ images, startIndex, productName, onClose }) {
 }
 
 /* ── Main Page ── */
-export default function ProductDetail() {
+/* `initialProduct` comes from the server page, so the product renders in
+   the first HTML response — search engines and AI crawlers that don't run
+   JavaScript see the full listing. It's refreshed client-side after. */
+export default function ProductDetail({ initialProduct = null }) {
   const { id } = useParams();
   const router = useRouter();
   const { data: session } = useSession();
   const { dispatch, charges } = useCart();
   const { toggle, isWishlisted } = useWishlist();
 
-  const [product, setProduct] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [product, setProduct] = useState(initialProduct);
+  const [loading, setLoading] = useState(!initialProduct);
   const [selectedImage, setSelectedImageRaw] = useState(0);
   const [qty, setQty] = useState(1);
   const [zoomOpen, setZoomOpen] = useState(false);
@@ -417,10 +420,10 @@ export default function ProductDetail() {
   useEffect(() => {
     fetch(`/api/products/${id}`)
       .then((r) => r.json())
-      .then((d) => { if (d.success) setProduct(d.data); else router.push('/shop'); })
-      .catch(() => router.push('/shop'))
+      .then((d) => { if (d.success) setProduct(d.data); else if (!initialProduct) router.push('/shop'); })
+      .catch(() => { if (!initialProduct) router.push('/shop'); })
       .finally(() => setLoading(false));
-  }, [id, router]);
+  }, [id, router, initialProduct]);
 
   function loadReviews() {
     setReviewsLoading(true);

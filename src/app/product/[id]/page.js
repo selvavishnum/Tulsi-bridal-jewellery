@@ -1,5 +1,17 @@
 import { getDB, docToObj, toPublicProduct } from '@/lib/firebase';
-import { absoluteUrl, JsonLd, buildProductJsonLd, buildBreadcrumbJsonLd } from '@/lib/seo';
+import { absoluteUrl, JsonLd, buildProductJsonLd, buildBreadcrumbJsonLd, describeProduct, productKeywords } from '@/lib/seo';
+import { getStoreCharges } from '@/lib/storeChargesServer';
+
+/* Real, published reviews for the Review markup (never invented). */
+async function getReviews(id) {
+  try {
+    const snap = await getDB().collection('reviews').where('productId', '==', id).get();
+    return snap.docs.map((d) => d.data()).filter((r) => r.approved !== false)
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 5);
+  } catch {
+    return [];
+  }
+}
 import ProductDetail from './ProductDetail';
 
 async function getProduct(id) {
@@ -27,18 +39,19 @@ export async function generateMetadata({ params }) {
     return { title: 'Product Not Found', robots: { index: false, follow: false } };
   }
 
-  const description = (product.description
-    ? product.description
-    : `${product.name} — handcrafted bridal jewellery from Tulsi Bridal Jewellery.`
-  ).slice(0, 160);
+  /* A factual summary built from the product's own category, material,
+     style words, colour and occasion — the phrases people type or ask. */
+  const description = describeProduct(product).slice(0, 160);
   const image = product.images?.filter(Boolean)?.[0];
   const url = absoluteUrl(`/product/${id}`);
 
   return {
     title: product.name,
     description,
+    keywords: productKeywords(product),
     alternates: { canonical: url },
     openGraph: {
+      type: 'website',
       title: product.name,
       description,
       url,
@@ -56,12 +69,14 @@ export async function generateMetadata({ params }) {
 export default async function ProductPage({ params }) {
   const { id } = await params;
   const product = await getProduct(id);
+  const loadCharges = async () => { try { return await getStoreCharges(getDB()); } catch { return null; } };
+  const [charges, reviews] = product ? await Promise.all([loadCharges(), getReviews(id)]) : [null, []];
 
   return (
     <>
       {product && (
         <>
-          <JsonLd data={buildProductJsonLd(product, id)} />
+          <JsonLd data={buildProductJsonLd(product, id, { charges, reviews })} />
           <JsonLd
             data={buildBreadcrumbJsonLd([
               { name: 'Home', path: '/' },
@@ -72,7 +87,7 @@ export default async function ProductPage({ params }) {
           />
         </>
       )}
-      <ProductDetail />
+      <ProductDetail initialProduct={product} />
     </>
   );
 }
