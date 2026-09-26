@@ -8,17 +8,16 @@ import { formatPrice } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { loadRazorpayScript } from '@/lib/loadRazorpay';
+import { computeCharges } from '@/lib/storeCharges';
 
-/* Mirrors the enforced rules in src/app/api/orders/route.js — shown here only
+/* Mirrors the enforced limit in src/app/api/orders/route.js — shown here only
    for the customer's benefit before they submit. The server is authoritative. */
 const COD_MAX_ORDER_VALUE = 20000;
-const COD_FEE = 49;
-const COD_FEE_BELOW = 500;
 
 export default function CheckoutPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const { items, subtotal, shippingCost, total, discount, coupon, dispatch } = useCart();
+  const { items, subtotal, shippingCost, total, discount, coupon, dispatch, charges, refreshCharges } = useCart();
   /* Clearing the cart on a successful order makes items.length hit 0, which
      would otherwise trigger the "cart is empty → go to /cart" effect below
      and hijack the navigation to the confirmation page. This flag tells that
@@ -45,10 +44,13 @@ export default function CheckoutPage() {
     pincode: '',
   });
 
-  const codFeeIfSelected = subtotal < COD_FEE_BELOW ? COD_FEE : 0;
+  /* Same rule the server applies (src/lib/storeCharges.js), from the admin's
+     current settings: switching payment method re-computes instantly. */
+  const codFeeIfSelected = computeCharges({ subtotal, paymentMethod: 'cod', charges }).codFee;
+  const { codFee } = computeCharges({ subtotal, paymentMethod, charges });
   const codBlockedByValue = (total - loyaltyDiscount) > COD_MAX_ORDER_VALUE;
   const codBlocked = codBlockedByValue || !codAvailable;
-  const payableTotal = total - loyaltyDiscount + (paymentMethod === 'cod' ? codFeeIfSelected : 0);
+  const payableTotal = total - loyaltyDiscount + codFee;
 
   /* Never let a disabled option sit selected. */
   useEffect(() => {
@@ -194,9 +196,20 @@ export default function CheckoutPage() {
           payment: { method: paymentMethod },
           couponCode: coupon?.code,
           guestEmail: !session ? form.email : undefined,
+          /* The fees shown to the customer: the server refuses the order if
+             they no longer match its own calculation (409 below). */
+          shippingCost,
+          codFee,
         }),
       });
       const orderData = await orderRes.json();
+      if (orderRes.status === 409 && orderData.code === 'CHARGES_CHANGED') {
+        /* The admin changed the charges while this page was open: show the
+           new total and let the customer confirm again. */
+        await refreshCharges();
+        toast(orderData.message, { icon: 'ℹ️', duration: 10000 });
+        return;
+      }
       if (!orderData.success) throw new Error(orderData.message || 'Could not place order. Please try again.');
       const orderId = orderData.data.id || orderData.data._id;
       const orderNumber = orderData.data.orderNumber;
@@ -426,7 +439,7 @@ export default function CheckoutPage() {
                         ) : !codAvailable ? (
                           <p className="text-xs text-red-500">Not available for this pincode</p>
                         ) : codFeeIfSelected > 0 ? (
-                          <p className="text-xs text-gray-500">Pay when you receive · +{formatPrice(COD_FEE)} fee for orders under {formatPrice(COD_FEE_BELOW)}</p>
+                          <p className="text-xs text-gray-500">Pay when you receive · +{formatPrice(codFeeIfSelected)} COD fee{charges.cod_fee_waive_above ? ` (none on orders of ${formatPrice(charges.cod_fee_waive_above)}+)` : ''}</p>
                         ) : (
                           <p className="text-xs text-gray-500">Pay when you receive</p>
                         )}
@@ -450,7 +463,17 @@ export default function CheckoutPage() {
                   </div>
                   <div className="border-t pt-3 space-y-2 text-sm text-gray-600">
                     <div className="flex justify-between"><span>Subtotal</span><span>{formatPrice(subtotal)}</span></div>
-                    <div className="flex justify-between"><span>Shipping</span><span className={shippingCost === 0 ? 'text-green-600' : ''}>{shippingCost === 0 ? 'FREE' : formatPrice(shippingCost)}</span></div>
+                    <div className="flex justify-between">
+                      <span>Shipping</span>
+                      {shippingCost === 0 ? (
+                        <span className="text-green-600 font-semibold">
+                          {charges.enable_shipping_fee && <span className="line-through text-gray-400 font-normal mr-1.5">{formatPrice(charges.shipping_fee_amount)}</span>}FREE
+                        </span>
+                      ) : <span>{formatPrice(shippingCost)}</span>}
+                    </div>
+                    {charges.enable_shipping_fee && shippingCost > 0 && charges.free_shipping_threshold > 0 && (
+                      <p className="text-xs text-gray-400 -mt-1">Add {formatPrice(charges.free_shipping_threshold - subtotal)} more for free delivery</p>
+                    )}
                     {discount > 0 && <div className="flex justify-between text-green-600"><span>Discount</span><span>-{formatPrice(discount)}</span></div>}
                     {loyaltyEnabled && loyalty.points >= 50 && loyaltyDiscount === 0 && (
                       <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2">
@@ -470,8 +493,8 @@ export default function CheckoutPage() {
                         <span className="font-semibold">-{formatPrice(loyaltyDiscount)}</span>
                       </div>
                     )}
-                    {paymentMethod === 'cod' && codFeeIfSelected > 0 && (
-                      <div className="flex justify-between"><span>COD Fee</span><span>{formatPrice(codFeeIfSelected)}</span></div>
+                    {codFee > 0 && (
+                      <div className="flex justify-between"><span>COD Fee</span><span>{formatPrice(codFee)}</span></div>
                     )}
                     <div className="flex justify-between font-bold text-gray-800 text-base border-t pt-2">
                       <span>Total</span><span>{formatPrice(payableTotal)}</span>

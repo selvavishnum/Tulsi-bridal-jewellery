@@ -1,6 +1,12 @@
 'use client';
 
-import { createContext, useContext, useReducer, useEffect } from 'react';
+import { createContext, useContext, useReducer, useEffect, useState, useCallback } from 'react';
+import { DEFAULT_CHARGES, computeCharges } from '@/lib/storeCharges';
+
+/* How often an open page re-reads the shipping/COD settings, so an admin
+   change reaches checkouts already in progress (the server recalculates
+   every order regardless). Also refreshed when the tab regains focus. */
+const CHARGES_REFRESH_MS = 60_000;
 
 const CartContext = createContext(null);
 
@@ -67,13 +73,34 @@ export function CartProvider({ children }) {
     localStorage.setItem('tulsi-cart', JSON.stringify(state));
   }, [state]);
 
+  /* Shipping & COD settings from the admin panel (settings/store_settings). */
+  const [charges, setCharges] = useState(DEFAULT_CHARGES);
+  const refreshCharges = useCallback(async () => {
+    try {
+      const res = await fetch('/api/store-charges', { cache: 'no-store' });
+      const d = await res.json();
+      if (d.success) setCharges(d.data);
+      return d.success ? d.data : null;
+    } catch {
+      return null; // keep the last known charges; the server decides anyway
+    }
+  }, []);
+  useEffect(() => {
+    refreshCharges();
+    const tick = setInterval(() => { if (document.visibilityState === 'visible') refreshCharges(); }, CHARGES_REFRESH_MS);
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshCharges(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => { clearInterval(tick); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
+  }, [refreshCharges]);
+
   const subtotal = state.items.reduce((sum, i) => sum + (i.discountPrice || i.price) * i.quantity, 0);
-  const shippingCost = subtotal >= 2000 ? 0 : 99;
+  const { shipping: shippingCost } = computeCharges({ subtotal, paymentMethod: null, charges });
   const total = subtotal - state.discount + shippingCost;
   const itemCount = state.items.reduce((sum, i) => sum + i.quantity, 0);
 
   return (
-    <CartContext.Provider value={{ ...state, dispatch, subtotal, shippingCost, total, itemCount }}>
+    <CartContext.Provider value={{ ...state, dispatch, subtotal, shippingCost, total, itemCount, charges, refreshCharges }}>
       {children}
     </CartContext.Provider>
   );

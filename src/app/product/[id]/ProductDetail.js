@@ -11,6 +11,7 @@ import {
   FiUser, FiSend, FiCamera,
 } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
+import { freeShippingLine } from '@/lib/storeCharges';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
 import { cldBase, cldZoom, cldThumb } from '@/lib/cloudinaryImage';
@@ -24,7 +25,7 @@ const WA_NUMBER = '917695868787';
 
 const TRUST_ITEMS = [
   { icon: FiShield,      label: 'Certified Authentic' },
-  { icon: FiTruck,       label: 'Free Delivery ₹2000+' },
+  { icon: FiTruck,       label: 'FREE_DELIVERY' }, // filled from the store's shipping settings
   { icon: FiRefreshCw,   label: '7-Day Returns' },
   { icon: FiCheckCircle, label: 'Secure Payment' },
 ];
@@ -357,7 +358,7 @@ export default function ProductDetail() {
   const { id } = useParams();
   const router = useRouter();
   const { data: session } = useSession();
-  const { dispatch } = useCart();
+  const { dispatch, charges } = useCart();
   const { toggle, isWishlisted } = useWishlist();
 
   const [product, setProduct] = useState(null);
@@ -812,7 +813,7 @@ export default function ProductDetail() {
 
               {/* Trust */}
               <div className="mt-5 pt-5 border-t border-stone-100 grid grid-cols-2 gap-2">
-                {TRUST_ITEMS.map(({ icon: Icon, label }) => (
+                {TRUST_ITEMS.map(({ icon: Icon, label: rawLabel }) => ({ Icon, label: rawLabel === 'FREE_DELIVERY' ? freeShippingLine(charges) : rawLabel })).map(({ Icon, label }) => (
                   <div key={label} className="flex items-center gap-2 text-xs text-stone-500">
                     <Icon className="text-green-500 flex-shrink-0" /> <span>{label}</span>
                   </div>
