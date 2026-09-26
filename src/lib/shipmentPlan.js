@@ -100,6 +100,8 @@ export function parcelsFor(order, vendorId = null) {
       key: s.key, vendorId: s.vendorId || null, awb: s.awb || null, courierName: s.courierName || null,
       /* Which warehouse the courier collects from (Shiprocket pickup nickname). */
       pickupLocation: s.pickupLocation || null,
+      /* Latest courier update (webhook / daily sync). */
+      tracking: s.tracking ? { stage: s.tracking.stage, text: s.tracking.text, at: s.tracking.at, etd: s.tracking.etd || null } : null,
       trackingUrl: s.trackingUrl || null, booked: !!s.awb, pickupRequested: !!s.pickupRequested,
       error: s.awb ? null : s.lastError || null, items: s.items || [],
     }));

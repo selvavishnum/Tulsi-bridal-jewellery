@@ -271,6 +271,11 @@ function Parcels({ order, profile }) {
       {order.parcels.map((p) => (
         <div key={p.key} className="bg-white rounded-lg border border-stone-100 p-3 text-xs space-y-1">
           <PickupFrom pickupLocation={p.pickupLocation} profile={profile} />
+          {p.tracking && (
+            <p className={['undelivered', 'rto_initiated', 'rto_delivered', 'lost', 'cancelled'].includes(p.tracking.stage) ? 'text-red-700 font-semibold' : 'text-stone-700'}>
+              Courier status: {p.tracking.text}<span className="text-stone-400 font-normal"> · {shortDate(p.tracking.at)}</span>
+            </p>
+          )}
           {p.booked ? (
             <p>AWB <span className="font-mono font-semibold text-stone-800">{p.awb}</span>{p.courierName ? ` · ${p.courierName}` : ''}
               {p.trackingUrl && <a href={p.trackingUrl} target="_blank" rel="noopener noreferrer" className="ml-1 text-wine-700 inline-flex items-center gap-0.5">track <FiExternalLink /></a>}

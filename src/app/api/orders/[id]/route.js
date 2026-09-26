@@ -38,6 +38,12 @@ export async function PUT(request, context) {
     const db = getDB();
     const body = await request.json();
     const { status, trackingNumber, courierName, notes, shippingCostActual } = body;
+    /* Staff confirm they refunded a prepaid order the courier returned. */
+    if (body.refundDone === true) {
+      if (!CAN.manageOrders.includes(access.tier)) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
+      await db.collection('orders').doc(id).update({ refundDue: false, refundedAt: new Date().toISOString(), refundedBy: session.user.email || null, updatedAt: new Date().toISOString() });
+      return NextResponse.json({ success: true, message: 'Marked refunded' });
+    }
     const ref = db.collection('orders').doc(id);
     const isSuper = CAN.manageOrders.includes(access.tier); // full order control
     /* Sales and business staff can read orders but not change them: for a

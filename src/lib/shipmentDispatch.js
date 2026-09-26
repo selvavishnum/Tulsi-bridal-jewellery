@@ -125,6 +125,9 @@ export async function dispatchOrder(db, orderId, { onlyKey = null, courierId = n
   if (summary.courierName) patch.courierName = summary.courierName;
   const first = plan.map((p) => shipments[p.key]).find((s) => s?.srOrderId);
   if (first) patch.shiprocketOrderId = first.srOrderId; // marks the order as Shiprocket-tracked
+  /* Every AWB on the order, so courier status updates find it (shipmentSync). */
+  const awbs = Object.values(shipments).map((s) => s?.awb).filter(Boolean);
+  if (awbs.length) patch.awbs = awbs;
   if (summary.allBooked && order.shippingCostSource !== 'manual') {
     if (summary.shippingCost !== null) { patch.shippingCostActual = summary.shippingCost; patch.shippingCostSource = 'shiprocket_quote'; }
     patch.vendorShippingActual = vendorFreight(order, plan, shipments);
