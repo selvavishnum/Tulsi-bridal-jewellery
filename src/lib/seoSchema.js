@@ -7,7 +7,7 @@ function stripTrailingSlash(url) {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 }
 
-export const SITE_URL = stripTrailingSlash(process.env.NEXT_PUBLIC_SITE_URL || 'https://www.tulsijewels.in');
+export const SITE_URL = stripTrailingSlash(process.env.NEXT_PUBLIC_SITE_URL || 'https://tulsijewels.in');
 export const SITE_NAME = 'Tulsi Bridal Jewellery';
 
 export function absoluteUrl(path = '/') {
