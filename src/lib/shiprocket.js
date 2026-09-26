@@ -42,7 +42,10 @@ async function srFetch(path, options = {}) {
 }
 
 /* ── Create a Shiprocket order + shipment ── */
-export async function createShiprocketOrder(order, courier_id = null) {
+/* `pickupLocation` — the pickup nickname in Shiprocket (Settings → Pickup
+   Addresses). Defaults to Tulsi's own; a vendor who ships their own
+   orders has theirs registered there and saved on their vendor record. */
+export async function createShiprocketOrder(order, courier_id = null, { pickupLocation } = {}) {
   const addr = order.shippingAddress || {};
   const phone = (addr.phone || '').replace(/\D/g, '').slice(-10);
 
@@ -51,7 +54,7 @@ export async function createShiprocketOrder(order, courier_id = null) {
     order_date:         new Date(order.createdAt).toISOString().slice(0, 19),
     /* Must exactly match the pickup address "nickname" set in Shiprocket
        (Settings → Pickup Addresses) — not whether it's marked PRIMARY there. */
-    pickup_location:    process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary',
+    pickup_location:    pickupLocation || process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary',
     channel_id:         '',
     comment:            'Tulsi Bridal Jewellery',
     billing_customer_name:  addr.name || addr.fullName || 'Customer', // older orders only stored fullName

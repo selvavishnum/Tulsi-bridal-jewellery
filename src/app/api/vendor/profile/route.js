@@ -14,6 +14,8 @@ function toVendorProfile(v, loginEmail) {
     gstin: v.gstin || '',
     pickupAddress: v.pickupAddress || { line1: '', line2: '', city: '', state: '', pincode: '' },
     status: v.status || 'active',
+    selfFulfil: v.selfFulfil === true,
+    shiprocketReady: v.selfFulfil === true && !!v.shiprocketPickupLocation,
     loginEmail,
     payoutDestination: maskPayoutDestination(v.payout),
     pendingPayout: v.pendingPayout

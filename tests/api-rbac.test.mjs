@@ -40,7 +40,7 @@ mock.module(src('lib/firebase.js'), {
   },
 });
 const noop = async () => {};
-mock.module(src('lib/email.js'), { namedExports: Object.fromEntries(['esc', 'sendOTPEmail', 'sendOrderConfirmation', 'sendOrderNotificationToAdmin', 'sendStatusUpdateEmail', 'sendReviewNotification', 'sendContactNotification', 'sendRentalConfirmation', 'sendRentalNotificationToAdmin', 'isConfigured'].map((n) => [n, noop])) });
+mock.module(src('lib/email.js'), { namedExports: Object.fromEntries(['esc', 'sendOTPEmail', 'sendOrderConfirmation', 'sendOrderNotificationToAdmin', 'sendStatusUpdateEmail', 'sendReviewNotification', 'sendContactNotification', 'sendRentalConfirmation', 'sendRentalNotificationToAdmin', 'sendVendorOrderNotification', 'isConfigured'].map((n) => [n, noop])) });
 mock.module(src('lib/whatsapp.js'), { namedExports: Object.fromEntries(['sendOrderWhatsAppToAdmin', 'sendOrderWhatsAppToCustomer', 'sendStatusWhatsApp', 'sendContactWhatsApp', 'sendReviewWhatsApp', 'sendRentalWhatsAppToAdmin', 'sendRentalWhatsAppToCustomer', 'isConfigured'].map((n) => [n, noop])) });
 
 const route = (p) => import(src(`app/api/${p}/route.js`));
@@ -138,7 +138,7 @@ test('(b) …own order works, with no supply cost, contact details or other vend
   const body = JSON.stringify(json);
   for (const leak of ['supplyCost', '600', '9876543210', 'Bangle', 'vendorFees']) assert.ok(!body.includes(leak), `leaked ${leak}`);
   const list = await call(vendorOrders, 'GET');
-  assert.deepEqual(list.json.data.map((o) => o.orderNumber), ['TBJ-A']);
+  assert.deepEqual(list.json.data.orders.map((o) => o.orderNumber), ['TBJ-A']);
 });
 
 test('(b) a vendor gets 403 from the platform admin APIs', async () => {

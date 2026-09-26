@@ -13,12 +13,13 @@ export default function VendorDashboardPage() {
   const error = summary.error || products.error || orders.error;
   if (error) return <p className="text-sm text-red-600">{error}</p>;
   if (!summary.data || !products.data || !orders.data) return <Loading />;
+  const orderList = orders.data.orders;
 
   const s = summary.data.summary;
   const list = products.data;
   const count = (st) => list.filter((p) => p.status === st).length;
   const lowStock = list.filter((p) => p.status === 'live' && p.stock <= LOW_STOCK);
-  const openOrders = orders.data.filter((o) => ['pending', 'confirmed', 'processing', 'shipped'].includes(o.status));
+  const openOrders = orderList.filter((o) => ['pending', 'confirmed', 'processing', 'shipped'].includes(o.status));
 
   return (
     <div className="space-y-5">
@@ -56,11 +57,11 @@ export default function VendorDashboardPage() {
       )}
 
       <Card title="Latest orders" action={<Link href="/vendor/orders" className="text-sm font-semibold text-wine-700">All orders</Link>}>
-        {orders.data.length === 0 ? (
+        {orderList.length === 0 ? (
           <p className="text-sm text-stone-500">No orders with your pieces yet. Orders appear here as soon as a customer buys one.</p>
         ) : (
           <ul className="divide-y divide-stone-100 text-sm">
-            {orders.data.slice(0, 5).map((o) => (
+            {orderList.slice(0, 5).map((o) => (
               <li key={o.id} className="py-2.5 flex flex-wrap items-center justify-between gap-2">
                 <span>
                   <span className="font-mono font-semibold text-stone-800">{o.orderNumber}</span>

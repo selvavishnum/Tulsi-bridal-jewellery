@@ -1,4 +1,5 @@
 import { awardLoyaltyPoints } from '@/lib/loyalty';
+import { notifyVendorsOfOrder } from '@/lib/vendorNotify';
 
 /* Marks an order paid and deducts stock exactly once, no matter how many
    times — or from how many entry points — this runs for the same order.
@@ -61,6 +62,8 @@ export async function settlePaidOrder(db, orderRef, { razorpayPaymentId, razorpa
 
   if (!alreadySettled) {
     await awardLoyaltyPoints(orderRef).catch((e) => console.error('[Loyalty] award failed:', e.message));
+    /* Online order is now real: tell its vendors (once — flag on the order). */
+    await notifyVendorsOfOrder(db, orderRef.id).catch((e) => console.error('[Email] Vendor notification failed:', e.message));
   }
   return { alreadySettled };
 }

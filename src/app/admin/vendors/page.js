@@ -10,7 +10,7 @@ const date = (iso) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'n
 const inp = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400 bg-white';
 
 const EMPTY_VENDOR = {
-  name: '', contactName: '', phone: '', email: '', password: '', platformFeePercent: '0', defaultMarginPercent: '',
+  name: '', contactName: '', phone: '', email: '', password: '', platformFeePercent: '0', defaultMarginPercent: '', selfFulfil: false, shiprocketPickupLocation: '',
   payoutMethod: 'upi', upiId: '', accountName: '', accountNumber: '', ifsc: '',
 };
 
@@ -99,6 +99,8 @@ export default function VendorsPage() {
         name: v.name, contactName: v.contactName, phone: v.phone,
         platformFeePercent: String(v.platformFeePercent),
         defaultMarginPercent: v.defaultMarginPercent ? String(v.defaultMarginPercent) : '',
+        selfFulfil: v.selfFulfil === true,
+        shiprocketPickupLocation: v.shiprocketPickupLocation || '',
         status: v.status,
         loginActive: v.login?.status === 'Active',
         payoutMethod: v.payout?.method || 'upi',
@@ -121,6 +123,7 @@ export default function VendorsPage() {
     const body = {
       name: v.name, contactName: v.contactName, phone: v.phone,
       platformFeePercent: v.platformFeePercent, defaultMarginPercent: v.defaultMarginPercent, payout: payoutBody,
+      selfFulfil: v.selfFulfil, shiprocketPickupLocation: v.shiprocketPickupLocation,
       ...(form.mode === 'create'
         ? { email: v.email, password: v.password }
         : { status: v.status, loginActive: v.loginActive, ...(v.newPassword && { newPassword: v.newPassword }) }),
@@ -249,7 +252,7 @@ export default function VendorsPage() {
                     <StatusChip status={v.status} />
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {v.productCount} product{v.productCount !== 1 ? 's' : ''} · fee {v.platformFeePercent}%{v.defaultMarginPercent ? ` · default margin ${v.defaultMarginPercent}%` : ''} · login {v.login ? `${v.login.email} (${v.login.status})` : 'none'}
+                    {v.productCount} product{v.productCount !== 1 ? 's' : ''} · fee {v.platformFeePercent}%{v.defaultMarginPercent ? ` · default margin ${v.defaultMarginPercent}%` : ''}{v.selfFulfil ? ' · ships own orders' : ''} · login {v.login ? `${v.login.email} (${v.login.status})` : 'none'}
                   </p>
                   <p className="text-xs text-gray-500">Pays to: {destination(v.payout)}</p>
                   {v.pickupAddress && (
@@ -409,6 +412,18 @@ export default function VendorsPage() {
               <input id="v-margin" type="number" min="0" max="99.99" step="0.01" placeholder="Blank = set each product’s margin yourself" value={form.values.defaultMarginPercent} onChange={(e) => setField('defaultMarginPercent', e.target.value)} className={`${inp} mt-1`} />
               <span className="block font-normal text-gray-400 mt-1">Tulsi keeps this % of the selling price on each new piece. You can still change any product&apos;s margin.</span>
             </label>
+            <div className="border-t border-gray-100 pt-3 space-y-2">
+              <label className="flex items-start gap-2 text-sm">
+                <input id="v-selffulfil" type="checkbox" className="mt-1" checked={!!form.values.selfFulfil} onChange={(e) => setField('selfFulfil', e.target.checked)} />
+                <span><span className="font-semibold text-gray-700">Vendor ships their own orders</span>
+                  <span className="block text-xs text-gray-400">On orders with only this vendor&apos;s pieces, they see the delivery address and confirm, pack, ship and deliver from their portal. Orders mixing several sellers stay with Tulsi.</span></span>
+              </label>
+              {form.values.selfFulfil && (
+                <label className="block text-xs font-semibold text-gray-500">Their pickup nickname in Tulsi&apos;s Shiprocket (optional)
+                  <input id="v-pickup" maxLength={60} placeholder="Blank = they enter their own courier's tracking" value={form.values.shiprocketPickupLocation} onChange={(e) => setField('shiprocketPickupLocation', e.target.value)} className={`${inp} mt-1`} />
+                </label>
+              )}
+            </div>
             <div className="border-t border-gray-100 pt-3">
               <p className="text-xs font-semibold text-gray-500 mb-2">Payout destination</p>
               <div className="flex gap-4 text-sm mb-2">

@@ -530,3 +530,49 @@ export async function sendRentalNotificationToAdmin(rental) {
     console.error('[Email] Rental admin notification failed:', err.message);
   }
 }
+
+/* ═══════════════════════════════════════════
+   8. VENDOR — NEW ORDER WITH THEIR PIECES
+   `detail` is the vendor's own view of the order (toVendorOrderDetail):
+   only their lines, never other sellers' items or Tulsi's margin. The
+   delivery address is in it only when the vendor ships the order.
+   ═══════════════════════════════════════════ */
+export async function sendVendorOrderNotification(to, vendorName, detail) {
+  if (!to || !process.env.SMTP_USER || !detail) return false;
+  const shipsIt = detail.fulfilledBy === 'vendor';
+  const c = detail.customer || {};
+  const rows = detail.items.map((i) => `
+    <tr>
+      <td style="padding:8px 0;border-bottom:1px solid #f5f5f4;font-size:14px;color:#292524;">${esc(i.name)}${i.sku ? ` <span style="color:#a8a29e;font-size:12px;">(${esc(i.sku)})</span>` : ''} × ${esc(i.quantity)}</td>
+      <td style="padding:8px 0;border-bottom:1px solid #f5f5f4;text-align:right;font-size:14px;font-weight:700;color:#8b1a4a;">${fmt(i.price * i.quantity)}</td>
+    </tr>`).join('');
+  const address = shipsIt
+    ? `<p style="margin:0;font-size:13px;color:#44403c;line-height:1.6;"><strong>${esc(c.name)}</strong><br/>${esc(c.street)}<br/>${esc(c.city)}, ${esc(c.state)} — ${esc(c.pincode)}<br/>📞 ${esc(c.phone)}</p>`
+    : `<p style="margin:0;font-size:13px;color:#44403c;">${esc(c.name || 'Customer')}${c.city ? `, ${esc(c.city)}` : ''} — Tulsi packs and ships this order.</p>`;
+  const payment = detail.paymentMethod === 'cod' ? 'Cash on delivery' : 'Paid online';
+
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 6px;font-family:Georgia,serif;font-size:22px;color:#292524;">New order for ${esc(vendorName || 'your store')} 🛍</h2>
+    <p style="margin:0 0 20px;font-size:14px;color:#78716c;">${shipsIt ? 'Please confirm, pack and ship it from your Vendor Portal.' : 'A customer ordered your pieces on Tulsi.'}</p>
+    <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#78716c;">Order</p>
+    <p style="margin:0 0 16px;font-family:monospace;font-size:20px;font-weight:700;color:#8b1a4a;">#${esc(detail.orderNumber)} <span style="font-family:Arial,sans-serif;font-size:12px;color:#78716c;font-weight:400;">· ${esc(payment)}</span></p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:8px;">${rows}</table>
+    <p style="margin:0 0 20px;text-align:right;font-size:14px;color:#44403c;">Your items: <strong>${fmt(detail.itemsTotal)}</strong>${detail.earnings ? ` · Estimated earnings: <strong>${fmt(detail.earnings.net)}</strong>` : ''}</p>
+    <p style="margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:0.2em;color:#78716c;">${shipsIt ? 'Ship to' : 'Customer'}</p>
+    ${address}
+    ${ctaBtn('Open in Vendor Portal →', `${BRAND.site}/vendor/orders`)}
+  `);
+
+  try {
+    await createTransporter().sendMail({
+      from: `"${BRAND.name}" <${process.env.SMTP_USER}>`,
+      to,
+      subject: `New order #${detail.orderNumber} — ${detail.items.length} item(s) | ${BRAND.name}`,
+      html,
+    });
+    return true;
+  } catch (err) {
+    console.error('[Email] Vendor order notification failed:', err.message);
+    return false;
+  }
+}
