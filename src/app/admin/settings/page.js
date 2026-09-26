@@ -562,6 +562,25 @@ export default function SettingsPage() {
           </div>
         </SectionCard>
 
+        <SectionCard title="Store Location for Google & AI Search" description="Used in the store's structured data (JewelryStore). Leave blank what you don't want published — nothing is guessed.">
+          <div className="grid md:grid-cols-2 gap-4">
+            {[
+              { key: 'legalName',       label: 'Registered / Legal Name', placeholder: 'Tulsi Bridal Jewellery' },
+              { key: 'priceRange',      label: 'Price Range',             placeholder: '₹500 – ₹25,000' },
+              { key: 'streetAddress',   label: 'Street Address',          placeholder: 'Shop no., street' },
+              { key: 'addressLocality', label: 'City / Town',             placeholder: 'Thuckalay' },
+              { key: 'addressRegion',   label: 'State',                   placeholder: 'Tamil Nadu' },
+              { key: 'postalCode',      label: 'Pincode',                 placeholder: '629175' },
+              { key: 'geoLat',          label: 'Latitude',                placeholder: 'e.g. 8.2447 (Google Maps → right-click)' },
+              { key: 'geoLng',          label: 'Longitude',               placeholder: 'e.g. 77.3040' },
+            ].map(({ key, label, placeholder }) => (
+              <Field key={key} label={label}>
+                <input value={settings[key] || ''} onChange={(e) => upd(key, e.target.value)} placeholder={placeholder} className={inputCls} />
+              </Field>
+            ))}
+          </div>
+        </SectionCard>
+
         <SectionCard title="Rental Policy" description="Deposit and delivery settings for rentals">
           <div className="grid md:grid-cols-2 gap-4">
             {[

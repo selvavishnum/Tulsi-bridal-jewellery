@@ -164,6 +164,7 @@ export default function Footer() {
             {[
               { name: 'Privacy Policy', href: '/privacy' },
               { name: 'Terms of Service', href: '/terms' },
+              { name: 'FAQ', href: '/faq' },
               { name: 'Refunds', href: '/refunds' },
             ].map((l) => (
               <Link key={l.name} href={l.href} className="text-xs text-stone-400 hover:text-gold-600 transition-colors">

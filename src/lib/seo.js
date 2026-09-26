@@ -1,18 +1,11 @@
 /* ─────────────────────────────────────────────
-   SEO helpers — canonical URL base, JSON-LD builders
+   SEO helpers — JSON-LD <script> component and site-settings loader.
+   The schema builders live in seoSchema.js (pure, tested).
    ───────────────────────────────────────────── */
 import { getDB, docToObj } from '@/lib/firebase';
+import { buildStoreJsonLd as buildStoreFromSettings } from '@/lib/seoSchema';
 
-function stripTrailingSlash(url) {
-  return url.endsWith('/') ? url.slice(0, -1) : url;
-}
-
-export const SITE_URL = stripTrailingSlash(process.env.NEXT_PUBLIC_SITE_URL || 'https://www.tulsijewels.in');
-export const SITE_NAME = 'Tulsi Bridal Jewellery';
-
-export function absoluteUrl(path = '/') {
-  return `${SITE_URL}${path.startsWith('/') ? path : `/${path}`}`;
-}
+export * from '@/lib/seoSchema';
 
 /* dangerouslySetInnerHTML drops this straight into the HTML stream, so a
    product name/description containing "</script>" could otherwise break
@@ -45,67 +38,10 @@ export async function getSiteSettings() {
   }
 }
 
-export async function buildOrganizationJsonLd() {
-  const settings = await getSiteSettings();
-  const sameAs = [settings.instagram, settings.facebook, settings.youtube].filter(Boolean);
-  const phoneDigits = (settings.whatsapp || '917695868787').replace(/\D/g, '');
-
-  return {
-    '@context': 'https://schema.org',
-    '@type': 'Organization',
-    name: SITE_NAME,
-    url: SITE_URL,
-    logo: absoluteUrl('/apple-icon'),
-    ...(sameAs.length > 0 && { sameAs }),
-    contactPoint: {
-      '@type': 'ContactPoint',
-      telephone: `+${phoneDigits}`,
-      contactType: 'customer service',
-      areaServed: 'IN',
-      availableLanguage: ['en', 'ta'],
-    },
-  };
+/** Store JSON-LD from the saved business settings. */
+export async function buildStoreJsonLd(settings) {
+  return buildStoreFromSettings(settings || await getSiteSettings());
 }
 
-export function buildProductJsonLd(product, id) {
-  const displayPrice = product.discountPrice || product.price;
-  const images = (product.images || []).filter(Boolean);
-
-  return {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: product.name,
-    ...(images.length > 0 && { image: images }),
-    description: product.description || `${product.name} — handcrafted bridal jewellery from ${SITE_NAME}.`,
-    sku: product.sku || id,
-    brand: { '@type': 'Brand', name: SITE_NAME },
-    offers: {
-      '@type': 'Offer',
-      url: absoluteUrl(`/product/${id}`),
-      priceCurrency: 'INR',
-      price: String(displayPrice),
-      availability: product.stock > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-      itemCondition: 'https://schema.org/NewCondition',
-    },
-    ...(product.ratings?.count > 0 && {
-      aggregateRating: {
-        '@type': 'AggregateRating',
-        ratingValue: String(product.ratings.average),
-        reviewCount: String(product.ratings.count),
-      },
-    }),
-  };
-}
-
-export function buildBreadcrumbJsonLd(items) {
-  return {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: items.map((item, i) => ({
-      '@type': 'ListItem',
-      position: i + 1,
-      name: item.name,
-      item: absoluteUrl(item.path),
-    })),
-  };
-}
+/* Kept for callers of the old name. */
+export const buildOrganizationJsonLd = buildStoreJsonLd;
