@@ -327,7 +327,7 @@ function ParcelList({ order }) {
       <p className="font-semibold text-gray-600">{parcels.length > 1 ? `${parcels.length} parcels (split shipment)` : 'Parcel'}</p>
       {parcels.map((p) => (
         <p key={p.key} className={p.awb ? 'text-gray-600' : 'text-red-600'}>
-          {p.key === 'tulsi' ? 'Tulsi warehouse' : `Vendor ${p.vendorId}`}: {p.awb ? <><span className="font-mono">{p.awb}</span>{p.courierName ? ` · ${p.courierName}` : ''}</> : `not booked${p.lastError ? ` — ${p.lastError}` : ''}`}
+          {p.key === 'tulsi' ? 'Tulsi warehouse' : `Vendor warehouse`}{p.pickupLocation ? <span className="font-mono text-gray-400"> ({p.pickupLocation})</span> : ''}: {p.awb ? <><span className="font-mono">{p.awb}</span>{p.courierName ? ` · ${p.courierName}` : ''}</> : `not booked${p.lastError ? ` — ${p.lastError}` : ''}`}
         </p>
       ))}
     </div>

@@ -123,7 +123,9 @@ function StatusModal({ order, onClose, onSaved, onShip }) {
 }
 
 /* ── Add tracking / ship modal ── */
-function ShipModal({ order, canShiprocket, onClose, onSaved }) {
+function ShipModal({ order, canShiprocket, onClose, onSaved, profile }) {
+  const pa = profile?.pickupAddress || {};
+  const pickupText = [pa.line1, pa.line2, pa.city, pa.pincode].filter(Boolean).join(', ');
   const [courierName, setCourierName] = useState(order.courierName || 'Delhivery');
   const [trackingNumber, setTrackingNumber] = useState(order.trackingNumber || '');
   const [busy, setBusy] = useState(null);
@@ -153,7 +155,7 @@ function ShipModal({ order, canShiprocket, onClose, onSaved }) {
         {canShiprocket && (
           <div className="rounded-xl border border-wine-700/20 bg-wine-700/5 p-3">
             <p className="text-sm font-semibold text-stone-800">Book with Tulsi’s Shiprocket</p>
-            <p className="text-xs text-stone-500 mb-2">Picks up from your registered address. The courier charge is taken from your earnings.</p>
+            <p className="text-xs text-stone-500 mb-2">The courier collects from your warehouse{pickupText ? <>: <b className="text-stone-700">{pickupText}</b></> : ''} (change it in Store Profile). The courier charge is taken from your earnings.</p>
             <button onClick={() => submit({ shiprocket: true }, 'sr')} disabled={!!busy}
               className="px-4 py-2 rounded-lg bg-wine-700 text-white text-sm font-semibold disabled:opacity-50 flex items-center gap-2">
               {busy === 'sr' && <LoadingSpinner size="sm" />} Book pickup
@@ -230,7 +232,23 @@ function LabelButton({ order, profile }) {
 }
 
 /* This vendor's parcel(s): AWB, courier, booking problems, live milestones. */
-function Parcels({ order }) {
+/* "Pickup from": the warehouse the courier collects this parcel from —
+   the vendor's own (their Store Profile address, registered in Shiprocket
+   as VENDOR_…) or Tulsi's. */
+function PickupFrom({ pickupLocation, profile }) {
+  const own = pickupLocation && pickupLocation.startsWith('VENDOR_');
+  const a = profile?.pickupAddress || {};
+  const address = [a.line1, a.line2, a.city, a.pincode].filter(Boolean).join(', ');
+  return (
+    <p className="text-stone-600">
+      <span className="font-semibold text-stone-700">Pickup from:</span>{' '}
+      {own ? <>your warehouse{address ? ` — ${address}` : ''}</> : 'Tulsi’s warehouse'}
+      {pickupLocation && <span className="font-mono text-[11px] text-stone-400 ml-1">({pickupLocation})</span>}
+    </p>
+  );
+}
+
+function Parcels({ order, profile }) {
   const [tracking, setTracking] = useState(null);
   const [loading, setLoading] = useState(false);
   if (!order.parcels.length) return null;
@@ -252,6 +270,7 @@ function Parcels({ order }) {
       <h4 className="text-xs font-bold text-stone-500 uppercase tracking-wider">Your parcel</h4>
       {order.parcels.map((p) => (
         <div key={p.key} className="bg-white rounded-lg border border-stone-100 p-3 text-xs space-y-1">
+          <PickupFrom pickupLocation={p.pickupLocation} profile={profile} />
           {p.booked ? (
             <p>AWB <span className="font-mono font-semibold text-stone-800">{p.awb}</span>{p.courierName ? ` · ${p.courierName}` : ''}
               {p.trackingUrl && <a href={p.trackingUrl} target="_blank" rel="noopener noreferrer" className="ml-1 text-wine-700 inline-flex items-center gap-0.5">track <FiExternalLink /></a>}
@@ -389,7 +408,7 @@ function OrderCard({ order, open, onToggle, onStatus, onShip, profile }) {
                 Tulsi packs and ships this order. You&apos;ll see the tracking here once it&apos;s dispatched.
               </p>
             )}
-            <Parcels order={order} />
+            <Parcels order={order} profile={profile} />
           </section>
         </div>
       )}
@@ -493,7 +512,7 @@ export default function VendorOrdersPage() {
       </div>
 
       {statusFor && <StatusModal order={statusFor} onClose={() => setStatusFor(null)} onShip={setShipFor} onSaved={(u) => { replace(u); refresh(); }} />}
-      {shipFor && <ShipModal order={shipFor} canShiprocket={!!profile.data?.shiprocketReady} onClose={() => setShipFor(null)} onSaved={(u) => { replace(u); refresh(); }} />}
+      {shipFor && <ShipModal order={shipFor} profile={profile.data} canShiprocket={!!profile.data?.shiprocketReady} onClose={() => setShipFor(null)} onSaved={(u) => { replace(u); refresh(); }} />}
     </div>
   );
 }
