@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { useCart } from '@/context/CartContext';
+import { freeShippingLine } from '@/lib/storeCharges';
 import { useWishlist } from '@/context/WishlistContext';
 import {
   FiShoppingCart, FiHeart, FiUser, FiMenu, FiX, FiSearch,
@@ -31,7 +32,7 @@ const NAV_LINKS = [
 
 export default function Navbar() {
   const { data: session } = useSession();
-  const { itemCount } = useCart();
+  const { itemCount, charges } = useCart();
   const { items: wishlistItems } = useWishlist();
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -84,7 +85,7 @@ export default function Navbar() {
             ✦ Handcrafted Bridal Jewellery — Made with Love ✦
           </p>
           <p className="text-xs tracking-wide text-center sm:text-right w-full sm:w-auto text-gold-300/70">
-            Free delivery above ₹2000 &nbsp;·&nbsp;
+            {freeShippingLine(charges)} &nbsp;·&nbsp;
             <a href={`tel:${sitePhone.replace(/\s/g, '')}`} className="inline-flex items-center gap-1 font-medium hover:text-gold-300 transition-colors text-gold-300/90">
               <FiPhone className="text-[10px]" /> {sitePhone}
             </a>

@@ -378,6 +378,10 @@ function ProductCard({ product }) {
 
 /* ── Main Page ── */
 export default function HomePage() {
+  const { charges } = useCart();
+  const deliveryStat = !charges.enable_shipping_fee
+    ? ['Free', 'Delivery']
+    : charges.free_shipping_threshold > 0 ? ['Free', `Above ₹${charges.free_shipping_threshold.toLocaleString('en-IN')}`] : [`₹${charges.shipping_fee_amount}`, 'Delivery'];
   const [siteSettings, setSiteSettings] = useState({});
   const [heroSlides, setHeroSlides] = useState([]);
   const [testimonials, setTestimonials] = useState(DEFAULT_TESTIMONIALS);
@@ -681,7 +685,7 @@ export default function HomePage() {
               Discover our exclusive collection of handcrafted bridal jewellery — timeless designs for your most memorable moments.
             </p>
             <div className="grid grid-cols-3 gap-6 mb-10 max-w-xs mx-auto">
-              {[['500+', 'Designs'], ['100%', 'Authentic'], ['Free', 'Above ₹2000']].map(([val, label]) => (
+              {[['500+', 'Designs'], ['100%', 'Authentic'], deliveryStat].map(([val, label]) => (
                 <div key={label}>
                   <p className="font-serif text-2xl font-bold text-gold-400">{val}</p>
                   <p className="text-white/40 text-xs tracking-wider">{label}</p>

@@ -16,6 +16,7 @@
    Pure module — no '@/…' imports — so `node --test` can exercise it.
    ───────────────────────────────────────────── */
 import { computeVendorSettlements, vendorOf, PLATFORM_VENDOR_ID } from './settlement.js';
+import { vendorHasPickup, parcelsFor } from './shipmentPlan.js';
 
 export const VENDOR_ORDER_STATUSES = Object.freeze(['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled']);
 export const STATUS_LABEL = Object.freeze({
@@ -81,6 +82,13 @@ export function isVendorOnlyOrder(order, vendorId) {
 /** The vendor packs and ships this order themselves. */
 export function vendorFulfils(order, vendorId, vendor) {
   return vendor?.selfFulfil === true && isVendorOnlyOrder(order, vendorId);
+}
+
+/** The vendor books their own parcel of this order from their warehouse
+    (Shiprocket split shipment) — also on orders mixing several sellers. */
+export function vendorShipsParcel(order, vendorId, vendor) {
+  return vendorHasPickup(vendor) && ['confirmed', 'processing', 'shipped'].includes(order?.status)
+    && (order.items || []).some((i) => i && vendorOf(i) === vendorId);
 }
 
 /* ── Status rules for vendors ──
@@ -182,5 +190,8 @@ export function toVendorOrderDetail(order, vendorId, vendor) {
     trackingNumber: tracking,
     trackingUrl: tracking && order.shiprocketOrderId ? `https://shiprocket.co/tracking/${encodeURIComponent(tracking)}` : null,
     nextStatuses: fulfils ? nextVendorStatuses(order) : [],
+    /* This vendor's own parcel(s): AWB, courier, tracking — never another seller's. */
+    parcels: parcelsFor(order, vendorId).map(({ items: _i, ...p }) => p),
+    canBookParcel: vendorShipsParcel(order, vendorId, vendor) && !(order.shipments?.[vendorId]?.awb),
   };
 }

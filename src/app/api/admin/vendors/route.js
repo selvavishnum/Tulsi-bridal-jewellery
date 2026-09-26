@@ -92,6 +92,7 @@ export async function GET() {
           defaultMarginPercent: Number(v.defaultMarginPercent) || 0,
           selfFulfil: v.selfFulfil === true,
           shiprocketPickupLocation: v.shiprocketPickupLocation || '',
+          shiprocketPickup: v.shiprocketPickup ? { status: v.shiprocketPickup.status || null, nickname: v.shiprocketPickup.nickname || null, lastError: v.shiprocketPickup.lastError || null } : null,
           payout: v.payout || null,
           /* A bank/UPI change the vendor asked for — not used for payouts
              until a Super Admin approves it below. */

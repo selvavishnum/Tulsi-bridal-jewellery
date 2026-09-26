@@ -1,27 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '@/lib/firebase';
 import { requireRole, CAN } from '@/lib/requireRole';
-import { createShiprocketOrder, assignAwb, getFreightQuote, trackShiprocketAWB, isConfigured } from '@/lib/shiprocket';
-import { sendStatusUpdateEmail } from '@/lib/email';
-import { sendStatusWhatsApp } from '@/lib/whatsapp';
+import { trackShiprocketAWB, isConfigured } from '@/lib/shiprocket';
+import { dispatchOrder, DispatchError, parcelsFor } from '@/lib/shipmentDispatch';
+import { applyOrderUpdate } from '@/lib/orderStatus';
 
-/* The ship modal promises the customer is told — this route used to mark
-   orders shipped without ever sending the email/WhatsApp that the order
-   status route sends. Only on the first transition into "shipped". */
-async function notifyShipped(orderRef, previousStatus) {
-  if (previousStatus === 'shipped') return;
-  const snap = await orderRef.get();
-  const order = { id: snap.id, _id: snap.id, ...snap.data() };
-  await Promise.all([
-    sendStatusUpdateEmail(order, 'shipped').catch((e) => console.error('[Email] shipped update failed:', e.message)),
-    sendStatusWhatsApp(order, 'shipped').catch((e) => console.error('[WhatsApp] shipped update failed:', e.message)),
-  ]);
-}
-
-/* POST /api/admin/shipments — dispatch an order through the platform's
-   Shiprocket account (or record a manual courier). Every parcel ships from
-   the platform's pickup address; the courier charge is stored on the order
-   as shippingCostActual and deducted from vendor earnings on delivery. */
+/* POST /api/admin/shipments — book an order's parcels on Tulsi's Shiprocket
+   account (split per pickup warehouse), or record a manual courier. The
+   courier charge is stored on the order and deducted from vendor earnings
+   on delivery — per vendor when parcels are split. */
 export async function POST(request) {
   try {
     const auth = await requireRole(CAN.fulfilOrders);
@@ -32,8 +19,7 @@ export async function POST(request) {
     if (!orderId) return NextResponse.json({ success: false, message: 'orderId required' }, { status: 400 });
 
     const db = getDB();
-    const orderRef = db.collection('orders').doc(orderId);
-    const orderDoc = await orderRef.get();
+    const orderDoc = await db.collection('orders').doc(orderId).get();
     if (!orderDoc.exists) return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
     const order = orderDoc.data();
     if (order.status === 'cancelled') {
@@ -63,90 +49,39 @@ export async function POST(request) {
 
     /* Manual tracking entry (without Shiprocket) */
     if (manualTracking) {
-      await orderRef.update({
-        trackingNumber: trackingNumber || '',
-        courierName:    courierName   || '',
-        status:         'shipped',
-        shippedAt:      new Date().toISOString(),
-        updatedAt:      new Date().toISOString(),
-        ...(manualCost !== undefined && { shippingCostActual: manualCost, shippingCostSource: 'manual' }),
-      });
-      await notifyShipped(orderRef, order.status);
+      /* Through the shared status path: customer is notified on the first
+         move to Shipped, and a hand-entered charge replaces parcel quotes. */
+      await applyOrderUpdate(db, orderId,
+        { status: order.status === 'shipped' ? undefined : 'shipped', trackingNumber: String(trackingNumber || ''), courierName: String(courierName || ''), shippingCostPatch: manualCost },
+        { writeFulfilmentFields: true });
       return NextResponse.json({ success: true, message: 'Tracking updated', manual: true });
     }
 
-    /* Shiprocket auto-create */
-    if (!isConfigured()) {
-      return NextResponse.json({
-        success: false,
-        message: 'Shiprocket is not configured. Set SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD in Vercel → Settings → Environment Variables, then redeploy.',
-      }, { status: 400 });
+    /* Shiprocket: one parcel per pickup warehouse — Tulsi's, and each
+       self-shipping vendor's (shipmentDispatch). Parcels already booked are
+       kept; the rest are booked now. */
+    let dispatched;
+    try {
+      dispatched = await dispatchOrder(db, orderId, { courierId });
+    } catch (e) {
+      if (e instanceof DispatchError) return NextResponse.json({ success: false, message: e.message }, { status: 400 });
+      throw e;
     }
-
-    /* A previous attempt created the Shiprocket order but got no AWB (e.g.
-       low wallet balance). Retry the courier assignment on that shipment —
-       creating it again would duplicate the order in Shiprocket. */
-    let result;
-    if (order.shiprocketShipmentId && !order.trackingNumber) {
-      const awb = await assignAwb(order.shiprocketShipmentId, courierId);
-      result = { success: true, orderId: order.shiprocketOrderId, shipmentId: order.shiprocketShipmentId, ...awb };
-    } else {
-      result = await createShiprocketOrder(order, courierId);
-      if (!result.success) {
-        console.error('[Shiprocket] createShiprocketOrder failed:', JSON.stringify(result.data));
-        return NextResponse.json({ success: false, message: result.message, ...(isSuper && { details: result.data }) }, { status: 400 });
-      }
+    const { results, summary } = dispatched;
+    const failed = results.filter((r) => !r.ok);
+    if (summary.allBooked) {
+      /* Every parcel has an AWB: the order is shipped (customer notified). */
+      await applyOrderUpdate(db, orderId,
+        { status: order.status === 'shipped' ? undefined : 'shipped', trackingNumber: summary.trackingNumber, courierName: summary.courierName },
+        { writeFulfilmentFields: true });
     }
-
-    const now = new Date().toISOString();
-    if (!result.awb) {
-      /* Keep the Shiprocket ids so the next attempt retries instead of
-         duplicating, but don't mark the order shipped — it previously was,
-         with an empty tracking number, while nothing had been booked. */
-      await orderRef.update({
-        shiprocketOrderId:    result.orderId,
-        shiprocketShipmentId: result.shipmentId,
-        updatedAt:            now,
-      });
-      return NextResponse.json({
-        success: false,
-        message: `Shiprocket order created, but no courier was assigned: ${result.awbError}. Fix it in Shiprocket (e.g. wallet balance) and click Ship again to retry.`,
-      }, { status: 400 });
-    }
-
-    /* Capture the actual courier charge unless an admin already entered one. */
-    let shippingCostActual = manualCost;
-    let shippingCostSource = manualCost !== undefined ? 'manual' : undefined;
-    if (shippingCostActual === undefined && order.shippingCostSource !== 'manual') {
-      try {
-        const quote = await getFreightQuote({
-          pincode: order.shippingAddress?.pincode,
-          cod: order.payment?.method === 'cod',
-          courierId: result.courierId,
-        });
-        if (quote !== null) { shippingCostActual = quote; shippingCostSource = 'shiprocket_quote'; }
-      } catch (e) {
-        console.error('[Shiprocket] freight quote failed:', e.message);
-      }
-    }
-
-    await orderRef.update({
-      shiprocketOrderId:    result.orderId,
-      shiprocketShipmentId: result.shipmentId,
-      trackingNumber:       result.awb,
-      courierName:          result.courierName || '',
-      status:               'shipped',
-      shippedAt:            now,
-      updatedAt:            now,
-      ...(shippingCostActual !== undefined && { shippingCostActual, shippingCostSource }),
-    });
-    await notifyShipped(orderRef, order.status);
-
-    const { raw: _raw, data: _data, ...publicResult } = result;
     return NextResponse.json({
-      success: true,
-      data: { ...publicResult, ...(isSuper && { shippingCostActual: shippingCostActual ?? null }) },
-    });
+      success: failed.length === 0,
+      message: failed.length
+        ? failed.map((f) => `${f.key === 'tulsi' ? 'Tulsi warehouse' : 'Vendor warehouse'}: ${f.error}`).join(' · ')
+        : summary.allBooked ? `Booked ${results.length} parcel(s): ${summary.trackingNumber}` : 'Booked.',
+      data: { parcels: results, awb: summary.trackingNumber, ...(isSuper && { shippingCostActual: summary.shippingCost }) },
+    }, { status: failed.length ? 400 : 200 });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }
@@ -176,13 +111,13 @@ export async function GET(request) {
       const doc = await db.collection('orders').doc(orderId).get();
       if (!doc.exists) return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
       const order = doc.data();
-      if (!order.trackingNumber) return NextResponse.json({ success: false, message: 'No tracking number' });
-
-      if (isConfigured() && order.trackingNumber.length > 5) {
-        const tracking = await trackShiprocketAWB(order.trackingNumber);
-        return NextResponse.json({ success: true, data: { ...tracking, courierName: order.courierName } });
+      const parcels = parcelsFor(order).filter((p) => p.awb);
+      if (!parcels.length && !order.trackingNumber) return NextResponse.json({ success: false, message: 'No tracking number' });
+      if (!parcels.length || !isConfigured()) {
+        return NextResponse.json({ success: true, data: { awb: order.trackingNumber, courierName: order.courierName, manual: true, parcels: [] } });
       }
-      return NextResponse.json({ success: true, data: { awb: order.trackingNumber, courierName: order.courierName, manual: true } });
+      const tracked = await Promise.all(parcels.map(async (p) => ({ ...p, tracking: await trackShiprocketAWB(p.awb).catch((e) => ({ success: false, message: e.message })) })));
+      return NextResponse.json({ success: true, data: { parcels: tracked, ...(tracked[0]?.tracking || {}) } });
     }
 
     return NextResponse.json({ success: false, message: 'orderId or awb required' }, { status: 400 });

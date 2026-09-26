@@ -10,20 +10,20 @@ import { getAccess } from '@/lib/requireRole';
 import { CAN, toFulfillmentOrder } from '@/lib/access';
 import { canMatchGuestOrders } from '@/lib/orderOwnership';
 import { normalizeEmail, isValidEmail } from '@/lib/otp';
+import { computeCharges } from '@/lib/storeCharges';
+import { getStoreCharges } from '@/lib/storeChargesServer';
 import crypto from 'crypto';
 
-/* Shipping rules — must match the cart display in src/context/CartContext.js */
-const FREE_SHIPPING_ABOVE = 2000;
-const SHIPPING_FEE = 99;
+/* Shipping and COD fees come from the admin's Shipping & Payment Charges
+   (settings/store_settings), read fresh for every order — see
+   src/lib/storeCharges.js, the one rule the cart and checkout also use. */
 const PAYMENT_METHODS = ['razorpay', 'cod'];
 /* Loyalty may cover at most this share of an order, so a large parked balance
    can never bring the amount payable to zero. */
 const MAX_LOYALTY_SHARE = 0.2;
-/* COD rules — mirrored on the client (checkout page) for display only; this
-   is the enforced copy. Keep both in sync if these change. */
+/* COD limit — mirrored on the checkout page for display only; this is
+   the enforced copy. */
 const COD_MAX_ORDER_VALUE = 20000;
-const COD_FEE = 49;
-const COD_FEE_BELOW = 500;
 
 const MAX_LINES = 50;
 
@@ -235,8 +235,6 @@ export async function POST(request) {
       });
     }
 
-    const computedShipping = computedSubtotal >= FREE_SHIPPING_ABOVE ? 0 : SHIPPING_FEE;
-
     /* Who is using the coupon, for once-per-customer: the account, or the
        guest's email. */
     const couponUserKey = session?.user?.id ? `u:${session.user.id}` : `e:${resolvedEmail}`;
@@ -276,7 +274,24 @@ export async function POST(request) {
     }
 
     const isCod = resolvedPaymentMethod === 'cod';
-    const codFee = isCod && computedSubtotal < COD_FEE_BELOW ? COD_FEE : 0;
+    /* Shipping and COD fee from the stored settings — never from the body. */
+    const charges = await getStoreCharges(db);
+    const { shipping: computedShipping, codFee } = computeCharges({ subtotal: computedSubtotal, paymentMethod: resolvedPaymentMethod, charges });
+    /* The checkout sends the fees it showed the customer. If they differ
+       (a tampered request, or the admin changed the charges while the
+       customer was on the page), refuse rather than charge a surprise
+       amount — the checkout refreshes and shows the right total. */
+    const shown = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
+    if ((shown(body.shippingCost) !== null && shown(body.shippingCost) !== computedShipping)
+      || (shown(body.codFee) !== null && shown(body.codFee) !== codFee)) {
+      const { updatedAt: _u, ...current } = charges;
+      return NextResponse.json({
+        success: false,
+        code: 'CHARGES_CHANGED',
+        message: `Delivery charges have been updated: shipping ${computedShipping ? `₹${computedShipping}` : 'FREE'}${isCod ? `, COD fee ${codFee ? `₹${codFee}` : 'none'}` : ''}. Please check your total and place the order again.`,
+        charges: current,
+      }, { status: 409 });
+    }
 
     if (isCod) {
       /* Pre-loyalty total — loyalty only ever reduces it further, so this is

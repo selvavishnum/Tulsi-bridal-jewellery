@@ -107,9 +107,13 @@ export function computeVendorSettlements(order) {
     const vendorSet = vendorItems.every((i) => typeof i.vendorShipping === 'number');
     const customerShippingPaise = vendorSet ? 0 : customerShares[idx];
     const grossPaise = itemsPaise + customerShippingPaise;
+    /* Split shipments: the courier cost of the vendor's own parcel(s),
+       worked out per vendor at dispatch (shipmentDispatch.vendorFreight). */
+    const perVendor = order.vendorShippingActual?.[vid];
+    const hasPerVendor = !vendorSet && typeof perVendor === 'number' && perVendor >= 0;
     const shippingPaise = vendorSet
       ? vendorItems.reduce((s, i) => s + Math.max(0, toPaise(i.vendorShipping)) * (Number(i.quantity) || 0), 0)
-      : actualShares[idx];
+      : hasPerVendor ? toPaise(perVendor) : actualShares[idx];
     out.push({
       vendorId: vid,
       itemsPaise,
@@ -117,7 +121,7 @@ export function computeVendorSettlements(order) {
       grossPaise,
       supplyCostPaise,
       shippingPaise,
-      shippingSource: vendorSet ? 'vendor_set' : shippingSource,
+      shippingSource: vendorSet ? 'vendor_set' : hasPerVendor ? 'actual' : shippingSource,
       platformFeeBps,
       platformFeePaise,
       netPaise: grossPaise - supplyCostPaise - shippingPaise - platformFeePaise,

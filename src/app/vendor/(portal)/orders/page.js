@@ -73,6 +73,11 @@ function StatusModal({ order, onClose, onSaved }) {
       const d = await res.json();
       if (!d.success) throw new Error(d.message);
       toast.success(d.note || `Order #${order.orderNumber} is now ${STATUS_LABEL[status]}`, { duration: d.note ? 8000 : 4000 });
+      /* Packed books the courier automatically — say what happened. */
+      for (const r of d.dispatch?.results || []) {
+        if (r.ok) toast.success(`Courier booked — AWB ${r.awb}${r.courierName ? ` (${r.courierName})` : ''}`, { duration: 8000 });
+        else toast.error(`Courier not booked: ${r.error}`, { duration: 12000 });
+      }
       onSaved(d.data);
       onClose();
     } catch (e) {
@@ -122,8 +127,11 @@ function ShipModal({ order, canShiprocket, onClose, onSaved }) {
   async function submit(body, kind) {
     setBusy(kind);
     try {
-      const saved = await sendJson(`/api/vendor/orders/${order.id}/ship`, 'POST', body);
-      toast.success(`Shipped — tracking ${saved.trackingNumber}. The customer has been notified.`);
+      const res = await fetch(`/api/vendor/orders/${order.id}/ship`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.message || 'Could not ship');
+      const saved = d.data;
+      toast.success(d.message || `Shipped — tracking ${saved.trackingNumber}. The customer has been notified.`, { duration: 8000 });
       onSaved(saved);
       onClose();
     } catch (e) {
@@ -149,7 +157,7 @@ function ShipModal({ order, canShiprocket, onClose, onSaved }) {
             </button>
           </div>
         )}
-        <form onSubmit={(e) => { e.preventDefault(); submit({ courierName, trackingNumber }, 'manual'); }} className="space-y-3">
+        {order.fulfilledBy === 'vendor' && <form onSubmit={(e) => { e.preventDefault(); submit({ courierName, trackingNumber }, 'manual'); }} className="space-y-3">
           <p className="text-sm font-semibold text-stone-800">{canShiprocket ? 'Or enter your own courier' : 'Your courier'}</p>
           <label className="block">
             <span className="block text-xs font-semibold text-stone-600 mb-1">Courier partner</span>
@@ -165,7 +173,7 @@ function ShipModal({ order, canShiprocket, onClose, onSaved }) {
           <button disabled={!!busy || trackingNumber.length < 4} className="w-full py-2.5 rounded-xl bg-stone-900 text-white text-sm font-semibold disabled:opacity-50 flex justify-center gap-2">
             {busy === 'manual' && <LoadingSpinner size="sm" />} {order.status === 'shipped' ? 'Update tracking' : 'Save & mark shipped'}
           </button>
-        </form>
+        </form>}
       </div>
     </div>
   );
@@ -189,6 +197,81 @@ function ResendEmailButton({ order }) {
       className="flex items-center gap-2 w-full px-3 py-2 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-lg disabled:opacity-60">
       <FiMail /> {state === 'ok' ? 'Customer email sent ✓' : state === 'loading' ? 'Sending…' : 'Resend customer email'}
     </button>
+  );
+}
+
+/* Shiprocket's own label once the parcel is booked (the courier scans
+   its barcode); before that, a printable packing slip. */
+function LabelButton({ order, profile }) {
+  const [busy, setBusy] = useState(false);
+  const booked = order.parcels.some((p) => p.booked);
+  async function print() {
+    if (!booked) { printLabel(order, profile); return; }
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/vendor/orders/${order.id}/label`, { method: 'POST' });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.message);
+      window.open(d.data.labelUrl, '_blank', 'noopener');
+    } catch (e) {
+      toast.error(e.message || 'Label not available yet', { duration: 8000 });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <button onClick={print} disabled={busy} className="flex items-center gap-2 w-full px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg disabled:opacity-60">
+      <FiPrinter /> {busy ? 'Getting label…' : booked ? 'Print courier label' : 'Print packing slip'}
+    </button>
+  );
+}
+
+/* This vendor's parcel(s): AWB, courier, booking problems, live milestones. */
+function Parcels({ order }) {
+  const [tracking, setTracking] = useState(null);
+  const [loading, setLoading] = useState(false);
+  if (!order.parcels.length) return null;
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/vendor/orders/${order.id}/tracking`, { cache: 'no-store' });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.message);
+      setTracking(d.data);
+    } catch (e) {
+      toast.error(e.message || 'Tracking unavailable');
+    } finally {
+      setLoading(false);
+    }
+  }
+  return (
+    <div className="mt-3 space-y-2">
+      <h4 className="text-xs font-bold text-stone-500 uppercase tracking-wider">Your parcel</h4>
+      {order.parcels.map((p) => (
+        <div key={p.key} className="bg-white rounded-lg border border-stone-100 p-3 text-xs space-y-1">
+          {p.booked ? (
+            <p>AWB <span className="font-mono font-semibold text-stone-800">{p.awb}</span>{p.courierName ? ` · ${p.courierName}` : ''}
+              {p.trackingUrl && <a href={p.trackingUrl} target="_blank" rel="noopener noreferrer" className="ml-1 text-wine-700 inline-flex items-center gap-0.5">track <FiExternalLink /></a>}
+              {!p.pickupRequested && <span className="block text-amber-700">Pickup not scheduled yet — Shiprocket will schedule it, or ask Tulsi.</span>}
+            </p>
+          ) : (
+            <p className="text-red-700">Not booked{p.error ? `: ${p.error}` : ''}</p>
+          )}
+        </div>
+      ))}
+      {order.parcels.some((p) => p.booked) && (
+        <button onClick={load} disabled={loading} className="text-xs font-semibold text-wine-700 underline disabled:opacity-50">{loading ? 'Loading…' : tracking ? 'Refresh tracking' : 'Show tracking'}</button>
+      )}
+      {tracking && (
+        <ol className="text-xs border-l-2 border-stone-200 pl-3 space-y-1.5">
+          {tracking.status && <li className="font-semibold text-stone-800">{tracking.status}{tracking.etd ? ` · expected ${shortDate(tracking.etd)}` : ''}</li>}
+          {(tracking.activities || []).slice(0, 8).map((a, i) => (
+            <li key={i} className="text-stone-600"><span className="text-stone-400">{a.date}</span> — {a.activity}{a.location ? `, ${a.location}` : ''}</li>
+          ))}
+          {!tracking.activities?.length && <li className="text-stone-400">No scans yet.</li>}
+        </ol>
+      )}
+    </div>
   );
 }
 
@@ -275,9 +358,7 @@ function OrderCard({ order, open, onToggle, onStatus, onShip, profile }) {
                   className="flex items-center gap-2 w-full px-3 py-2 bg-wine-700 hover:bg-wine-800 text-white text-xs font-semibold rounded-lg disabled:opacity-40">
                   <FiEdit2 /> Update status
                 </button>
-                <button onClick={() => printLabel(order, profile)} className="flex items-center gap-2 w-full px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg">
-                  <FiPrinter /> Print delivery label
-                </button>
+                <LabelButton order={order} profile={profile} />
                 {['confirmed', 'processing', 'shipped'].includes(order.status) && (
                   <button onClick={() => onShip(order)} className="flex items-center gap-2 w-full px-3 py-2 bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-semibold rounded-lg">
                     <FiTruck /> {order.trackingNumber ? 'Update tracking' : 'Add tracking / Ship'}
@@ -290,11 +371,22 @@ function OrderCard({ order, open, onToggle, onStatus, onShip, profile }) {
                 )}
                 <ResendEmailButton order={order} />
               </div>
+            ) : order.canBookParcel || order.parcels.length ? (
+              <div className="space-y-2">
+                <p className="text-xs text-stone-500">This order has pieces from other sellers. Ship <b>your</b> pieces from your warehouse; Tulsi handles the rest.</p>
+                {order.canBookParcel && (
+                  <button onClick={() => onShip(order)} className="flex items-center gap-2 w-full px-3 py-2 bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-semibold rounded-lg">
+                    <FiTruck /> Book my parcel
+                  </button>
+                )}
+                {order.parcels.some((p) => p.booked) && <LabelButton order={order} profile={profile} />}
+              </div>
             ) : (
               <p className="text-sm text-stone-500 bg-white rounded-lg border border-stone-100 p-3">
                 Tulsi packs and ships this order. You&apos;ll see the tracking here once it&apos;s dispatched.
               </p>
             )}
+            <Parcels order={order} />
           </section>
         </div>
       )}

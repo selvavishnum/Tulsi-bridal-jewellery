@@ -15,6 +15,44 @@ function Field({ label, children, className = '' }) {
   );
 }
 
+const PICKUP_STATE = {
+  active: ['Registered with Shiprocket', 'bg-green-50 text-green-700 border-green-200'],
+  needs_verification: ['Waiting for Tulsi to verify the pickup phone in Shiprocket', 'bg-amber-50 text-amber-800 border-amber-200'],
+  incomplete: ['Not registered — address incomplete', 'bg-amber-50 text-amber-800 border-amber-200'],
+  error: ['Shiprocket rejected this address', 'bg-red-50 text-red-700 border-red-200'],
+  not_registered: ['Not registered with Shiprocket yet', 'bg-stone-50 text-stone-600 border-stone-200'],
+};
+
+function PickupStatus({ sync, onRetried }) {
+  const [busy, setBusy] = useState(false);
+  if (!sync) return null;
+  const [text, cls] = PICKUP_STATE[sync.status] || PICKUP_STATE.not_registered;
+  async function retry() {
+    setBusy(true);
+    try {
+      const res = await fetch('/api/vendor/profile/pickup-sync', { method: 'POST' });
+      const d = await res.json();
+      if (d.success) { toast.success(d.message || 'Registered'); onRetried({ ...sync, status: d.data.status, nickname: d.data.nickname || sync.nickname, lastError: null }); }
+      else toast.error(d.message || 'Shiprocket rejected the address', { duration: 12000 });
+    } catch {
+      toast.error('Could not reach Shiprocket. Try again shortly.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className={`rounded-lg border p-3 text-sm flex flex-wrap items-center justify-between gap-2 ${cls}`} role="status">
+      <span>
+        <b>{text}</b>{sync.nickname ? <span className="font-mono text-xs ml-2">{sync.nickname}</span> : null}
+        {sync.lastError && <span className="block text-xs mt-0.5">{sync.lastError}</span>}
+      </span>
+      {sync.status !== 'active' && (
+        <button type="button" onClick={retry} disabled={busy} className="text-xs font-semibold underline disabled:opacity-50">{busy ? 'Trying…' : 'Retry registration'}</button>
+      )}
+    </div>
+  );
+}
+
 export default function VendorProfilePage() {
   const { data, error, setData } = useVendorData('/api/vendor/profile');
   const [form, setForm] = useState(null);
@@ -39,8 +77,15 @@ export default function VendorProfilePage() {
     e.preventDefault();
     setSaving(true);
     try {
-      setData(await sendJson('/api/vendor/profile', 'PUT', form));
+      const res = await fetch('/api/vendor/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.message || 'Could not save');
+      setData(d.data);
       toast.success('Store profile saved');
+      /* Shiprocket's verdict on the warehouse address, in its own toast. */
+      const sync = d.pickupSync;
+      if (sync && ['active', 'needs_verification'].includes(sync.status)) toast.success(sync.message, { duration: 8000 });
+      else if (sync && ['error', 'incomplete'].includes(sync.status)) toast.error(`Shiprocket pickup: ${sync.message}`, { duration: 12000 });
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -93,7 +138,8 @@ export default function VendorProfilePage() {
             </div>
 
             <h3 className="text-sm font-semibold text-stone-800 pt-2">Warehouse / pickup address</h3>
-            <p className="text-xs text-stone-500 -mt-3">Where Tulsi collects your stock from.</p>
+            <p className="text-xs text-stone-500 -mt-3">Couriers collect your parcels from here. Saving registers it with Tulsi’s Shiprocket.</p>
+            <PickupStatus sync={data.pickupSync} onRetried={(v) => setData((d) => ({ ...d, pickupSync: v }))} />
             <div className="grid sm:grid-cols-2 gap-4">
               <Field label="Address line 1 *" className="sm:col-span-2"><input value={form.pickupAddress.line1} onChange={(e) => updAddr('line1', e.target.value)} className={field} /></Field>
               <Field label="Address line 2" className="sm:col-span-2"><input value={form.pickupAddress.line2} onChange={(e) => updAddr('line2', e.target.value)} className={field} /></Field>

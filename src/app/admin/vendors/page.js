@@ -255,6 +255,13 @@ export default function VendorsPage() {
                     {v.productCount} product{v.productCount !== 1 ? 's' : ''} · fee {v.platformFeePercent}%{v.defaultMarginPercent ? ` · default margin ${v.defaultMarginPercent}%` : ''}{v.selfFulfil ? ' · ships own orders' : ''} · login {v.login ? `${v.login.email} (${v.login.status})` : 'none'}
                   </p>
                   <p className="text-xs text-gray-500">Pays to: {destination(v.payout)}</p>
+                  {v.shiprocketPickup?.nickname && (
+                    <p className={`text-xs ${v.shiprocketPickup.status === 'active' ? 'text-green-700' : 'text-amber-700'}`}>
+                      Shiprocket pickup <span className="font-mono">{v.shiprocketPickup.nickname}</span>
+                      {v.shiprocketPickup.status === 'needs_verification' ? ' — verify its phone number in Shiprocket (Settings → Pickup Addresses)' : ''}
+                    </p>
+                  )}
+                  {v.shiprocketPickup?.lastError && <p className="text-xs text-red-600">Pickup sync: {v.shiprocketPickup.lastError}</p>}
                   {v.pickupAddress && (
                     <p className="text-xs text-gray-500">Pickup: {[v.pickupAddress.line1, v.pickupAddress.line2, v.pickupAddress.city, v.pickupAddress.state, v.pickupAddress.pincode].filter(Boolean).join(', ')}</p>
                   )}

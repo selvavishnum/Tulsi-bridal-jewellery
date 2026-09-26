@@ -329,6 +329,97 @@ function Field({ label, children }) {
   );
 }
 
+/* ─────────────── Shipping & Payment Charges (own save) ───────────────
+   Stored in settings/store_settings; the server reads it for every order
+   and open checkouts pick changes up within a minute. */
+function ChargesCard() {
+  const [c, setC] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState({});
+  useEffect(() => {
+    fetch('/api/admin/store-charges', { cache: 'no-store' }).then((r) => r.json())
+      .then((d) => (d.success ? setC({ ...d.data, cod_fee_waive_above: d.data.cod_fee_waive_above ?? '' }) : toast.error(d.message || 'Could not load charges')))
+      .catch(() => toast.error('Could not load charges'));
+  }, []);
+  if (!c) return <SectionCard title="Shipping & Payment Charges" description="Loading…"><div className="h-10" /></SectionCard>;
+  const set = (k, v) => { setC((x) => ({ ...x, [k]: v })); setErrors((e) => ({ ...e, [k]: undefined })); };
+
+  function validate() {
+    const e = {};
+    const need = (k, label, required) => {
+      const v = c[k];
+      if (v === '' || v === null || v === undefined) { if (required) e[k] = `${label} is required`; return; }
+      if (!Number.isFinite(Number(v))) e[k] = 'Enter a number';
+      else if (Number(v) < 0) e[k] = 'Can’t be negative';
+    };
+    need('shipping_fee_amount', 'Shipping amount', c.enable_shipping_fee);
+    need('free_shipping_threshold', 'Threshold', false);
+    need('cod_fee_amount', 'COD fee', c.enable_cod_fee);
+    need('cod_fee_waive_above', 'Amount', false);
+    if (c.enable_shipping_fee && Number(c.shipping_fee_amount) === 0) e.shipping_fee_amount = 'Switch shipping off instead of ₹0';
+    if (c.enable_cod_fee && Number(c.cod_fee_amount) === 0) e.cod_fee_amount = 'Switch the COD fee off instead of ₹0';
+    setErrors(e);
+    return !Object.values(e).some(Boolean);
+  }
+
+  async function save() {
+    if (!validate()) { toast.error('Fix the highlighted fields'); return; }
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/store-charges', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enable_shipping_fee: !!c.enable_shipping_fee,
+          shipping_fee_amount: Number(c.shipping_fee_amount) || 0,
+          free_shipping_threshold: c.free_shipping_threshold === '' ? 0 : Number(c.free_shipping_threshold),
+          enable_cod_fee: !!c.enable_cod_fee,
+          cod_fee_amount: Number(c.cod_fee_amount) || 0,
+          cod_fee_waive_above: c.cod_fee_waive_above === '' ? null : Number(c.cod_fee_waive_above),
+        }),
+      });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.message);
+      setC({ ...d.data, cod_fee_waive_above: d.data.cod_fee_waive_above ?? '' });
+      toast.success('Charges saved — applies to new orders now');
+    } catch (err) {
+      toast.error(err.message || 'Could not save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const money = (k, label, hint, disabled) => (
+    <Field label={label}>
+      <input id={`charges-${k}`} type="number" min="0" step="1" inputMode="decimal" disabled={disabled} value={c[k] ?? ''}
+        onChange={(e) => set(k, e.target.value)} aria-invalid={!!errors[k]}
+        className={`${inputCls} ${disabled ? 'opacity-50' : ''} ${errors[k] ? 'border-red-400 focus:ring-red-300' : ''}`} />
+      {errors[k] ? <p className="text-xs text-red-600 mt-1">{errors[k]}</p> : hint && <p className="text-xs text-gray-400 mt-1">{hint}</p>}
+    </Field>
+  );
+
+  return (
+    <SectionCard title="Shipping & Payment Charges" description="What customers pay on top of their items. Checked again on the server for every order.">
+      <Toggle value={!!c.enable_shipping_fee} onChange={(v) => set('enable_shipping_fee', v)} label="Enable Shipping Fee" description="Off = free delivery on every order" />
+      <div className="grid md:grid-cols-2 gap-4 py-3">
+        {money('shipping_fee_amount', 'Standard Shipping Amount (₹)', null, !c.enable_shipping_fee)}
+        {money('free_shipping_threshold', 'Free Shipping Above Order Value (₹)', '0 = never free', !c.enable_shipping_fee)}
+      </div>
+      <Toggle value={!!c.enable_cod_fee} onChange={(v) => set('enable_cod_fee', v)} label="Enable COD Additional Fee" description="Added only when the customer chooses Cash on Delivery" />
+      <div className="grid md:grid-cols-2 gap-4 py-3">
+        {money('cod_fee_amount', 'COD Handling Fee (₹)', null, !c.enable_cod_fee)}
+        {money('cod_fee_waive_above', 'No COD Fee on Orders Above (₹)', 'Blank = charge on every COD order', !c.enable_cod_fee)}
+      </div>
+      <div className="flex items-center justify-between gap-3 pt-2">
+        <p className="text-xs text-gray-400">{c.updatedAt ? `Last changed ${new Date(c.updatedAt).toLocaleString('en-IN')}` : 'Using default charges'}</p>
+        <button type="button" onClick={save} disabled={saving}
+          className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50">
+          <FiSave /> {saving ? 'Saving…' : 'Save Settings'}
+        </button>
+      </div>
+    </SectionCard>
+  );
+}
+
 const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400';
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -349,7 +440,6 @@ export default function SettingsPage() {
     depositPercent: '30',
     minRentalDays: '1',
     deliveryCharge: '200',
-    freeDeliveryAbove: '2000',
     whatsappNotify: '',
     emailNotify: '',
     loyaltyEnabled: false,
@@ -454,6 +544,7 @@ export default function SettingsPage() {
   function renderBusiness() {
     return (
       <div className="space-y-5">
+        <ChargesCard />
         <SectionCard title="Business Information" description="Your store name, contact info, and tax details">
           <div className="grid md:grid-cols-2 gap-4">
             {[
@@ -477,7 +568,6 @@ export default function SettingsPage() {
               { key: 'depositPercent',   label: 'Security Deposit (%)',    placeholder: '30' },
               { key: 'minRentalDays',    label: 'Minimum Rental Days',     placeholder: '1' },
               { key: 'deliveryCharge',   label: 'Delivery Charge (₹)',     placeholder: '200' },
-              { key: 'freeDeliveryAbove', label: 'Free Delivery Above (₹)', placeholder: '2000' },
             ].map(({ key, label, placeholder }) => (
               <Field key={key} label={label}>
                 <input type="number" value={settings[key] || ''} onChange={(e) => upd(key, e.target.value)} placeholder={placeholder} className={inputCls} />
