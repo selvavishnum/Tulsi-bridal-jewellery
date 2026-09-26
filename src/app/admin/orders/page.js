@@ -326,9 +326,9 @@ function ParcelList({ order }) {
     <div className="text-xs space-y-1 bg-gray-50 rounded-lg p-2">
       <p className="font-semibold text-gray-600">{parcels.length > 1 ? `${parcels.length} parcels (split shipment)` : 'Parcel'}</p>
       {parcels.map((p) => (
-        <p key={p.key} className={p.awb ? 'text-gray-600' : 'text-red-600'}>
-          {p.key === 'tulsi' ? 'Tulsi warehouse' : `Vendor ${p.vendorId}`}: {p.awb ? <><span className="font-mono">{p.awb}</span>{p.courierName ? ` · ${p.courierName}` : ''}</> : `not booked${p.lastError ? ` — ${p.lastError}` : ''}`}
-        </p>
+        <p key={p.key} className={!p.awb || ['undelivered', 'rto_initiated', 'rto_delivered', 'lost'].includes(p.tracking?.stage) ? 'text-red-600' : 'text-gray-600'}>
+          {p.key === 'tulsi' ? 'Tulsi warehouse' : `Vendor warehouse`}{p.pickupLocation ? <span className="font-mono text-gray-400"> ({p.pickupLocation})</span> : ''}: {p.awb ? <><span className="font-mono">{p.awb}</span>{p.courierName ? ` · ${p.courierName}` : ''}</> : `not booked${p.lastError ? ` — ${p.lastError}` : ''}`}
+        {p.tracking ? <span className="block pl-3 text-[11px]">↳ {p.tracking.text} · {new Date(p.tracking.at).toLocaleDateString('en-IN')}</span> : null}</p>
       ))}
     </div>
   );
@@ -450,9 +450,10 @@ export default function AdminOrdersPage() {
     if (tab.status === '__all__')    return orders.length;
     if (tab.status === '__cod__')    return orders.filter((o) => o.payment?.method === 'cod' && o.payment?.status !== 'paid' && o.status !== 'cancelled').length;
     if (tab.status === '__action__') return orders.filter((o) => {
+      if (o.refundDue) return true; // courier returned a prepaid order — refund the customer
       if (o.status === 'cancelled' || o.status === 'delivered') return false;
       const hrs = (Date.now() - new Date(o.createdAt).getTime()) / 3600000;
-      return (o.status === 'pending' && hrs > 24) || (o.status === 'processing' && hrs > 48);
+      return !!o.deliveryIssue || (o.status === 'pending' && hrs > 24) || (o.status === 'processing' && hrs > 48);
     }).length;
     return orders.filter((o) => o.status === tab.status).length;
   }
@@ -465,9 +466,10 @@ export default function AdminOrdersPage() {
     if (tab.status === '__all__')    list = orders;
     else if (tab.status === '__cod__')    list = orders.filter((o) => o.payment?.method === 'cod' && o.payment?.status !== 'paid' && o.status !== 'cancelled');
     else if (tab.status === '__action__') list = orders.filter((o) => {
+      if (o.refundDue) return true; // courier returned a prepaid order — refund the customer
       if (o.status === 'cancelled' || o.status === 'delivered') return false;
       const hrs = (Date.now() - new Date(o.createdAt).getTime()) / 3600000;
-      return (o.status === 'pending' && hrs > 24) || (o.status === 'processing' && hrs > 48);
+      return !!o.deliveryIssue || (o.status === 'pending' && hrs > 24) || (o.status === 'processing' && hrs > 48);
     });
     else list = orders.filter((o) => o.status === tab.status);
 
@@ -500,9 +502,10 @@ export default function AdminOrdersPage() {
       revenue:       orders.filter((o) => o.status !== 'cancelled').reduce((s, o) => s + (o.total || 0), 0),
       codPending:    orders.filter((o) => o.payment?.method === 'cod' && o.payment?.status !== 'paid' && o.status !== 'cancelled').length,
       actionNeeded:  orders.filter((o) => {
-        if (o.status === 'cancelled' || o.status === 'delivered') return false;
+        if (o.refundDue) return true; // courier returned a prepaid order — refund the customer
+      if (o.status === 'cancelled' || o.status === 'delivered') return false;
         const hrs = (Date.now() - new Date(o.createdAt).getTime()) / 3600000;
-        return (o.status === 'pending' && hrs > 24) || (o.status === 'processing' && hrs > 48);
+        return !!o.deliveryIssue || (o.status === 'pending' && hrs > 24) || (o.status === 'processing' && hrs > 48);
       }).length,
     };
   }, [orders]);
@@ -525,6 +528,14 @@ export default function AdminOrdersPage() {
 
   /* Vendor earnings are posted on delivery; tell the admin when that
      didn't happen so it can be fixed from the Vendors page. */
+  async function markRefunded(order) {
+    try {
+      const res = await fetch(`/api/orders/${order._id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refundDone: true }) });
+      const data = await res.json();
+      if (data.success) { toast.success(`#${order.orderNumber} marked refunded`); fetchOrders(); } else toast.error(data.message);
+    } catch { toast.error('Network error'); }
+  }
+
   /* Packed → couriers booked automatically; report each parcel. */
   function showDispatch(data) {
     for (const r of data.dispatch?.results || []) {
@@ -760,6 +771,17 @@ export default function AdminOrdersPage() {
                             'bg-blue-100 text-blue-700'}`}>
                             {o.status}
                           </span>
+                          {o.deliveryIssue && (
+                            <span className="block mt-1 text-[10px] px-1.5 py-0.5 rounded bg-red-600 text-white font-semibold w-fit" title="From the courier">
+                              {{ undelivered: 'Delivery failed', rto_initiated: 'Returning (RTO)', returned_to_seller: 'Returned (RTO)', rto_delivered: 'Returned (RTO)', lost: 'Lost / damaged', cancelled: 'Courier cancelled' }[o.deliveryIssue] || o.deliveryIssue}
+                            </span>
+                          )}
+                          {o.refundDue && (
+                            <button type="button" onClick={() => markRefunded(o)} title="Click after refunding the customer"
+                              className="block mt-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500 hover:bg-amber-600 text-white font-semibold">
+                              Refund due · mark done
+                            </button>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-gray-400 text-xs hidden lg:table-cell">{o.createdAt ? format(new Date(o.createdAt), 'dd MMM, hh:mm a') : '—'}</td>
                         <td className="px-4 py-3">
