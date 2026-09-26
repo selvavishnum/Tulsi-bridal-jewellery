@@ -64,7 +64,7 @@ function whatsappLink(order) {
 }
 
 /* ── Update status modal ── */
-function StatusModal({ order, onClose, onSaved }) {
+function StatusModal({ order, onClose, onSaved, onShip }) {
   const [saving, setSaving] = useState(null);
   async function choose(status) {
     setSaving(status);
@@ -96,19 +96,22 @@ function StatusModal({ order, onClose, onSaved }) {
         <div className="space-y-2">
           {VENDOR_ORDER_STATUSES.map((s) => {
             const current = order.status === s;
-            const allowed = order.nextStatuses.includes(s) && !(s === 'shipped' && !order.trackingNumber);
+            const allowed = order.nextStatuses.includes(s);
+            /* Shipped needs a courier + tracking number: open that form
+               instead of refusing the click. */
+            const needsTracking = s === 'shipped' && !order.trackingNumber;
             return (
-              <button key={s} disabled={!allowed || saving} onClick={() => choose(s)}
+              <button key={s} disabled={!allowed || saving} onClick={() => (needsTracking ? (onClose(), onShip(order)) : choose(s))}
                 className={`w-full py-2.5 px-4 rounded-xl text-sm font-semibold flex items-center justify-between transition
                   ${current ? 'bg-wine-700 text-white' : allowed ? 'bg-stone-100 text-stone-800 hover:bg-wine-700/10 hover:text-wine-700' : 'bg-stone-50 text-stone-300 cursor-not-allowed'}`}>
                 <span className="flex items-center gap-2">{s === 'shipped' && <FiTruck />}{STATUS_LABEL[s]}</span>
-                {current ? <span className="text-xs opacity-75">Current</span> : saving === s ? <LoadingSpinner size="sm" /> : null}
+                {current ? <span className="text-xs opacity-75">Current</span> : saving === s ? <LoadingSpinner size="sm" /> : needsTracking && allowed ? <span className="text-xs text-stone-500 font-normal">add tracking →</span> : null}
               </button>
             );
           })}
         </div>
         {order.nextStatuses.includes('shipped') && !order.trackingNumber && (
-          <p className="text-xs text-stone-500 mt-3">To mark it shipped, use <b>Add tracking / Ship</b> first.</p>
+          <p className="text-xs text-stone-500 mt-3">Choosing <b>Shipped</b> asks for the courier and tracking number — the customer gets them by email.</p>
         )}
         {order.paymentMethod !== 'cod' && ['pending', 'confirmed', 'processing'].includes(order.status) && (
           <p className="text-xs text-stone-500 mt-3">Prepaid orders are cancelled by Tulsi so the customer is refunded.</p>
@@ -489,7 +492,7 @@ export default function VendorOrdersPage() {
         )}
       </div>
 
-      {statusFor && <StatusModal order={statusFor} onClose={() => setStatusFor(null)} onSaved={(u) => { replace(u); refresh(); }} />}
+      {statusFor && <StatusModal order={statusFor} onClose={() => setStatusFor(null)} onShip={setShipFor} onSaved={(u) => { replace(u); refresh(); }} />}
       {shipFor && <ShipModal order={shipFor} canShiprocket={!!profile.data?.shiprocketReady} onClose={() => setShipFor(null)} onSaved={(u) => { replace(u); refresh(); }} />}
     </div>
   );
