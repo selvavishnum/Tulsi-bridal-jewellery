@@ -176,7 +176,16 @@ function TrackOrderContent() {
                             {step.key === 'delivered' && order.deliveredAt && (
                               <p className="text-xs text-green-600 mt-0.5">{format(new Date(order.deliveredAt), 'dd MMM yyyy, hh:mm a')}</p>
                             )}
-                            {step.key === 'shipped' && order.trackingNumber && (
+                            {step.key === 'shipped' && order.parcels?.length > 1 && (
+                              <ul className="text-xs text-blue-600 mt-0.5 space-y-0.5">
+                                {order.parcels.map((p) => (
+                                  <li key={p.awb}>Parcel ({p.items.join(', ')}): {p.trackingUrl
+                                    ? <a href={p.trackingUrl} target="_blank" rel="noopener noreferrer" className="font-mono underline">{p.awb}</a>
+                                    : <span className="font-mono">{p.awb}</span>}{p.courierName ? ` · ${p.courierName}` : ''}</li>
+                                ))}
+                              </ul>
+                            )}
+                            {step.key === 'shipped' && order.trackingNumber && !(order.parcels?.length > 1) && (
                               <p className="text-xs text-blue-600 mt-0.5">Tracking: <span className="font-mono">{order.trackingNumber}</span></p>
                             )}
                           </div>

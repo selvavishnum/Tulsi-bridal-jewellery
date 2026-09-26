@@ -97,6 +97,7 @@ export async function applyOrderUpdate(db, id, change, opts = {}) {
       if (shippingCostPatch !== undefined) {
         update.shippingCostActual = shippingCostPatch;
         update.shippingCostSource = 'manual';
+        update.vendorShippingActual = null; // a hand-entered total replaces per-parcel quotes
       }
     }
     tx.update(ref, update);

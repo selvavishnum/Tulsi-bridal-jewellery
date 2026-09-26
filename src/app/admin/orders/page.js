@@ -297,6 +297,43 @@ function ShipmentModal({ order, onClose, onShipped, canSetCost }) {
   );
 }
 
+/* Shiprocket's label PDF for every booked parcel of the order. */
+function CourierLabelButton({ orderId }) {
+  const [busy, setBusy] = useState(false);
+  async function print() {
+    setBusy(true);
+    try {
+      const res = await fetch('/api/admin/shipments/label', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId }) });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.message);
+      window.open(d.data.labelUrl, '_blank', 'noopener');
+    } catch (e) {
+      toast.error(e.message || 'Label not available yet', { duration: 8000 });
+    } finally { setBusy(false); }
+  }
+  return (
+    <button onClick={print} disabled={busy} className="flex items-center gap-2 w-full px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg transition disabled:opacity-60">
+      <FiPrinter /> {busy ? 'Getting label…' : 'Print Courier Label(s)'}
+    </button>
+  );
+}
+
+/* One line per parcel — split orders ship from several warehouses. */
+function ParcelList({ order }) {
+  const parcels = Object.values(order.shipments || {});
+  if (!parcels.length) return null;
+  return (
+    <div className="text-xs space-y-1 bg-gray-50 rounded-lg p-2">
+      <p className="font-semibold text-gray-600">{parcels.length > 1 ? `${parcels.length} parcels (split shipment)` : 'Parcel'}</p>
+      {parcels.map((p) => (
+        <p key={p.key} className={p.awb ? 'text-gray-600' : 'text-red-600'}>
+          {p.key === 'tulsi' ? 'Tulsi warehouse' : `Vendor ${p.vendorId}`}: {p.awb ? <><span className="font-mono">{p.awb}</span>{p.courierName ? ` · ${p.courierName}` : ''}</> : `not booked${p.lastError ? ` — ${p.lastError}` : ''}`}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 /* ── Tracking Info row ── */
 function TrackingInfo({ order }) {
   if (!order.trackingNumber) return null;
@@ -478,7 +515,7 @@ export default function AdminOrdersPage() {
     try {
       const res  = await fetch(`/api/orders/${order._id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nextStatus }) });
       const data = await res.json();
-      if (data.success) { toast.success(`Order → ${nextStatus}`); showSettlement(data); fetchOrders(); } else toast.error(data.message);
+      if (data.success) { toast.success(`Order → ${nextStatus}`); showSettlement(data); showDispatch(data); fetchOrders(); } else toast.error(data.message);
     } catch {
       toast.error('Network error — the order was not updated');
     } finally {
@@ -488,6 +525,15 @@ export default function AdminOrdersPage() {
 
   /* Vendor earnings are posted on delivery; tell the admin when that
      didn't happen so it can be fixed from the Vendors page. */
+  /* Packed → couriers booked automatically; report each parcel. */
+  function showDispatch(data) {
+    for (const r of data.dispatch?.results || []) {
+      const where = r.key === 'tulsi' ? 'Tulsi warehouse' : 'Vendor warehouse';
+      if (r.ok) toast.success(`${where}: courier booked — AWB ${r.awb}`, { duration: 8000 });
+      else toast.error(`${where}: courier not booked — ${r.error}`, { duration: 12000 });
+    }
+  }
+
   function showSettlement(data) {
     if (data.settlementError) toast.error(`Vendor earnings not posted: ${data.settlementError}`, { duration: 10000 });
     else if (data.settlementNote) toast(`Vendor earnings: ${data.settlementNote}`, { duration: 10000 });
@@ -501,7 +547,7 @@ export default function AdminOrdersPage() {
     try {
       const res  = await fetch(`/api/orders/${orderId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
       const data = await res.json();
-      if (data.success) { toast.success('Order updated'); showSettlement(data); fetchOrders(); setSelected(null); } else toast.error(data.message);
+      if (data.success) { toast.success('Order updated'); showSettlement(data); showDispatch(data); fetchOrders(); setSelected(null); } else toast.error(data.message);
     } catch {
       toast.error('Network error — the order was not updated');
     }
@@ -787,9 +833,14 @@ export default function AdminOrdersPage() {
                               <div>
                                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Quick Actions</p>
                                 <div className="space-y-2">
-                                  <button onClick={() => printLabel(o)} className="flex items-center gap-2 w-full px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg transition">
-                                    <FiPrinter /> Print Delivery Label
-                                  </button>
+                                  {Object.values(o.shipments || {}).some((s) => s.awb) ? (
+                                    <CourierLabelButton orderId={o._id} />
+                                  ) : (
+                                    <button onClick={() => printLabel(o)} className="flex items-center gap-2 w-full px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg transition">
+                                      <FiPrinter /> Print Delivery Label
+                                    </button>
+                                  )}
+                                  <ParcelList order={o} />
                                   {!readOnly && (
                                     <button onClick={() => setShipModal(o)} className="flex items-center gap-2 w-full px-3 py-2 bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-semibold rounded-lg transition">
                                       <FiTruck /> {o.trackingNumber ? 'Update Tracking' : 'Add Tracking / Ship'}

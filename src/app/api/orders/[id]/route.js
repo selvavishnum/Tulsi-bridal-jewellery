@@ -5,6 +5,7 @@ import { getAccess } from '@/lib/requireRole';
 import { ROLES, CAN, FULFILLMENT_STATUSES, toFulfillmentOrder } from '@/lib/access';
 import { ownsOrder } from '@/lib/orderOwnership';
 import { applyOrderUpdate, OrderStateError } from '@/lib/orderStatus';
+import { autoDispatchOnPacked } from '@/lib/shipmentDispatch';
 
 export async function GET(request, context) {
   try {
@@ -100,11 +101,15 @@ export async function PUT(request, context) {
         },
       });
 
+    /* Packed → book the courier(s) right away, one parcel per warehouse. */
+    const dispatch = isAdmin && status === 'processing' ? await autoDispatchOnPacked(db, id) : null;
+
     if (!isAdmin) return NextResponse.json({ success: true, data: toCustomerOrder(updatedOrder) });
-    if (isFulfilment) return NextResponse.json({ success: true, data: toFulfillmentOrder(updatedOrder) });
+    if (isFulfilment) return NextResponse.json({ success: true, data: toFulfillmentOrder(updatedOrder), ...(dispatch && { dispatch }) });
     return NextResponse.json({
       success: true,
       data: updatedOrder,
+      ...(dispatch && { dispatch }),
       ...(settlementError && { settlementError }),
       ...(settlementNote && { settlementNote }),
     });

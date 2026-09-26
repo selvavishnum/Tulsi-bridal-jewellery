@@ -40,6 +40,9 @@ export async function GET(request) {
         updatedAt: order.updatedAt,
         deliveredAt: order.deliveredAt || null,
         trackingNumber: order.trackingNumber || null,
+        /* Split orders ship as several parcels from different warehouses. */
+        parcels: Object.values(order.shipments || {}).filter((p) => p.awb)
+          .map((p) => ({ awb: p.awb, courierName: p.courierName || null, trackingUrl: p.trackingUrl || null, items: (p.items || []).map((i) => i.name) })),
         courierName: order.courierName || null,
         items: (order.items || []).map((i) => ({ name: i.name, quantity: i.quantity, price: i.price, image: i.image })),
         subtotal: order.subtotal || 0,

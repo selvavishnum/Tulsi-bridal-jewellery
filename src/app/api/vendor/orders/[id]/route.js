@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { requireVendor, requireActiveVendor } from '@/lib/vendorAuth';
 import { toVendorOrderDetail, vendorFulfils, vendorTransitionError } from '@/lib/vendorOrders';
 import { applyOrderUpdate, OrderStateError } from '@/lib/orderStatus';
+import { autoDispatchOnPacked } from '@/lib/shipmentDispatch';
+import { vendorHasPickup } from '@/lib/shipmentPlan';
 
 /* One answer for "not yours", "not self-fulfilled by you" and "doesn't
    exist", so order ids can't be probed. */
@@ -92,9 +94,18 @@ export async function PATCH(request, context) {
         },
       });
 
+    /* Packed → book the vendor's parcel from their warehouse right away. */
+    let data = toVendorOrderDetail({ ...after, id: order.id }, ctx.vendorId, ctx.vendor);
+    let dispatch = null;
+    if (status === 'processing' && vendorHasPickup(ctx.vendor)) {
+      dispatch = await autoDispatchOnPacked(ctx.db, order.id, { onlyKey: ctx.vendorId });
+      const fresh = await ctx.db.collection('orders').doc(order.id).get();
+      data = toVendorOrderDetail({ id: order.id, ...fresh.data() }, ctx.vendorId, ctx.vendor);
+    }
     return NextResponse.json({
       success: true,
-      data: toVendorOrderDetail({ ...after, id: order.id }, ctx.vendorId, ctx.vendor),
+      data,
+      ...(dispatch && { dispatch }),
       ...(status === 'delivered' && order.payment?.method === 'cod' && { note: 'Marked delivered. Your earnings post once Tulsi confirms the COD cash has come in.' }),
       ...(settlementNote && status !== 'delivered' && { note: settlementNote }),
     });

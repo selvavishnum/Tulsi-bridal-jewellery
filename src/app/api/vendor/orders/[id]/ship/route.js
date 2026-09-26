@@ -1,21 +1,22 @@
 import { NextResponse } from 'next/server';
 import { requireActiveVendor } from '@/lib/vendorAuth';
-import { toVendorOrderDetail, vendorFulfils, vendorTransitionError } from '@/lib/vendorOrders';
+import { toVendorOrderDetail, vendorFulfils, vendorShipsParcel, vendorTransitionError } from '@/lib/vendorOrders';
 import { applyOrderUpdate, OrderStateError } from '@/lib/orderStatus';
-import { createShiprocketOrder, assignAwb, getFreightQuote, isConfigured } from '@/lib/shiprocket';
+import { dispatchOrder, DispatchError } from '@/lib/shipmentDispatch';
 
 export const maxDuration = 60;
 
 const forbidden = (message = 'Forbidden') => NextResponse.json({ success: false, message }, { status: 403 });
 
 /* POST /api/vendor/orders/:id/ship
-     { courierName, trackingNumber }  — the vendor booked the courier themselves
-     { shiprocket: true }             — book through Tulsi's Shiprocket account,
-                                        from the vendor's own pickup address
-   Either way the order moves to Shipped through the shared status path
-   (customer email + WhatsApp). A Shiprocket booking also records the
-   courier charge, which is deducted from the vendor's payout unless they
-   set their own per-piece shipping charge. */
+     { shiprocket: true }             — book this vendor's parcel on Tulsi's
+                                        Shiprocket, from their registered
+                                        warehouse (also their part of an order
+                                        that mixes several sellers)
+     { courierName, trackingNumber }  — the vendor's own courier (only on an
+                                        order that is entirely theirs)
+   When every parcel of the order is booked, the order moves to Shipped
+   through the shared status path (customer email + WhatsApp). */
 export async function POST(request, context) {
   try {
     const ctx = await requireActiveVendor();
@@ -26,44 +27,33 @@ export async function POST(request, context) {
     const doc = await ctx.db.collection('orders').doc(String(id)).get();
     const order = doc.exists ? { id: doc.id, ...doc.data() } : null;
     if (!order || !Array.isArray(order.vendorIds) || !order.vendorIds.includes(ctx.vendorId)) return forbidden();
-    if (!vendorFulfils(order, ctx.vendorId, ctx.vendor)) return forbidden('Tulsi ships this order.');
-    const precheck = order.status === 'shipped' ? null : vendorTransitionError(order, 'shipped', { trackingNumber: 'pending' });
-    if (precheck) return NextResponse.json({ success: false, message: precheck }, { status: 400 });
+    const fulfils = vendorFulfils(order, ctx.vendorId, ctx.vendor);
 
     let trackingNumber;
     let courierName;
-    const extra = {};
-
     if (body.shiprocket === true) {
-      if (!isConfigured()) return NextResponse.json({ success: false, message: 'Shiprocket isn’t set up — add the tracking number manually.' }, { status: 400 });
-      const pickupLocation = ctx.vendor.shiprocketPickupLocation;
-      if (!pickupLocation) {
-        return NextResponse.json({ success: false, message: 'Your pickup address isn’t registered with Tulsi’s Shiprocket yet. Ask Tulsi to add it, or enter your own courier’s tracking number.' }, { status: 400 });
+      if (!vendorShipsParcel(order, ctx.vendorId, ctx.vendor)) {
+        return forbidden(ctx.vendor.shiprocketPickupLocation
+          ? 'This order isn’t ready to ship from your warehouse (it must be confirmed first).'
+          : 'Save your warehouse address in Store Profile first — it registers your pickup with Tulsi’s Shiprocket.');
       }
       let result;
-      if (order.shiprocketShipmentId && !order.trackingNumber) {
-        const awb = await assignAwb(order.shiprocketShipmentId);
-        result = { success: true, orderId: order.shiprocketOrderId, shipmentId: order.shiprocketShipmentId, ...awb };
-      } else {
-        result = await createShiprocketOrder(order, null, { pickupLocation });
-        if (!result.success) {
-          console.error('[vendor ship] Shiprocket create failed:', JSON.stringify(result.data));
-          return NextResponse.json({ success: false, message: `Shiprocket: ${result.message}` }, { status: 400 });
-        }
+      try {
+        result = await dispatchOrder(ctx.db, order.id, { onlyKey: ctx.vendorId });
+      } catch (e) {
+        if (e instanceof DispatchError) return NextResponse.json({ success: false, message: e.message }, { status: 400 });
+        throw e;
       }
-      if (!result.awb) {
-        await ctx.db.collection('orders').doc(order.id).update({ shiprocketOrderId: result.orderId, shiprocketShipmentId: result.shipmentId, updatedAt: new Date().toISOString() });
-        return NextResponse.json({ success: false, message: `Booked in Shiprocket but no courier was assigned yet: ${result.awbError}. Try again shortly.` }, { status: 400 });
+      const mine = result.results.find((r) => r.key === ctx.vendorId);
+      if (!mine?.ok) return NextResponse.json({ success: false, message: mine?.error || 'Could not book the courier.' }, { status: 400 });
+      if (!result.summary.allBooked) {
+        const fresh = (await ctx.db.collection('orders').doc(order.id).get()).data();
+        return NextResponse.json({ success: true, message: `Booked — AWB ${mine.awb}. The order shows as shipped once every seller’s parcel is booked.`, data: toVendorOrderDetail({ id: order.id, ...fresh }, ctx.vendorId, ctx.vendor) });
       }
-      trackingNumber = result.awb;
-      courierName = result.courierName || 'Shiprocket';
-      extra.shiprocketOrderId = result.orderId;
-      extra.shiprocketShipmentId = result.shipmentId;
-      if (order.shippingCostSource !== 'manual') {
-        const quote = await getFreightQuote({ pincode: order.shippingAddress?.pincode, cod: order.payment?.method === 'cod', courierId: result.courierId }).catch(() => null);
-        if (quote !== null && quote !== undefined) { extra.shippingCostActual = quote; extra.shippingCostSource = 'shiprocket_quote'; }
-      }
+      trackingNumber = result.summary.trackingNumber;
+      courierName = result.summary.courierName;
     } else {
+      if (!fulfils) return forbidden('Tulsi ships this order.');
       trackingNumber = String(body.trackingNumber || '').trim();
       courierName = String(body.courierName || '').trim();
       if (!/^[A-Za-z0-9-]{4,40}$/.test(trackingNumber)) return NextResponse.json({ success: false, message: 'Enter the tracking number (letters, numbers and - only).' }, { status: 400 });
@@ -71,15 +61,13 @@ export async function POST(request, context) {
     }
 
     const { after } = await applyOrderUpdate(ctx.db, order.id,
-      { status: order.status === 'shipped' ? undefined : 'shipped', trackingNumber, courierName, extra: { ...extra, statusUpdatedBy: `vendor:${ctx.vendorId}` } },
+      { status: order.status === 'shipped' ? undefined : 'shipped', trackingNumber, courierName, extra: { statusUpdatedBy: `vendor:${ctx.vendorId}` } },
       {
         writeFulfilmentFields: true,
         codPaidOnDelivery: false,
         check(fresh) {
-          if (!vendorFulfils(fresh, ctx.vendorId, ctx.vendor)) throw new OrderStateError('Tulsi ships this order.');
-          if (fresh.status !== 'shipped') {
-            const err = vendorTransitionError(fresh, 'shipped', { trackingNumber });
-            if (err) throw new OrderStateError(err);
+          if (fresh.status !== 'shipped' && !['confirmed', 'processing'].includes(fresh.status)) {
+            throw new OrderStateError(vendorTransitionError(fresh, 'shipped', { trackingNumber }) || 'This order can’t be shipped now.');
           }
         },
       });
