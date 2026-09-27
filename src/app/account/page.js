@@ -7,7 +7,7 @@ import Link from 'next/link';
 import {
   FiUser, FiShoppingBag, FiLogOut, FiMail, FiPackage,
   FiChevronDown, FiChevronUp, FiCheckCircle, FiTruck, FiBox, FiClock, FiXCircle, FiAlertTriangle,
-  FiRotateCcw,
+  FiRotateCcw, FiMessageCircle,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { formatPrice } from '@/lib/utils';
@@ -307,6 +307,9 @@ export default function AccountPage() {
               <t.icon className="text-base" /> {t.label}
             </button>
           ))}
+          <Link href="/account/messages" className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">
+            <FiMessageCircle className="text-base" /> Messages
+          </Link>
         </div>
 
         {/* Orders tab */}

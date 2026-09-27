@@ -18,6 +18,7 @@ import { cldBase, cldZoom, cldThumb } from '@/lib/cloudinaryImage';
 import { useProductTracking } from '@/hooks/useProductTracking';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
+import ChatWithSeller from '@/components/chat/ChatWithSeller';
 
 const TryOnModal = lazy(() => import('@/components/ar/TryOnModal'));
 
@@ -790,6 +791,8 @@ export default function ProductDetail({ initialProduct = null }) {
               >
                 {session ? '⚡ Buy Now' : '⚡ Buy Now — Login to continue'}
               </button>
+
+              {product.sellerChat && <ChatWithSeller product={product} />}
 
               {/* Rental enquiry */}
               {product.isAvailableForRent && product.rentalPrice && (

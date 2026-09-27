@@ -15,6 +15,47 @@ function Field({ label, children, className = '' }) {
   );
 }
 
+/* Own password change. Tulsi's Super Admin is alerted by email. */
+function ChangePassword() {
+  const [f, setF] = useState({ currentPassword: '', newPassword: '', confirm: '' });
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+  async function submit(e) {
+    e.preventDefault();
+    if (f.newPassword !== f.confirm) { toast.error('New passwords don’t match.'); return; }
+    setBusy(true);
+    try {
+      const res = await fetch('/api/vendor/password', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword: f.currentPassword, newPassword: f.newPassword }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!d.success) { toast.error(d.message || 'Could not change the password.'); return; }
+      toast.success('Password changed');
+      setF({ currentPassword: '', newPassword: '', confirm: '' });
+    } catch {
+      toast.error('Network problem — try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card title="Change password">
+      <form onSubmit={submit} className="space-y-4">
+        <div className="grid sm:grid-cols-3 gap-4">
+          <Field label="Current password"><input type="password" required autoComplete="current-password" value={f.currentPassword} onChange={set('currentPassword')} className={field} /></Field>
+          <Field label="New password"><input type="password" required minLength={8} autoComplete="new-password" value={f.newPassword} onChange={set('newPassword')} className={field} /></Field>
+          <Field label="Confirm new password"><input type="password" required minLength={8} autoComplete="new-password" value={f.confirm} onChange={set('confirm')} className={field} /></Field>
+        </div>
+        <p className="text-xs text-stone-500">At least 8 characters with a letter and a number. Tulsi is notified when your password changes, and you&apos;ll get a confirmation email.</p>
+        <button disabled={busy} className="px-5 py-2.5 rounded-xl bg-wine-700 hover:bg-wine-800 text-white text-sm font-semibold disabled:opacity-50 flex items-center gap-2">
+          {busy && <LoadingSpinner size="sm" />} Change password
+        </button>
+      </form>
+    </Card>
+  );
+}
+
 const PICKUP_STATE = {
   active: ['Registered with Shiprocket', 'bg-green-50 text-green-700 border-green-200'],
   needs_verification: ['Waiting for Tulsi to verify the pickup phone in Shiprocket', 'bg-amber-50 text-amber-800 border-amber-200'],
@@ -191,7 +232,9 @@ export default function VendorProfilePage() {
         </form>
       </Card>
 
-      <p className="text-xs text-stone-400">Signed in as {data.loginEmail}. To change your login email or password, contact Tulsi.</p>
+      <ChangePassword />
+
+      <p className="text-xs text-stone-400">Signed in as {data.loginEmail}. To change your login email, contact Tulsi.</p>
     </div>
   );
 }

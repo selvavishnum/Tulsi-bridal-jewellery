@@ -166,7 +166,7 @@ test('review: only the Super Admin may list or decide', async () => {
   assert.equal(r.json.data[0].bank_details.account_number_enc, undefined, 'ciphertext never leaves the server');
 });
 
-test('approve: creates the vendor + VENDOR login with the bank payout, launch offer and a one-time password', async () => {
+test('approve: creates the vendor + VENDOR login with the bank payout, lifetime 0% fee and a one-time password', async () => {
   const id = await seedApplication();
   session = { user: { email: 'owner@tulsi.test' } };
   const r = await call(review, 'PATCH', { body: { action: 'approve' }, params: { id } });
@@ -178,7 +178,7 @@ test('approve: creates the vendor + VENDOR login with the bank payout, launch of
   assert.deepEqual(vendor.payout, { method: 'bank', accountName: 'Meena Raj', accountNumber: '123456789012', ifsc: 'IDIB000M001' });
   assert.equal(vendor.pickupAddress.pincode, '625001');
   assert.equal(vendor.platformFeeBps, 0);
-  assert.ok(new Date(vendor.launchOfferUntil) > new Date(Date.now() + 80 * 86_400_000));
+  assert.equal(vendor.defaultMarginPercent, 0, 'zero commission');
   const login = [...db.store.get('staff').values()].find((s) => s.vendorId === vendorId);
   assert.equal(login.role, 'VENDOR');
   assert.equal(login.email, 'meena@example.com');
@@ -202,4 +202,15 @@ test('reject: needs a reason, emails it, and lets the seller apply again', async
   assert.ok(mails.some(([k, a]) => k === 'rejected' && a.reason === 'GSTIN cancelled'));
   session = null;
   assert.equal((await call(apply, 'POST', { body: valid() })).status, 201, 'reapply after rejection');
+});
+
+test('no GST yet: PAN alone is enough to apply', async () => {
+  const body = valid({ taxType: 'NONE', gstin: '', gstCertificateUrl: '', pan: 'abcde1234f' });
+  assert.ok(parseVendorApplication(valid({ taxType: 'NONE', pan: '' })).errors.pan);
+  const r = await call(apply, 'POST', { body });
+  assert.equal(r.status, 201, JSON.stringify(r.json));
+  const [app] = [...db.store.get('vendor_applications').values()];
+  assert.equal(app.tax_type, 'NONE');
+  assert.equal(app.tax_id_number, null);
+  assert.equal(app.pan_number, 'ABCDE1234F');
 });

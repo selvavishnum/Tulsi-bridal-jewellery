@@ -51,7 +51,7 @@ export async function POST(request) {
       email: d.email,
       instagram_handle: d.instagram,
       tax_type: d.taxType,
-      tax_id_number: d.taxType === 'GST' ? d.gstin : d.enrolmentId,
+      tax_id_number: d.taxType === 'GST' ? d.gstin : d.taxType === 'ENROLMENT_ID' ? d.enrolmentId : null,
       pan_number: d.taxType === 'GST' ? d.gstin.slice(2, 12) : d.pan,
       gst_certificate_url: d.taxType === 'GST' ? d.gstCertificateUrl : null,
       warehouse_address: d.address,

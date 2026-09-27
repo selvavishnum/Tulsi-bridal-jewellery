@@ -12,6 +12,8 @@ const CHIP = {
   APPROVED: 'bg-green-50 text-green-700', REJECTED: 'bg-red-50 text-red-700',
 };
 
+const TAX_LABEL = { GST: 'GST', ENROLMENT_ID: 'Enrolment', NONE: 'No GST · PAN' };
+
 /* Where staff verify the tax ID on the GST portal. */
 const GST_SEARCH = 'https://services.gst.gov.in/services/searchtp';
 
@@ -106,7 +108,7 @@ export default function VendorApplicationsPage() {
             <button key={a.id} onClick={() => setOpen(a)} className="w-full text-left px-4 py-3 hover:bg-gray-50 flex flex-wrap items-center gap-x-4 gap-y-1">
               <span className="font-semibold text-gray-900 min-w-[10rem]">{a.business_name}</span>
               <span className="text-sm text-gray-500">{a.full_name} · {a.city}</span>
-              <span className="text-xs text-gray-400 font-mono">{a.tax_type === 'GST' ? 'GST' : 'Enrolment'} {a.tax_id_number}</span>
+              <span className="text-xs text-gray-400 font-mono">{TAX_LABEL[a.tax_type]} {a.tax_id_number || a.pan_number}</span>
               <span className="ml-auto flex items-center gap-3">
                 <span className="text-xs text-gray-400">{date(a.created_at)}</span>
                 <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${CHIP[a.status] || 'bg-gray-100 text-gray-600'}`}>{a.status}</span>
@@ -139,10 +141,14 @@ export default function VendorApplicationsPage() {
 
             <h3 className="text-[11px] uppercase tracking-widest text-gray-400 mt-5">Tax — verify before approving</h3>
             <dl className="divide-y divide-gray-50">
-              <Row k={open.tax_type === 'GST' ? 'GSTIN' : 'Enrolment ID'}>
-                <span className="font-mono">{open.tax_id_number}</span>{' '}
-                <button onClick={() => copy(open.tax_id_number)} className="text-gray-400 hover:text-gray-700 align-middle" aria-label="Copy"><FiCopy /></button>
-              </Row>
+              {open.tax_type === 'NONE' ? (
+                <Row k="GST">Not registered yet (just starting)</Row>
+              ) : (
+                <Row k={open.tax_type === 'GST' ? 'GSTIN' : 'Enrolment ID'}>
+                  <span className="font-mono">{open.tax_id_number}</span>{' '}
+                  <button onClick={() => copy(open.tax_id_number)} className="text-gray-400 hover:text-gray-700 align-middle" aria-label="Copy"><FiCopy /></button>
+                </Row>
+              )}
               <Row k="PAN"><span className="font-mono">{open.pan_number || '—'}</span></Row>
               {open.gst_certificate_url && (
                 <Row k="Certificate"><a className="inline-flex items-center gap-1 text-amber-700 underline" href={open.gst_certificate_url} target="_blank" rel="noopener noreferrer">Open file <FiExternalLink /></a></Row>
@@ -210,7 +216,7 @@ export default function VendorApplicationsPage() {
                 <span className="font-mono">{approved.tempPassword}</span>{' '}
                 <button onClick={() => copy(approved.tempPassword)} className="text-gray-400 hover:text-gray-700 align-middle" aria-label="Copy password"><FiCopy /></button>
               </Row>
-              {approved.launchOfferUntil && <Row k="Launch offer">0% platform fee until {new Date(approved.launchOfferUntil).toLocaleDateString('en-IN')}</Row>}
+              <Row k="Platform fee">0% — lifetime free</Row>
               <Row k="Shiprocket">{approved.pickup?.status === 'active' ? 'Pickup address registered' : approved.pickup?.message || approved.pickup?.status || '—'}</Row>
             </dl>
             <div className="mt-5 flex flex-wrap gap-2">

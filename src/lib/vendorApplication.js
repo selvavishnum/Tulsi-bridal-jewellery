@@ -17,7 +17,9 @@ export const INDIAN_STATES = Object.freeze([
   'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
 ]);
 
-export const TAX_TYPES = Object.freeze(['GST', 'ENROLMENT_ID']);
+/* GST = regular GST registration; ENROLMENT_ID = composition / non-GST
+   supplier enrolled on the GST portal; NONE = just starting, no GST yet (PAN only). */
+export const TAX_TYPES = Object.freeze(['GST', 'ENROLMENT_ID', 'NONE']);
 
 /* GSTIN check digit (mod-36, as issued by the GST network). */
 export function gstinChecksumOk(gstin) {
@@ -58,7 +60,7 @@ const base = z.object({
   instagram,
 
   /* B. Tax identity */
-  taxType: z.enum(TAX_TYPES, { message: 'Choose GST or Enrolment ID' }),
+  taxType: z.enum(TAX_TYPES, { message: 'Choose how you are registered' }),
   gstin: z.preprocess(upper, z.string()).optional(),
   gstCertificateUrl: z.string().trim().optional(),
   enrolmentId: z.preprocess(upper, z.string()).optional(),
@@ -104,6 +106,8 @@ function crossFieldIssues(raw) {
        GST registration. Allow 15 or 16 characters so a valid ID isn't
        refused over format; staff verify it on the GST portal. */
     if (!/^[A-Z0-9]{15,16}$/.test(upper(d.enrolmentId))) out.push(['enrolmentId', 'Enter your 16-character Enrolment ID']);
+    if (!/^[A-Z]{5}\d{4}[A-Z]$/.test(upper(d.pan))) out.push(['pan', 'Enter a valid PAN, e.g. ABCDE1234F']);
+  } else if (d.taxType === 'NONE') {
     if (!/^[A-Z]{5}\d{4}[A-Z]$/.test(upper(d.pan))) out.push(['pan', 'Enter a valid PAN, e.g. ABCDE1234F']);
   }
   return out;

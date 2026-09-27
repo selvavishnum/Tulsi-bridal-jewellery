@@ -8,9 +8,6 @@ import { createVendorAccount, tempPassword, ProvisionError } from '@/lib/vendorP
 import { syncVendorPickup } from '@/lib/pickupSync';
 import { sendVendorWelcome, sendVendorApplicationRejected } from '@/lib/email';
 
-/* Launch offer: the first 50 approved sellers pay no platform fee for 3 months. */
-const LAUNCH_OFFER_SEATS = 50;
-const LAUNCH_OFFER_DAYS = 90;
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://tulsijewels.in';
 
 const fail = (message, status = 400) => NextResponse.json({ success: false, message }, { status });
@@ -32,7 +29,7 @@ function whatsappLink(phone, text) {
   return `https://wa.me/91${phone}?text=${encodeURIComponent(text)}`;
 }
 
-/* PATCH /api/admin/vendor-applications/:id  { action: 'approve' | 'reject', reason?, platformFeePercent? } — Super Admin only. */
+/* PATCH /api/admin/vendor-applications/:id  { action: 'approve' | 'reject', reason? } — Super Admin only. */
 export async function PATCH(request, { params }) {
   try {
     const session = await requireAdmin();
@@ -64,12 +61,6 @@ export async function PATCH(request, { params }) {
       const { payout, error } = parsePayout({ method: 'bank', accountName: b.account_holder, accountNumber: decryptField(b.account_number_enc), ifsc: b.ifsc });
       if (error) throw new ProvisionError(`Bank details: ${error}`);
 
-      const approvedSnap = await db.collection('vendor_applications').where('launch_offer', '==', true).get();
-      const launchOffer = approvedSnap.size < LAUNCH_OFFER_SEATS;
-      const launchOfferUntil = launchOffer ? new Date(Date.now() + LAUNCH_OFFER_DAYS * 86_400_000).toISOString() : null;
-      const feePercent = body.platformFeePercent === undefined || body.platformFeePercent === '' ? 0 : Number(body.platformFeePercent);
-      if (!Number.isFinite(feePercent) || feePercent < 0 || feePercent > 50) throw new ProvisionError('Platform fee must be between 0% and 50%.');
-
       const password = tempPassword();
       const { vendorId } = await createVendorAccount(db, {
         ownerEmails: adminEmails(),
@@ -87,8 +78,8 @@ export async function PATCH(request, { params }) {
           /* Ships from their own warehouse through Tulsi's Shiprocket. */
           selfFulfil: true,
           shiprocketPickupLocation: '',
-          platformFeeBps: launchOffer ? 0 : Math.round(feePercent * 100),
-          launchOfferUntil,
+          /* Lifetime free: no platform fee, no commission. */
+          platformFeeBps: 0,
           defaultMarginPercent: 0,
           payout,
           ...(b.upi_id && { upiId: b.upi_id }),
@@ -99,15 +90,15 @@ export async function PATCH(request, { params }) {
       });
 
       const now = new Date().toISOString();
-      await ref.update({ status: 'APPROVED', vendor_id: vendorId, launch_offer: launchOffer, reviewed_by: reviewer, reviewed_at: now });
+      await ref.update({ status: 'APPROVED', vendor_id: vendorId, reviewed_by: reviewer, reviewed_at: now });
 
       /* Register the warehouse with Shiprocket now; the vendor can retry from their profile. */
       const pickup = await syncVendorPickup(db, vendorId).catch((e) => ({ status: 'error', message: e.message }));
-      const emailed = await sendVendorWelcome({ to: app.email, name: app.full_name, businessName: app.business_name, password, launchOfferUntil }).catch(() => false);
-      const message = `வணக்கம் ${app.full_name}! 🎉 Tulsi Jewels-ல் உங்கள் Seller விண்ணப்பம் அங்கீகரிக்கப்பட்டது.\n\nVendor Login: ${SITE}/vendor/login\nEmail: ${app.email}\nPassword: ${password}\n\nPassword-ஐ யாருடனும் பகிர வேண்டாம்.`;
+      const emailed = await sendVendorWelcome({ to: app.email, name: app.full_name, businessName: app.business_name, password }).catch(() => false);
+      const message = `Hi ${app.full_name}! 🎉 Your seller application on Tulsi Jewels is approved.\n\nVendor login: ${SITE}/vendor/login\nEmail: ${app.email}\nTemporary password: ${password}\n\nPlease change it from Store Profile after you sign in, and don't share it with anyone.`;
       return NextResponse.json({
         success: true,
-        data: { status: 'APPROVED', vendorId, email: app.email, tempPassword: password, whatsappUrl: whatsappLink(app.phone, message), emailed, launchOfferUntil, pickup },
+        data: { status: 'APPROVED', vendorId, email: app.email, tempPassword: password, whatsappUrl: whatsappLink(app.phone, message), emailed, pickup },
       });
     } catch (e) {
       /* Put it back so it can be approved again once fixed. */

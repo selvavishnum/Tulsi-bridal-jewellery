@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { FiLogOut, FiExternalLink } from 'react-icons/fi';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -11,6 +11,7 @@ const TABS = [
   { href: '/vendor/products', label: 'Products' },
   { href: '/vendor/inventory', label: 'Inventory' },
   { href: '/vendor/orders', label: 'Orders' },
+  { href: '/vendor/messages', label: 'Messages' },
   { href: '/vendor/earnings', label: 'Earnings' },
   { href: '/vendor/profile', label: 'Store Profile' },
 ];
@@ -23,6 +24,17 @@ export default function VendorPortalLayout({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const role = session?.user?.role;
+
+  /* Unread customer messages, for the tab badge. */
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    if (role !== 'vendor') return undefined;
+    const load = () => fetch('/api/vendor/messages').then((r) => r.json())
+      .then((d) => { if (d.success) setUnread(d.data.reduce((s, c) => s + c.unread, 0)); }).catch(() => {});
+    load();
+    const t = setInterval(load, 60_000);
+    return () => clearInterval(t);
+  }, [role, pathname]);
 
   useEffect(() => {
     if (status === 'loading' || role === 'vendor') return;
@@ -58,6 +70,9 @@ export default function VendorPortalLayout({ children }) {
               <Link key={t.href} href={t.href} aria-current={active ? 'page' : undefined}
                 className={`px-3 py-2.5 text-sm font-semibold border-b-2 whitespace-nowrap ${active ? 'border-wine-700 text-wine-700' : 'border-transparent text-stone-500 hover:text-stone-800'}`}>
                 {t.label}
+                {t.href === '/vendor/messages' && unread > 0 && (
+                  <span className="ml-1.5 inline-flex min-w-[1.25rem] h-5 px-1.5 items-center justify-center rounded-full bg-wine-700 text-white text-[11px] font-bold" aria-label={`${unread} unread`}>{unread}</span>
+                )}
               </Link>
             );
           })}

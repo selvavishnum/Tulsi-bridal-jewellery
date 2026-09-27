@@ -8,7 +8,7 @@ import { parseVendorApplication, STEP_FIELDS, INDIAN_STATES } from '@/lib/vendor
 
 const STEPS = [
   { title: 'Store & contact', hint: 'Who you are and how we reach you' },
-  { title: 'Tax details', hint: 'GST or Enrolment ID' },
+  { title: 'Tax details', hint: 'GST, Enrolment ID, or just starting out' },
   { title: 'Pickup address', hint: 'Where the courier collects parcels' },
   { title: 'Bank & settlement', hint: 'Where your earnings are paid' },
 ];
@@ -191,10 +191,11 @@ export default function VendorApplicationForm({ tamilClass = '' }) {
           <div className="flex flex-col gap-5">
             <fieldset>
               <legend className="mb-2 text-sm font-medium text-stone-700">How are you registered?</legend>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-3">
                 {[
                   ['GST', 'I have a regular GST registration', 'GSTIN + GST certificate'],
                   ['ENROLMENT_ID', 'Composition / Non-GST seller', 'GST Enrolment ID + PAN'],
+                  ['NONE', 'Just starting — no GST yet', 'PAN only · add GST later'],
                 ].map(([v, title, sub]) => (
                   <label key={v} className={`flex cursor-pointer gap-3 rounded-xl border p-4 transition-colors ${form.taxType === v ? 'border-maroon-700 bg-maroon-50/60 ring-1 ring-maroon-700' : 'border-stone-300 hover:border-stone-400'}`}>
                     <input type="radio" name="taxType" value={v} checked={form.taxType === v} onChange={set('taxType')} className="mt-1 accent-maroon-800" />
@@ -232,6 +233,15 @@ export default function VendorApplicationForm({ tamilClass = '' }) {
                   {errors.gstCertificateUrl && <p className="text-xs text-red-600">{errors.gstCertificateUrl}</p>}
                 </div>
               </>
+            ) : form.taxType === 'NONE' ? (
+              <div className="flex flex-col gap-4">
+                <Field id="pan" label="PAN" error={errors.pan} hint="e.g. ABCDE1234F — personal or business PAN">
+                  <input {...bind('pan', { autoCapitalize: 'characters', autoCorrect: 'off', maxLength: 10, className: `${inputCls(errors.pan)} uppercase font-mono tracking-wider` })} />
+                </Field>
+                <p className="rounded-xl bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
+                  No GST yet? You can still apply. Our team will guide you on getting a free GST Enrolment ID (needed to sell online) — you can add it to your profile later.
+                </p>
+              </div>
             ) : (
               <div className="grid gap-5 sm:grid-cols-2">
                 <Field id="enrolmentId" label="GST Enrolment ID" error={errors.enrolmentId} hint="From the GST portal (unregistered supplier enrolment)">
@@ -333,13 +343,15 @@ function SuccessModal({ tamilClass, name }) {
         <div className="mx-auto mb-5 mt-6 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-3xl text-green-700">
           <FiCheck aria-hidden />
         </div>
-        <h2 id="applied-title" lang="ta" className={`${tamilClass} text-xl font-bold leading-relaxed text-stone-800`}>
-          உங்கள் விண்ணப்பம் பெறப்பட்டது!
+        <h2 id="applied-title" className="text-xl font-bold leading-relaxed text-stone-800">
+          Your application has been received!
         </h2>
-        <p lang="ta" className={`${tamilClass} mt-2 leading-relaxed text-stone-600`}>
-          24 மணி நேரத்திற்குள் எங்கள் குழு உங்களைத் தொடர்பு கொள்ளும்.
+        <p className="mt-2 leading-relaxed text-stone-600">
+          Thank you{name ? `, ${name.split(' ')[0]}` : ''}! Our team will contact you within 24 hours on WhatsApp and email.
         </p>
-        <p className="mt-3 text-sm text-stone-400">Thank you{name ? `, ${name.split(' ')[0]}` : ''} — we&apos;ll reach you on WhatsApp and email.</p>
+        <p lang="ta" className={`${tamilClass} mt-3 text-sm leading-relaxed text-stone-400`}>
+          உங்கள் விண்ணப்பம் பெறப்பட்டது! 24 மணி நேரத்திற்குள் எங்கள் குழு உங்களைத் தொடர்பு கொள்ளும்.
+        </p>
         <Link href="/" className="mt-7 inline-flex rounded-xl bg-maroon-900 px-6 py-3 text-sm font-semibold text-white hover:bg-maroon-950">Back to the store</Link>
       </div>
       <style>{`@keyframes pop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}@keyframes fall{from{transform:translateY(-40px);opacity:0}30%{opacity:1}to{transform:translateY(140px) rotate(25deg);opacity:0}}`}</style>
