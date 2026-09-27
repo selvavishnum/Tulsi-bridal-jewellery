@@ -6,13 +6,13 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-export async function uploadImage(dataUrl, folder = 'tulsi-bridal') {
+export async function uploadImage(dataUrl, folder = 'tulsi-bridal', { allowedFormats = ['jpg', 'jpeg', 'png', 'webp'] } = {}) {
   const result = await cloudinary.uploader.upload(dataUrl, {
     folder,
     resource_type: 'image',
-    /* Raster formats only — Cloudinary would otherwise also store SVG,
-       which can carry script. */
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+    /* Raster formats by default — Cloudinary would otherwise also store
+       SVG, which can carry script. Documents may add 'pdf'. */
+    allowed_formats: allowedFormats,
     // No quality transformation — store at full quality so zoom stays sharp
   });
   return { url: result.secure_url, public_id: result.public_id, secure_url: result.secure_url };

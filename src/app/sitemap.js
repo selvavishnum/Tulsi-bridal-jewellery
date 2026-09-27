@@ -16,6 +16,7 @@ const LISTING_ROUTES = [
 const INFO_ROUTES = [
   { path: '/faq', changeFrequency: 'monthly', priority: 0.6 },
   { path: '/about', changeFrequency: 'monthly', priority: 0.5 },
+  { path: '/become-a-vendor', changeFrequency: 'monthly', priority: 0.5 },
   { path: '/contact', changeFrequency: 'monthly', priority: 0.5 },
   { path: '/refunds', changeFrequency: 'yearly', priority: 0.3 },
   { path: '/track-order', changeFrequency: 'yearly', priority: 0.3 },

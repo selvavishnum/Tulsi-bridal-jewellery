@@ -73,6 +73,15 @@ export function fakeFirestore(seed = {}) {
       doc: (id = `auto${++autoId}`) => docRef(col, id),
       add: async (d) => { const ref = docRef(col, `auto${++autoId}`); await ref.set(d); return ref; },
     }),
+    batch() {
+      const writes = [];
+      return {
+        set: (ref, d) => { writes.push(() => colMap(ref.col).set(ref.id, structuredClone(d))); },
+        update: (ref, d) => { writes.push(() => applyUpdate(ref.col, ref.id, d)); },
+        delete: (ref) => { writes.push(() => colMap(ref.col).delete(ref.id)); },
+        commit: async () => { for (const w of writes) w(); },
+      };
+    },
     async runTransaction(fn) {
       const writes = [];
       const tx = {

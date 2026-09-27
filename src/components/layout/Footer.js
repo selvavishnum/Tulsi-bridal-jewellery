@@ -12,6 +12,7 @@ const QUICK_LINKS = [
   { name: 'About Us', href: '/about' },
   { name: 'Contact', href: '/contact' },
   { name: 'My Account', href: '/account' },
+  { name: 'Become a Vendor / Seller Application', href: '/become-a-vendor' },
 ];
 
 const CATEGORIES = [

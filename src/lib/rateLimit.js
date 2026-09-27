@@ -31,6 +31,9 @@ export const LIMITS = Object.freeze({
   couponCheck: { limit: 20, windowMs: 60 * 60_000 },
   review: { limit: 10, windowMs: 60 * 60_000 },
   trackOrder: { limit: 20, windowMs: 60 * 60_000 },
+  /* Seller applications and their GST certificate upload (public). */
+  vendorApply: { limit: 3, windowMs: 60 * 60_000 },
+  vendorUpload: { limit: 5, windowMs: 60 * 60_000 },
 });
 
 const idFor = (key) => crypto.createHash('sha256').update(String(key)).digest('hex').slice(0, 40);

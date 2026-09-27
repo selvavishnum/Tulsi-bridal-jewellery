@@ -5,6 +5,7 @@ import { requireOwner } from '@/lib/adminCollection';
 import { requireRole, ROLES, CAN } from '@/lib/requireRole';
 import { summarizeLedger, PLATFORM_VENDOR_ID } from '@/lib/settlement';
 import { parsePayout } from '@/lib/payoutDestination';
+import { createVendorAccount, ProvisionError } from '@/lib/vendorProvision';
 
 function adminEmails() {
   return (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
@@ -135,49 +136,28 @@ export async function POST(request) {
     const defaultMarginPercent = parseMarginPercent(body.defaultMarginPercent);
     if (defaultMarginPercent === null) return NextResponse.json({ success: false, message: 'Default margin must be from 0% to under 100%.' }, { status: 400 });
 
-    if (adminEmails().includes(email)) {
-      return NextResponse.json({ success: false, message: 'That email belongs to a store owner.' }, { status: 400 });
+    let vendorRef;
+    try {
+      const { vendorId } = await createVendorAccount(getDB(), {
+        ownerEmails: adminEmails(),
+        vendor: {
+          name,
+          contactName: String(body.contactName || '').trim(),
+          phone: String(body.phone || '').trim(),
+          platformFeeBps: feeBps,
+          defaultMarginPercent,
+          selfFulfil: body.selfFulfil === true,
+          shiprocketPickupLocation: String(body.shiprocketPickupLocation || '').trim().replace(/[<>]/g, '').slice(0, 60),
+          payout,
+          createdBy: session.user.email || null,
+        },
+        login: { email, password, name: String(body.contactName || name).trim(), phone: String(body.phone || '').trim() },
+      });
+      vendorRef = { id: vendorId };
+    } catch (e) {
+      if (e instanceof ProvisionError) return NextResponse.json({ success: false, message: e.message }, { status: 400 });
+      throw e;
     }
-    const db = getDB();
-    const [staffDup, userDup] = await Promise.all([
-      db.collection('staff').where('email', '==', email).limit(1).get(),
-      db.collection('users').where('email', '==', email).limit(1).get(),
-    ]);
-    if (!staffDup.empty) return NextResponse.json({ success: false, message: 'That email is already used by a staff or vendor login.' }, { status: 400 });
-    /* A customer account with the same email signs in through the users
-       collection first, which would shadow this login's password. */
-    if (!userDup.empty) return NextResponse.json({ success: false, message: 'That email already has a customer account — use a different email for the vendor login.' }, { status: 400 });
-
-    const now = new Date().toISOString();
-    const vendorRef = db.collection('vendors').doc();
-    const staffRef = db.collection('staff').doc();
-    const batch = db.batch();
-    batch.set(vendorRef, {
-      name,
-      contactName: String(body.contactName || '').trim(),
-      phone: String(body.phone || '').trim(),
-      status: 'active',
-      platformFeeBps: feeBps,
-      defaultMarginPercent,
-      selfFulfil: body.selfFulfil === true,
-      shiprocketPickupLocation: String(body.shiprocketPickupLocation || '').trim().replace(/[<>]/g, '').slice(0, 60),
-      payout,
-      createdAt: now,
-      updatedAt: now,
-      createdBy: session.user.email || null,
-    });
-    batch.set(staffRef, {
-      name: String(body.contactName || name).trim(),
-      email,
-      password: await bcrypt.hash(password, 10),
-      role: 'VENDOR',
-      vendorId: vendorRef.id,
-      phone: String(body.phone || '').trim(),
-      status: 'Active',
-      createdAt: now,
-      updatedAt: now,
-    });
-    await batch.commit();
     return NextResponse.json({ success: true, data: { id: vendorRef.id } }, { status: 201 });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
