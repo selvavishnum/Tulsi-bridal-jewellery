@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { FiX, FiDownload, FiShoppingCart, FiRotateCcw, FiUser, FiCamera } from 'react-icons/fi';
-import { SKIN_TONES, ADJUST, clampAdjust } from '@/lib/tryOn';
+import { SKIN_TONES, ADJUST, DEFAULT_ADJUST, clampAdjust } from '@/lib/tryOn';
 import { drawCredit } from '@/lib/tryOnClient';
 import AIModelView from './AIModelView';
 import LiveCameraView from './LiveCameraView';
@@ -33,13 +33,13 @@ const WaIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" aria-hidden><path d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.16-.17.2-.35.22-.64.07-.3-.15-1.26-.46-2.39-1.47-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.6.13-.14.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.37-.03-.52-.07-.15-.67-1.61-.92-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.07c.15.2 2.1 3.2 5.08 4.49.71.3 1.26.49 1.7.63.71.22 1.36.19 1.87.12.57-.09 1.76-.72 2-1.41.25-.7.25-1.29.18-1.41-.08-.13-.28-.2-.57-.35zM12 21.82a9.8 9.8 0 0 1-5.03-1.39l-.36-.21-3.72.97 1-3.62-.24-.37A9.8 9.8 0 0 1 2.18 12 9.82 9.82 0 1 1 12 21.82zM12 0a12 12 0 0 0-10.46 17.87L.06 23.43a.5.5 0 0 0 .62.61l5.76-1.5A12 12 0 1 0 12 0z" /></svg>
 );
 
-export default function TryOnModal({ productImage, cutoutReady = false, productName, category = 'earring', productUrl, inStock = true, onAddToCart, onClose }) {
+export default function TryOnModal({ productId = null, productImage, cutoutReady = false, productName, category = 'earring', productUrl, inStock = true, onAddToCart, onClose }) {
   const kind = KIND_LABEL[category] ? category : 'earring';
   const canvasRef = useRef(null);
   const [models, setModels] = useState(null); // null while loading
   const [mode, setMode] = useState(null); // 'ai' | 'live'
   const [toneId, setToneId] = useState(null);
-  const [adjust, setAdjust] = useState({ scale: 1, offset: 0 });
+  const [adjust, setAdjust] = useState(DEFAULT_ADJUST);
   const adjustRef = useRef(adjust);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -72,7 +72,7 @@ export default function TryOnModal({ productImage, cutoutReady = false, productN
   function switchMode(next) {
     if (next === mode) return;
     setReady(false);
-    setAdjust({ scale: 1, offset: 0 });
+    setAdjust(DEFAULT_ADJUST);
     setMode(next);
   }
   function pickTone(id) {
@@ -176,10 +176,10 @@ export default function TryOnModal({ productImage, cutoutReady = false, productN
       {/* Stage */}
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {mode === 'ai' && model && (
-          <AIModelView productImage={productImage} cutoutReady={cutoutReady} kind={kind} model={model} models={models} adjust={adjust} canvasRef={canvasRef} onReadyChange={setReady} />
+          <AIModelView productId={productId} productImage={productImage} cutoutReady={cutoutReady} kind={kind} model={model} models={models} adjust={adjust} canvasRef={canvasRef} onReadyChange={setReady} />
         )}
         {mode === 'live' && (
-          <LiveCameraView productImage={productImage} cutoutReady={cutoutReady} kind={kind} canvasRef={canvasRef} adjustRef={adjustRef} onReadyChange={setReady} />
+          <LiveCameraView productId={productId} productImage={productImage} cutoutReady={cutoutReady} kind={kind} canvasRef={canvasRef} adjustRef={adjustRef} onReadyChange={setReady} />
         )}
         {mode === null && <div className="flex h-full items-center justify-center"><div className="h-10 w-10 animate-spin rounded-full border-4 border-gold-400 border-t-transparent" /></div>}
       </div>
@@ -205,18 +205,23 @@ export default function TryOnModal({ productImage, cutoutReady = false, productN
           </div>
         )}
 
-        <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-3">
+        <div className="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-3">
           <label className="block">
             <span className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-white/50">Size</span>
             <input type="range" min={ADJUST.scale.min} max={ADJUST.scale.max} step={ADJUST.scale.step} value={adjust.scale} onChange={setAdj('scale')}
               className="h-8 w-full touch-manipulation accent-gold-400" aria-valuetext={`${Math.round(adjust.scale * 100)}%`} />
           </label>
           <label className="block">
-            <span className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-white/50">Position</span>
+            <span className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-white/50">Up / Down</span>
             <input type="range" min={ADJUST.offset.min} max={ADJUST.offset.max} step={ADJUST.offset.step} value={adjust.offset} onChange={setAdj('offset')}
               className="h-8 w-full touch-manipulation accent-gold-400" aria-label="Move up or down" />
           </label>
-          <button onClick={() => setAdjust({ scale: 1, offset: 0 })} className="mb-1 flex h-8 w-8 items-center justify-center rounded-full bg-white/10 hover:bg-white/20" aria-label="Reset size and position">
+          <label className="block">
+            <span className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-white/50">Left / Right</span>
+            <input type="range" min={ADJUST.shiftX.min} max={ADJUST.shiftX.max} step={ADJUST.shiftX.step} value={adjust.shiftX} onChange={setAdj('shiftX')}
+              className="h-8 w-full touch-manipulation accent-gold-400" aria-label="Move left or right" />
+          </label>
+          <button onClick={() => setAdjust(DEFAULT_ADJUST)} className="mb-1 flex h-8 w-8 items-center justify-center rounded-full bg-white/10 hover:bg-white/20" aria-label="Reset size and position">
             <FiRotateCcw size={14} />
           </button>
         </div>

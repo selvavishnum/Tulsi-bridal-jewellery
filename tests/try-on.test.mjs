@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { fakeFirestore } from './helpers/fakeFirestore.mjs';
 import {
   tryOnKind, parseAnchors, anchorsFromLandmarks, placeJewellery, isPairShot, clampAdjust,
-  knockOutBackground, trimBounds, hasTransparentCorners, portraitPrompt, SKIN_TONES, isolateJewellery,
+  knockOutBackground, trimBounds, hasTransparentCorners, portraitPrompt, SKIN_TONES, isolateJewellery, cloudinaryCutoutUrl,
 } from '../src/lib/tryOn.js';
 
 process.env.ADMIN_EMAILS = 'owner@tulsi.test';
@@ -40,6 +40,9 @@ mock.module(src('lib/cloudinary.js'), {
   defaultExport: {},
 });
 globalThis.fetch = async (url, init) => {
+  if (String(url).startsWith('https://img.example.com/')) {
+    return new Response(new Uint8Array([137, 80, 78, 71]), { status: 200, headers: { 'content-type': 'image/png' } });
+  }
   if (String(url).includes('api.replicate.com')) {
     replicateCalls += 1;
     assert.match(JSON.parse(init.body).input.prompt, /no jewellery/);
@@ -49,7 +52,7 @@ globalThis.fetch = async (url, init) => {
 };
 
 const route = (p) => import(src(`app/api/${p}/route.js`));
-const [pub, admin, gen] = await Promise.all([route('try-on/models'), route('admin/try-on-models'), route('admin/try-on-models/generate')]);
+const [pub, admin, gen, proxy] = await Promise.all([route('try-on/models'), route('admin/try-on-models'), route('admin/try-on-models/generate'), route('try-on/image')]);
 
 async function call(mod, method, body) {
   const req = new Request('http://tulsi.test/api/x', { method, headers: { 'content-type': 'application/json' }, ...(body && { body: JSON.stringify(body) }) });
@@ -107,7 +110,10 @@ test('necklace sits lower and wider than a choker; adjustments are clamped', () 
   const [c] = placeJewellery('choker', ANCHORS, { W: 1000, H: 1000 }, { w: 600, h: 400 });
   assert.ok(n.dy > c.dy && n.dw > c.dw);
   assert.ok(Math.abs(n.dx + n.dw / 2 - 500) < 0.001, 'centred on the chin');
-  assert.deepEqual(clampAdjust({ scale: 9, offset: -9 }), { scale: 1.8, offset: -0.3 });
+  assert.deepEqual(clampAdjust({ scale: 9, offset: -9, shiftX: 5 }), { scale: 1.8, offset: -0.3, shiftX: 0.4 });
+  const [moved] = placeJewellery('necklace', ANCHORS, { W: 1000, H: 1000 }, { w: 600, h: 400 }, { shiftX: 0.1 });
+  assert.ok(Math.abs(moved.dx - n.dx - 28) < 0.001, 'left/right slider moves by a fraction of face width');
+  assert.equal(moved.dy, n.dy);
 });
 
 test('cutouts: a plain studio background is removed, the piece kept, and padding trimmed', () => {
@@ -162,6 +168,21 @@ test('cutout: a pale chain on a coloured card keeps the chain and drops the card
   }
 });
 
+test('cutout: a white stone set in metal on a card keeps its stone; the card goes', () => {
+  const w = 300; const h = 300;
+  const data = new Uint8ClampedArray(w * h * 4);
+  for (let p = 0; p < w * h; p += 1) data.set([255, 255, 255, 255], p * 4);
+  for (let y = 0; y < h; y += 1) for (let x = 0; x < w; x += 1) if ((x - 150) ** 2 + (y - 150) ** 2 <= 140 ** 2) data.set([236 + ((x + y) % 3), 219, 222, 255], (y * w + x) * 4);
+  for (let y = 130; y < 170; y += 1) for (let x = 130; x < 170; x += 1) {
+    const rim = x < 135 || x >= 165 || y < 135 || y >= 165;
+    data.set(rim ? [183, 123, 98, 255] : [240, 242, 246, 255], (y * w + x) * 4); // rose-gold bezel, clear stone
+  }
+  isolateJewellery(data, w, h);
+  assert.equal(data[(150 * w + 150) * 4 + 3], 255, 'stone kept');
+  assert.equal(data[(132 * w + 150) * 4 + 3], 255, 'bezel kept');
+  assert.equal(data[(60 * w + 150) * 4 + 3], 0, 'card removed');
+});
+
 test('cutout: a flat matte piece on transparent is never mistaken for a backdrop', () => {
   const w = 60; const h = 60;
   const data = new Uint8ClampedArray(w * h * 4);
@@ -169,6 +190,14 @@ test('cutout: a flat matte piece on transparent is never mistaken for a backdrop
   const before = data.slice();
   assert.equal(isolateJewellery(data, w, h).changed, false);
   assert.deepEqual(data, before);
+});
+
+test('Cloudinary AI background removal URL: only for Cloudinary images, as PNG', () => {
+  assert.equal(cloudinaryCutoutUrl('https://res.cloudinary.com/tulsi/image/upload/v17/tulsi-bridal/products/abc.jpg'),
+    'https://res.cloudinary.com/tulsi/image/upload/e_background_removal/v17/tulsi-bridal/products/abc.png');
+  assert.equal(cloudinaryCutoutUrl('https://res.cloudinary.com/tulsi/image/upload/w_800/x.webp'),
+    'https://res.cloudinary.com/tulsi/image/upload/e_background_removal/w_800/x.png');
+  assert.equal(cloudinaryCutoutUrl('https://cdn.example.com/x.jpg'), null);
 });
 
 test('portrait prompts: one per tone, always without jewellery', () => {
@@ -213,4 +242,15 @@ test('AI portrait generation: needs the token, stores in Cloudinary, and is cach
   assert.equal(replicateCalls, 1, 'no second API cost');
   await call(gen, 'POST', { tone: 'fair', force: true });
   assert.equal(replicateCalls, 2);
+});
+
+test('image proxy: serves only a photo saved on that product — never an arbitrary URL', async () => {
+  db.store.set('products', new Map([['p1', { images: ['https://img.example.com/a.png'], tryOnImage: '' }]]));
+  const get = (q) => proxy.GET(new Request(`http://tulsi.test/api/try-on/image?${q}`));
+  const ok = await get(`product=p1&src=${encodeURIComponent('https://img.example.com/a.png')}`);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers.get('content-type'), 'image/png');
+  assert.equal((await get(`product=p1&src=${encodeURIComponent('https://169.254.169.254/latest/meta-data')}`)).status, 403, 'not an image of this product');
+  assert.equal((await get(`product=p1&src=${encodeURIComponent('http://img.example.com/a.png')}`)).status, 400, 'https only');
+  assert.equal((await get(`product=nope&src=${encodeURIComponent('https://img.example.com/a.png')}`)).status, 404);
 });

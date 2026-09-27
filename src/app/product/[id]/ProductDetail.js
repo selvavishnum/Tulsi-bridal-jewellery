@@ -519,6 +519,7 @@ export default function ProductDetail({ initialProduct = null }) {
       {tryOnOpen && isTryOn && (
         <Suspense fallback={null}>
           <TryOnModal
+            productId={id}
             productImage={product.tryOnImage || product.images?.[selectedImage] || product.images?.[0]}
             cutoutReady={!!product.tryOnImage}
             productName={product.name}

@@ -71,10 +71,19 @@ export function anchorsFromLandmarks(lm) {
    one half on each ear, instead of a pair on every ear. */
 export const isPairShot = (w, h) => w / h > 0.85;
 
-export const ADJUST = Object.freeze({ scale: { min: 0.5, max: 1.8, step: 0.02 }, offset: { min: -0.3, max: 0.3, step: 0.01 } });
-export const clampAdjust = ({ scale = 1, offset = 0 } = {}) => ({
-  scale: Math.min(ADJUST.scale.max, Math.max(ADJUST.scale.min, Number(scale) || 1)),
-  offset: Math.min(ADJUST.offset.max, Math.max(ADJUST.offset.min, Number(offset) || 0)),
+/* Shopper tweaks: size, up/down (fraction of face height) and
+   left/right (fraction of face width). */
+export const ADJUST = Object.freeze({
+  scale: { min: 0.5, max: 1.8, step: 0.02 },
+  offset: { min: -0.3, max: 0.3, step: 0.01 },
+  shiftX: { min: -0.4, max: 0.4, step: 0.01 },
+});
+export const DEFAULT_ADJUST = Object.freeze({ scale: 1, offset: 0, shiftX: 0 });
+const clampTo = (v, { min, max }, dflt) => Math.min(max, Math.max(min, Number.isFinite(Number(v)) ? Number(v) : dflt));
+export const clampAdjust = ({ scale = 1, offset = 0, shiftX = 0 } = {}) => ({
+  scale: clampTo(scale || 1, ADJUST.scale, 1),
+  offset: clampTo(offset, ADJUST.offset, 0),
+  shiftX: clampTo(shiftX, ADJUST.shiftX, 0),
 });
 
 /**
@@ -87,10 +96,11 @@ export const clampAdjust = ({ scale = 1, offset = 0 } = {}) => ({
  * @returns {Array<{ sx, sy, sw, sh, dx, dy, dw, dh }>}  source rect in the cutout → destination rect on the stage
  */
 export function placeJewellery(kind, anchors, { W, H }, { w, h }, adjust = {}) {
-  const { scale, offset } = clampAdjust(adjust);
+  const { scale, offset, shiftX } = clampAdjust(adjust);
   const faceW = anchors.faceW * W;
   const faceH = anchors.faceH * H;
   const nudge = offset * faceH;
+  const slide = shiftX * faceW;
 
   if (kind === 'earring') {
     const pair = isPairShot(w, h);
@@ -100,7 +110,7 @@ export function placeJewellery(kind, anchors, { W, H }, { w, h }, adjust = {}) {
     /* Hang from the lobe: a little below the tragus-level anchor. */
     return [anchors.earL, anchors.earR].map((ear, i) => ({
       sx: pair ? i * sw : 0, sy: 0, sw, sh: h,
-      dx: ear.x * W - dw / 2, dy: ear.y * H + faceH * 0.1 + nudge, dw, dh,
+      dx: ear.x * W - dw / 2 + slide, dy: ear.y * H + faceH * 0.1 + nudge, dw, dh,
     }));
   }
 
@@ -110,7 +120,7 @@ export function placeJewellery(kind, anchors, { W, H }, { w, h }, adjust = {}) {
   /* The neck starts about a third of a face below the chin; a choker
      sits high on it, a necklace's chain opens at its base. */
   const top = anchors.chin.y * H + faceH * (choker ? 0.14 : 0.3) + nudge;
-  return [{ sx: 0, sy: 0, sw: w, sh: h, dx: anchors.chin.x * W - dw / 2, dy: top, dw, dh }];
+  return [{ sx: 0, sy: 0, sw: w, sh: h, dx: anchors.chin.x * W - dw / 2 + slide, dy: top, dw, dh }];
 }
 
 /* ── Cutouts ── */
@@ -157,6 +167,9 @@ export function knockOutBackground(data, w, h, tolerance = 38) {
   return data;
 }
 
+/* HSV-style saturation of an [r, g, b] colour (0 = grey, 1 = pure colour). */
+const saturation = (c) => { const hi = Math.max(c[0], c[1], c[2]); return hi ? (hi - Math.min(c[0], c[1], c[2])) / hi : 0; };
+
 /* Colour distance used by the cutout passes (max channel difference). */
 const cdist = (data, i, c) => Math.max(Math.abs(data[i] - c[0]), Math.abs(data[i + 1] - c[1]), Math.abs(data[i + 2] - c[2]));
 
@@ -190,18 +203,31 @@ export function findBackdrop(data, w, h) {
     for (let x = 0; x < w; x += 1) {
       const i = (y * w + x) * 4;
       if (data[i + 3] < 200) continue;
-      const isNear = near(i);
-      if (isNear) { for (let c = 0; c < 3; c += 1) { sum[c] += data[i + c]; sq[c] += data[i + c] ** 2; } n += 1; }
-      const outline = x === 0 || y === 0 || x === w - 1 || y === h - 1
-        || data[i - 4 + 3] < 200 || data[i + 4 + 3] < 200 || data[i - w * 4 + 3] < 200 || data[i + w * 4 + 3] < 200;
-      if (outline) { edge += 1; if (isNear) edgeNear += 1; }
+      if (near(i)) { for (let c = 0; c < 3; c += 1) { sum[c] += data[i + c]; sq[c] += data[i + c] ** 2; } n += 1; }
     }
   }
   const mean = sum.map((v) => v / n);
   const std = Math.max(...sq.map((v, c) => Math.sqrt(Math.max(0, v / n - mean[c] ** 2))));
+  /* How much of the visible outline is this colour. Looser than the bins:
+     the outline is often a thin blend with whatever was cleared around it. */
+  const loose = Math.max(40, std * 4);
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const i = (y * w + x) * 4;
+      if (data[i + 3] < 200) continue;
+      const outline = x === 0 || y === 0 || x === w - 1 || y === h - 1
+        || data[i - 4 + 3] < 200 || data[i + 4 + 3] < 200 || data[i - w * 4 + 3] < 200 || data[i + w * 4 + 3] < 200;
+      if (outline) { edge += 1; if (cdist(data, i, mean) <= loose) edgeNear += 1; }
+    }
+  }
   const covers = n / visible;
   const rims = edge ? edgeNear / edge : 0;
   if (covers < 0.3 || rims < 0.45 || std > 22) return null;
+  /* Backdrops are paper, pastel card, cloth or velvet — low saturation.
+     Gold, enamel and stones are saturated, so a big flat gold piece is
+     never mistaken for the thing it lies on. */
+  const hi = Math.max(...mean); const lo = Math.min(...mean);
+  if (hi > 0 && (hi - lo) / hi > 0.35) return null;
   /* Something must lie on it — a plain flat piece is not a backdrop. */
   if (visible - n < visible * 0.005) return null;
   /* A card / disc / cloth is a solid blob filling its bounding box;
@@ -268,47 +294,110 @@ function localContrast(data, w, h, cand, radius) {
   return { diff, thr: Math.max(9, noise * 2.6 + 5) };
 }
 
-/* Clears smooth pixels near `color`; faint-contrast pixels fade. */
+/* Clears the backdrop: smooth pixels near its colour (faint-contrast
+   ones fade). Only regions that are really card are removed — those
+   connected to the card's outside, or large ones (card showing inside a
+   closed necklace loop). A small smooth area enclosed by metal — a clear
+   or white stone in its setting — is part of the piece and stays. */
 function keyOutLocal(data, w, h, color, tol, radius = 8) {
   const n = w * h;
   const cand = new Uint8Array(n);
   for (let p = 0; p < n; p += 1) if (data[p * 4 + 3] && cdist(data, p * 4, color) <= tol * 2.5) cand[p] = 1;
   const { diff, thr } = localContrast(data, w, h, cand, radius);
+  const smooth = new Uint8Array(n);
+  for (let p = 0; p < n; p += 1) if (cand[p] && diff[p] <= thr) smooth[p] = 1;
+
+  /* Connected regions of smooth backdrop-coloured pixels. */
+  const label = new Int32Array(n).fill(-1);
+  const regions = [];
+  const stack = [];
+  for (let s0 = 0; s0 < n; s0 += 1) {
+    if (!smooth[s0] || label[s0] !== -1) continue;
+    const id = regions.length;
+    let size = 0; let open = false;
+    label[s0] = id; stack.push(s0);
+    while (stack.length) {
+      const p = stack.pop();
+      size += 1;
+      const x = p % w; const y = (p - x) / w;
+      if (x === 0 || y === 0 || x === w - 1 || y === h - 1) open = true;
+      for (const q of [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, y > 0 ? p - w : -1, y < h - 1 ? p + w : -1]) {
+        if (q < 0) continue;
+        if (!data[q * 4 + 3]) { open = true; continue; }
+        if (smooth[q] && label[q] === -1) { label[q] = id; stack.push(q); }
+      }
+    }
+    regions.push({ size, open });
+  }
+  /* "Large" enclosed region = card inside a closed loop: at least 1.5% of
+     the photo and 5% of the open card area. A stone is far smaller. */
+  const openArea = regions.reduce((m, r) => (r.open ? m + r.size : m), 0);
+  const minBig = Math.max(n * 0.015, openArea * 0.05);
+  const keep = regions.map((r) => !(r.open || r.size >= minBig));
+  const removed = new Uint8Array(n);
+  for (let p = 0; p < n; p += 1) if (label[p] !== -1 && !keep[label[p]]) { removed[p] = 1; data[p * 4 + 3] = 0; }
+  /* Soft edge: faint-contrast backdrop pixels right beside removed ones. */
   for (let p = 0; p < n; p += 1) {
-    if (!cand[p]) continue;
-    const i = p * 4;
-    if (diff[p] <= thr) data[i + 3] = 0;
-    else if (diff[p] < thr * 1.6) data[i + 3] = Math.round(data[i + 3] * ((diff[p] - thr) / (thr * 0.6)));
+    if (!cand[p] || removed[p] || diff[p] >= thr * 1.6 || !data[p * 4 + 3]) continue;
+    const x = p % w; const y = (p - x) / w;
+    if ((x > 0 && removed[p - 1]) || (x < w - 1 && removed[p + 1]) || (y > 0 && removed[p - w]) || (y < h - 1 && removed[p + w])) {
+      data[p * 4 + 3] = Math.round(data[p * 4 + 3] * Math.max(0, (diff[p] - thr) / (thr * 0.6)));
+    }
   }
   return thr;
 }
 
 /**
- * Pass 1 — the studio background around the photo's border: flood-fills
- * inward through smooth pixels close to the corner colour. The flood
- * stops at any line that stands out locally (a chain, an outline, the
- * edge of a card), so a pale piece on a pale background survives.
+ * Pass 1 — the studio background around the photo's border, cleared
+ * like a magic wand: the fill spreads from the border to a neighbouring
+ * pixel only while the colour changes gently (soft shadows, lighting
+ * gradients, paper grain) and stays within reach of the background
+ * colour. It stops at any real edge — a chain, a card, a stone — even a
+ * faint one, so pale jewellery on a pale background survives.
+ * Returns the step tolerance it used.
  */
-function clearBorderBackground(data, w, h, bg, tolerance = 60) {
+function clearBorderBackground(data, w, h, bg, reach = 80) {
   const n = w * h;
+  /* How much neighbouring background pixels normally differ (grain,
+     JPEG noise), measured along the border. */
+  const steps = [];
+  const step = (p, q) => cdist(data, p * 4, [data[q * 4], data[q * 4 + 1], data[q * 4 + 2]]);
+  for (let x = 1; x < w; x += 1) { steps.push(step(x, x - 1), step((h - 1) * w + x, (h - 1) * w + x - 1)); }
+  for (let y = 1; y < h; y += 1) { steps.push(step(y * w, (y - 1) * w), step(y * w + w - 1, (y - 1) * w + w - 1)); }
+  steps.sort((a, b) => a - b);
+  const grain = steps[Math.floor(steps.length * 0.75)] || 2;
+  const maxStep = Math.max(6, Math.min(16, grain * 2.5 + 3));
+
+  /* Local contrast against nearby background-coloured pixels only (a
+     coloured card next to the white doesn't count as "background", so
+     the fill still reaches right up to the card's edge). */
   const cand = new Uint8Array(n);
-  for (let p = 0; p < n; p += 1) if (data[p * 4 + 3] && cdist(data, p * 4, bg) <= tolerance) cand[p] = 1;
-  const { diff, thr } = localContrast(data, w, h, cand, 4);
+  for (let p = 0; p < n; p += 1) if (data[p * 4 + 3] && cdist(data, p * 4, bg) <= 45) cand[p] = 1;
+  const { diff, thr } = localContrast(data, w, h, cand, 8);
+
   const seen = new Uint8Array(n);
   const stack = [];
-  const push = (p) => { if (!seen[p]) { seen[p] = 1; if (cand[p] && diff[p] <= thr) stack.push(p); } };
-  for (let x = 0; x < w; x += 1) { push(x); push((h - 1) * w + x); }
-  for (let y = 0; y < h; y += 1) { push(y * w); push(y * w + w - 1); }
+  for (let x = 0; x < w; x += 1) for (const p of [x, (h - 1) * w + x]) if (!seen[p] && data[p * 4 + 3] && cdist(data, p * 4, bg) <= reach / 2) { seen[p] = 1; stack.push(p); }
+  for (let y = 0; y < h; y += 1) for (const p of [y * w, y * w + w - 1]) if (!seen[p] && data[p * 4 + 3] && cdist(data, p * 4, bg) <= reach / 2) { seen[p] = 1; stack.push(p); }
+  const cleared = [];
   while (stack.length) {
     const p = stack.pop();
-    data[p * 4 + 3] = 0;
+    cleared.push(p);
     const x = p % w; const y = (p - x) / w;
-    if (x > 0) push(p - 1);
-    if (x < w - 1) push(p + 1);
-    if (y > 0) push(p - w);
-    if (y < h - 1) push(p + w);
+    const nbrs = [];
+    if (x > 0) nbrs.push(p - 1);
+    if (x < w - 1) nbrs.push(p + 1);
+    if (y > 0) nbrs.push(p - w);
+    if (y < h - 1) nbrs.push(p + w);
+    for (const q of nbrs) {
+      if (seen[q] || !data[q * 4 + 3]) continue;
+      /* Gentle change from here, near the background colour, and not a
+         line standing out from its surroundings (a faint chain). */
+      if (step(p, q) <= maxStep && cdist(data, q * 4, bg) <= reach && (!cand[q] || diff[q] <= thr)) { seen[q] = 1; stack.push(q); }
+    }
   }
-  return thr;
+  for (const p of cleared) data[p * 4 + 3] = 0;
+  return maxStep;
 }
 
 /**
@@ -318,29 +407,35 @@ function clearBorderBackground(data, w, h, bg, tolerance = 60) {
  * pixel is darker, brighter or more coloured than everything cleared
  * beside it, so it stays — even a faint silver chain on a pale card.
  */
-function absorbEdges(data, w, h, margin = 1, rounds = 2, reach = 2) {
+function absorbEdges(data, w, h, margin = 1, rounds = 3, reach = 3) {
+  const ch = [[], [], []];
   for (let r = 0; r < rounds; r += 1) {
     const drop = [];
     for (let y = 0; y < h; y += 1) {
       for (let x = 0; x < w; x += 1) {
         const i = (y * w + x) * 4;
         if (!data[i + 3]) continue;
-        const lo = [255, 255, 255]; const hi = [0, 0, 0];
-        let found = 0;
+        ch[0].length = 0; ch[1].length = 0; ch[2].length = 0;
         for (let dy = -reach; dy <= reach; dy += 1) {
           for (let dx = -reach; dx <= reach; dx += 1) {
             const nx = x + dx; const ny = y + dy;
             if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
             const j = (ny * w + nx) * 4;
             if (data[j + 3]) continue;
-            found += 1;
-            for (let c = 0; c < 3; c += 1) {
-              if (data[j + c] < lo[c]) lo[c] = data[j + c];
-              if (data[j + c] > hi[c]) hi[c] = data[j + c];
-            }
+            for (let c = 0; c < 3; c += 1) ch[c].push(data[j + c]);
           }
         }
-        if (found && [0, 1, 2].every((c) => data[i + c] >= lo[c] - margin && data[i + c] <= hi[c] + margin)) drop.push(i);
+        if (ch[0].length < 3) continue;
+        /* Central 80% of the cleared colours around it (robust to JPEG
+           noise): the rim of a card lies between white and card colour;
+           a faint chain lies outside that band. */
+        const inside = ch.every((vals, c) => {
+          vals.sort((a, b) => a - b);
+          const lo = vals[Math.floor(vals.length * 0.1)];
+          const hi = vals[Math.ceil(vals.length * 0.9) - 1];
+          return data[i + c] >= lo - margin && data[i + c] <= hi + margin;
+        });
+        if (inside) drop.push(i);
       }
     }
     if (!drop.length) return;
@@ -348,8 +443,112 @@ function absorbEdges(data, w, h, margin = 1, rounds = 2, reach = 2) {
   }
 }
 
+/**
+ * JPEG ringing and glare hugging the piece: near-exact background colour
+ * that the careful first pass stopped short of. Spreads from the cleared
+ * area only through pixels within `tol` of the background colour — too
+ * tight to reach a chain, and a pearl's darker rim keeps it out of the
+ * pearl.
+ */
+function clearNearBackground(data, w, h, bg, tol = 12) {
+  const n = w * h;
+  const stack = [];
+  const done = new Uint8Array(n);
+  for (let p = 0; p < n; p += 1) if (!data[p * 4 + 3]) { stack.push(p); done[p] = 1; }
+  while (stack.length) {
+    const p = stack.pop();
+    const x = p % w; const y = (p - x) / w;
+    for (const q of [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, y > 0 ? p - w : -1, y < h - 1 ? p + w : -1]) {
+      if (q < 0 || done[q]) continue;
+      done[q] = 1;
+      if (cdist(data, q * 4, bg) > tol) continue;
+      data[q * 4 + 3] = 0;
+      stack.push(q);
+    }
+  }
+}
+
+/**
+ * Edge matting: pixels on the cut edge are part jewellery, part
+ * background (anti-aliasing, soft shadow, JPEG ringing). For each, take
+ * the background colour just outside and the jewellery colour just
+ * inside, estimate how much of the pixel is jewellery (alpha), and
+ * un-mix the background out of its colour. Removes grey / dark / pink
+ * halos while keeping edges soft and thin chains intact.
+ */
+export function refineEdges(data, w, h, band = 3) {
+  const n = w * h;
+  /* Distance (in px, up to band+1) from the nearest cleared pixel. */
+  const dist = new Uint8Array(n).fill(255);
+  for (let p = 0; p < n; p += 1) if (!data[p * 4 + 3]) dist[p] = 0;
+  for (let d = 1; d <= band + 1; d += 1) {
+    for (let p = 0; p < n; p += 1) {
+      if (dist[p] !== 255) continue;
+      const x = p % w; const y = (p - x) / w;
+      if ((x > 0 && dist[p - 1] === d - 1) || (x < w - 1 && dist[p + 1] === d - 1)
+        || (y > 0 && dist[p - w] === d - 1) || (y < h - 1 && dist[p + w] === d - 1)) dist[p] = d;
+    }
+  }
+  const updates = [];
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const p = y * w + x;
+      if (dist[p] === 0 || dist[p] > band) continue;
+      const i = p * 4;
+      const bg = [0, 0, 0]; let nb = 0;
+      const fg = [0, 0, 0]; let nf = 0;
+      let far = null; let farD = -1;
+      for (let dy = -3; dy <= 3; dy += 1) {
+        for (let dx = -3; dx <= 3; dx += 1) {
+          const nx = x + dx; const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const q = ny * w + nx; const j = q * 4;
+          if (dist[q] === 0) { if (Math.abs(dx) <= 2 && Math.abs(dy) <= 2) { for (let c = 0; c < 3; c += 1) bg[c] += data[j + c]; nb += 1; } }
+          else if (dist[q] > band) { for (let c = 0; c < 3; c += 1) fg[c] += data[j + c]; nf += 1; }
+        }
+      }
+      if (!nb) continue;
+      for (let c = 0; c < 3; c += 1) bg[c] /= nb;
+      let F;
+      if (nf) F = fg.map((v) => v / nf);
+      else {
+        /* Thin piece (chain): its own core is the most jewellery-like
+           pixel nearby — the one furthest from the background. */
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (let dx = -1; dx <= 1; dx += 1) {
+            const nx = x + dx; const ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h || !data[(ny * w + nx) * 4 + 3]) continue;
+            const j = (ny * w + nx) * 4;
+            const d = cdist(data, j, bg);
+            if (d > farD) { farD = d; far = [data[j], data[j + 1], data[j + 2]]; }
+          }
+        }
+        F = far;
+      }
+      /* Drop shadow / grey halo beside a COLOURED piece (gold, enamel):
+         neutral like the background while the piece next to it is not.
+         Never fires beside silver, pearls or white stones. */
+      if (nf && saturation(F) > 0.25 && saturation([data[i], data[i + 1], data[i + 2]]) < 0.12 && saturation(bg) < 0.12) {
+        updates.push([i, 0, bg]);
+        continue;
+      }
+      const v = [F[0] - bg[0], F[1] - bg[1], F[2] - bg[2]];
+      const len2 = v[0] ** 2 + v[1] ** 2 + v[2] ** 2;
+      if (len2 < 400) continue; // jewellery ≈ background colour: can't tell, leave it
+      const a = Math.min(1, Math.max(0, ((data[i] - bg[0]) * v[0] + (data[i + 1] - bg[1]) * v[1] + (data[i + 2] - bg[2]) * v[2]) / len2));
+      updates.push([i, a, bg]);
+    }
+  }
+  for (const [i, a, bg] of updates) {
+    if (a < 0.12) { data[i + 3] = 0; continue; }
+    /* Un-mix the background: observed = a·fg + (1−a)·bg. */
+    for (let c = 0; c < 3; c += 1) data[i + c] = Math.min(255, Math.max(0, bg[c] + (data[i + c] - bg[c]) / a));
+    data[i + 3] = Math.round(data[i + 3] * a);
+  }
+}
+
 /* Removes specks: visible clusters far smaller than the main piece. */
-export function despeckle(data, w, h, minShare = 0.004) {
+export function despeckle(data, w, h, minShare = 0.02) {
   const label = new Int32Array(w * h).fill(-1);
   const sizes = [];
   const stack = [];
@@ -396,6 +595,8 @@ export function isolateJewellery(data, w, h) {
     const corners = [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]].map(([x, y]) => (y * w + x) * 4);
     const bg = [0, 1, 2].map((c) => corners.reduce((s, i) => s + data[i + c], 0) / 4);
     edgeTol = clearBorderBackground(data, w, h, bg);
+    /* Dark velvet shows JPEG specks more; a little wider there. */
+    clearNearBackground(data, w, h, bg, bg[0] + bg[1] + bg[2] < 240 ? 22 : 12);
     changed = true;
   }
   const backdrop = findBackdrop(data, w, h);
@@ -406,6 +607,7 @@ export function isolateJewellery(data, w, h) {
   if (changed) {
     absorbEdges(data, w, h);
     despeckle(data, w, h);
+    refineEdges(data, w, h);
   }
   return { changed };
 }
@@ -424,6 +626,21 @@ export function trimBounds(data, w, h) {
     }
   }
   return maxX < 0 ? null : { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+}
+
+/* ── Cloudinary AI background removal (optional add-on) ── */
+
+/**
+ * The same Cloudinary image with AI background removal applied, as a
+ * transparent PNG — or null for images not hosted on Cloudinary.
+ * Needs the "Cloudinary AI Background Removal" add-on on the account.
+ */
+export function cloudinaryCutoutUrl(url) {
+  const m = typeof url === 'string' && url.match(/^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(.+)$/);
+  if (!m) return null;
+  if (m[2].includes('e_background_removal')) return url;
+  /* Background removal first, then any existing transformations; PNG keeps the alpha. */
+  return `${m[1]}e_background_removal/${m[2].replace(/\.(jpe?g|webp|avif|gif)$/i, '')}.png`;
 }
 
 /* ── Option B: generating the model portraits ── */
