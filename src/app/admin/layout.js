@@ -10,7 +10,7 @@ import {
   FiDollarSign, FiSettings, FiUserCheck, FiTrendingUp, FiX,
   FiExternalLink, FiChevronRight, FiAlertTriangle, FiCamera, FiMessageSquare,
   FiFolder, FiDownload, FiUpload, FiLayers, FiGrid, FiStar, FiAlertCircle, FiShield,
-  FiShoppingCart, FiBriefcase, FiUserPlus,
+  FiShoppingCart, FiBriefcase, FiUserPlus, FiUser,
 } from 'react-icons/fi';
 import { GiQueenCrown } from 'react-icons/gi';
 import toast from 'react-hot-toast';
@@ -52,6 +52,7 @@ const NAV_GROUPS = [
       { href: '/admin/products',                label: 'Products',        icon: FiPackage },
       { href: '/admin/categories',              label: 'Categories',      icon: FiFolder },
       { href: '/admin/variants',                label: 'Variants',        icon: FiLayers },
+      { href: '/admin/try-on-models',           label: 'AI Try-On Models', icon: FiUser },
       { href: '/admin/inventory',               label: 'Inventory',       icon: FiGrid },
       { href: '/admin/inventory/stock-checker', label: 'Stock Checker',   icon: FiBarChart2 },
       { href: '/admin/inventory/lots',          label: 'Stock Lots (FIFO)', icon: FiLayers },

@@ -19,6 +19,8 @@ import { useProductTracking } from '@/hooks/useProductTracking';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
 import ChatWithSeller from '@/components/chat/ChatWithSeller';
+import { tryOnKind } from '@/lib/tryOn';
+import { absoluteUrl } from '@/lib/seoSchema';
 
 const TryOnModal = lazy(() => import('@/components/ar/TryOnModal'));
 
@@ -501,10 +503,8 @@ export default function ProductDetail({ initialProduct = null }) {
     count: reviews.filter((r) => r.rating === star).length,
   }));
 
-  const isEarring  = product.category?.toLowerCase().includes('earring');
-  const isNecklace = product.category?.toLowerCase().includes('necklace');
-  const isTryOn    = isEarring || isNecklace;
-  const tryOnType  = isEarring ? 'earring' : 'necklace';
+  const tryOnType = tryOnKind(product);
+  const isTryOn   = !!tryOnType;
 
   return (
     <div className="min-h-screen bg-stone-50">
@@ -522,6 +522,9 @@ export default function ProductDetail({ initialProduct = null }) {
             productImage={product.tryOnImage || product.images?.[selectedImage] || product.images?.[0]}
             productName={product.name}
             category={tryOnType}
+            productUrl={absoluteUrl(`/product/${id}`)}
+            inStock={product.stock > 0}
+            onAddToCart={() => { addToCart(); setTryOnOpen(false); }}
             onClose={() => setTryOnOpen(false)}
           />
         </Suspense>
@@ -836,9 +839,7 @@ export default function ProductDetail({ initialProduct = null }) {
               <div>
                 <p className="text-white font-bold text-lg leading-tight">✨ Virtual Try-On</p>
                 <p className="text-purple-200 text-sm mt-1">
-                  {isEarring
-                    ? 'Try these earrings on your face live using your camera — AR powered'
-                    : 'Try this necklace on your neck live using your camera — AR powered'}
+                  See it on an AI model in your skin tone, or live on your own face with the camera
                 </p>
               </div>
               <button
