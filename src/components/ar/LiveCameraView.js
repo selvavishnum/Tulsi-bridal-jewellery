@@ -7,7 +7,7 @@ import { FiRotateCcw } from 'react-icons/fi';
 import { anchorsFromLandmarks, placeJewellery } from '@/lib/tryOn';
 import { createFaceLandmarker, makeCutout, drawJewellery } from '@/lib/tryOnClient';
 
-export default function LiveCameraView({ productImage, kind, canvasRef, adjustRef, onReadyChange }) {
+export default function LiveCameraView({ productImage, cutoutReady = false, kind, canvasRef, adjustRef, onReadyChange }) {
   const videoRef = useRef(null);
   const frameRef = useRef(null);
   const landmarkerRef = useRef(null);
@@ -19,9 +19,9 @@ export default function LiveCameraView({ productImage, kind, canvasRef, adjustRe
 
   useEffect(() => {
     let live = true;
-    makeCutout(productImage).then((c) => { if (live) cutoutRef.current = c; }).catch(() => {});
+    makeCutout(productImage, { ready: cutoutReady }).then((c) => { if (live) cutoutRef.current = c; }).catch(() => {});
     return () => { live = false; };
-  }, [productImage]);
+  }, [productImage, cutoutReady]);
 
   const stop = useCallback(() => {
     if (frameRef.current) cancelAnimationFrame(frameRef.current);

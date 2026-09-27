@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { fakeFirestore } from './helpers/fakeFirestore.mjs';
 import {
   tryOnKind, parseAnchors, anchorsFromLandmarks, placeJewellery, isPairShot, clampAdjust,
-  knockOutBackground, trimBounds, hasTransparentCorners, portraitPrompt, SKIN_TONES,
+  knockOutBackground, trimBounds, hasTransparentCorners, portraitPrompt, SKIN_TONES, isolateJewellery,
 } from '../src/lib/tryOn.js';
 
 process.env.ADMIN_EMAILS = 'owner@tulsi.test';
@@ -121,6 +121,54 @@ test('cutouts: a plain studio background is removed, the piece kept, and padding
   assert.equal(data[(8 * w + 8) * 4 + 3], 255, 'jewellery untouched');
   assert.ok(hasTransparentCorners(data, w, h));
   assert.deepEqual(trimBounds(data, w, h), { x: 5, y: 6, w: 7, h: 8 });
+});
+
+/* A 120×120 photo: studio white, a pale pink round card, and a faint
+   1-px silver chain (a V) with a small pendant — like a real listing photo. */
+function chainOnCard({ transparentOutside = false } = {}) {
+  const w = 120; const h = 120;
+  const data = new Uint8ClampedArray(w * h * 4);
+  const noise = (x, y) => ((x * 7 + y * 13) % 5) - 2; // paper texture
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const i = (y * w + x) * 4;
+      const inCard = (x - 60) ** 2 + (y - 60) ** 2 <= 52 ** 2;
+      if (inCard) data.set([236 + noise(x, y), 226 + noise(x, y), 230 + noise(x, y), 255], i);
+      else data.set(transparentOutside ? [0, 0, 0, 0] : [255, 255, 255, 255], i);
+    }
+  }
+  const chain = [];
+  for (let y = 20; y <= 80; y += 1) {
+    const dx = Math.round((y - 20) * 0.35);
+    chain.push([45 + dx, y], [75 - dx, y]);
+  }
+  for (const [x, y] of chain) data.set([205, 200, 206, 255], (y * w + x) * 4);
+  for (let y = 80; y < 88; y += 1) for (let x = 57; x < 64; x += 1) data.set([190, 190, 200, 255], (y * w + x) * 4);
+  return { data, w, h, chain };
+}
+const alphaAt = (d, w, x, y) => d[(y * w + x) * 4 + 3];
+
+test('cutout: a pale chain on a coloured card keeps the chain and drops the card and its outline', () => {
+  for (const transparentOutside of [false, true]) {
+    const { data, w, h, chain } = chainOnCard({ transparentOutside });
+    isolateJewellery(data, w, h);
+    const kept = chain.filter(([x, y]) => alphaAt(data, w, x, y) > 128).length;
+    assert.ok(kept / chain.length > 0.9, `chain kept (${kept}/${chain.length}), transparentOutside=${transparentOutside}`);
+    assert.equal(alphaAt(data, w, 60, 100), 0, 'card cleared');
+    assert.equal(alphaAt(data, w, 60, 8), 0, 'card outline cleared');
+    assert.equal(alphaAt(data, w, 60, 84), 255, 'pendant kept');
+    const box = trimBounds(data, w, h);
+    assert.ok(box.w < 45 && box.h < 75, `cropped to the chain, got ${JSON.stringify(box)}`);
+  }
+});
+
+test('cutout: a flat matte piece on transparent is never mistaken for a backdrop', () => {
+  const w = 60; const h = 60;
+  const data = new Uint8ClampedArray(w * h * 4);
+  for (let y = 10; y < 50; y += 1) for (let x = 10; x < 50; x += 1) data.set([201, 160, 72, 255], (y * w + x) * 4);
+  const before = data.slice();
+  assert.equal(isolateJewellery(data, w, h).changed, false);
+  assert.deepEqual(data, before);
 });
 
 test('portrait prompts: one per tone, always without jewellery', () => {

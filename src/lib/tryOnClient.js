@@ -1,5 +1,5 @@
 /* Browser-only helpers for the try-on views and the admin portrait screen. */
-import { hasTransparentCorners, knockOutBackground, trimBounds, anchorsFromLandmarks } from './tryOn.js';
+import { isolateJewellery, hasTransparentCorners, trimBounds, anchorsFromLandmarks } from './tryOn.js';
 
 export const MEDIAPIPE_WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm';
 export const FACE_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
@@ -26,13 +26,15 @@ const MAX_CUTOUT = 900;
 
 /**
  * The product image as a clean, tightly cropped transparent cutout.
- * Uses the transparent try-on PNG as-is; a regular product photo on a
- * plain background has the background knocked out first.
+ * `ready` = an admin-made transparent Try-On image: used as uploaded
+ * (only trimmed). Anything else has its background, and any card or
+ * cloth the piece lies on, removed first (isolateJewellery).
  * @returns {Promise<{ canvas: HTMLCanvasElement, w: number, h: number, knockedOut: boolean }>}
  */
-export function makeCutout(url) {
-  if (!cutoutCache.has(url)) {
-    cutoutCache.set(url, (async () => {
+export function makeCutout(url, { ready = false } = {}) {
+  const key = `${ready ? 'r' : 'c'}:${url}`;
+  if (!cutoutCache.has(key)) {
+    cutoutCache.set(key, (async () => {
       const img = await loadImage(url);
       const k = Math.min(1, MAX_CUTOUT / Math.max(img.naturalWidth, img.naturalHeight));
       const w = Math.max(1, Math.round(img.naturalWidth * k));
@@ -49,20 +51,19 @@ export function makeCutout(url) {
         /* Image host without CORS: use it untouched. */
         return { canvas: work, w, h, knockedOut: false };
       }
-      const knockedOut = !hasTransparentCorners(data.data, w, h);
-      if (knockedOut) {
-        knockOutBackground(data.data, w, h);
-        ctx.putImageData(data, 0, 0);
-      }
+      /* A real transparent PNG is trusted as-is; a pasted normal photo still gets cleaned. */
+      const trusted = ready && hasTransparentCorners(data.data, w, h);
+      const { changed: knockedOut } = trusted ? { changed: false } : isolateJewellery(data.data, w, h);
+      if (knockedOut) ctx.putImageData(data, 0, 0);
       const box = trimBounds(data.data, w, h) || { x: 0, y: 0, w, h };
       const out = document.createElement('canvas');
       out.width = box.w;
       out.height = box.h;
       out.getContext('2d').drawImage(work, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
       return { canvas: out, w: box.w, h: box.h, knockedOut };
-    })().catch((e) => { cutoutCache.delete(url); throw e; }));
+    })().catch((e) => { cutoutCache.delete(key); throw e; }));
   }
-  return cutoutCache.get(url);
+  return cutoutCache.get(key);
 }
 
 let landmarkerPromise = null;
