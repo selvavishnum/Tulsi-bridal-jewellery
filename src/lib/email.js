@@ -576,3 +576,139 @@ export async function sendVendorOrderNotification(to, vendorName, detail) {
     return false;
   }
 }
+
+/* ═══════════════════════════════════════════
+   SELLER APPLICATIONS
+   ═══════════════════════════════════════════ */
+const SELLER_DESK = 'tulsibridaljewellery@gmail.com';
+
+function detailRows(rows) {
+  return `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9f9f8;border-radius:12px;"><tr><td style="padding:16px 20px;">
+    <table width="100%" cellpadding="0" cellspacing="0">${rows.filter(([, v]) => v).map(([k, v]) => `
+      <tr><td width="140" style="font-size:13px;color:#78716c;padding:4px 0;font-weight:600;vertical-align:top;">${esc(k)}</td>
+      <td style="font-size:13px;color:#292524;padding:4px 0;">${esc(v)}</td></tr>`).join('')}</table>
+  </td></tr></table>`;
+}
+
+/** New seller application → the seller desk + store admin. */
+export async function sendVendorApplicationAlert(app) {
+  const to = [...new Set([SELLER_DESK, process.env.ADMIN_EMAIL].filter(Boolean))];
+  if (!process.env.SMTP_USER) return false;
+  const tax = app.tax_type === 'GST' ? `GSTIN ${app.tax_id_number}`
+    : app.tax_type === 'ENROLMENT_ID' ? `Enrolment ID ${app.tax_id_number} · PAN ${app.pan_number}`
+    : `No GST yet · PAN ${app.pan_number}`;
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 6px;font-family:Georgia,serif;font-size:22px;color:#292524;">New seller application 💍</h2>
+    <p style="margin:0 0 20px;font-size:14px;color:#78716c;">${esc(app.business_name)} wants to sell on Tulsi. Verify the tax ID, then approve or reject.</p>
+    ${detailRows([
+      ['Name', app.full_name], ['Business', app.business_name], ['WhatsApp', app.phone], ['Email', app.email],
+      ['Instagram', `@${app.instagram_handle}`], ['Tax', tax],
+      ['Pickup', `${app.warehouse_address}, ${app.city}, ${app.state} — ${app.pincode}`],
+      ['Bank', `${app.bank_details?.bank_name} ${app.bank_details?.account_masked} · ${app.bank_details?.ifsc}`],
+    ])}
+    ${ctaBtn('Review application →', `${BRAND.site}/admin/vendor-applications`)}
+  `);
+  try {
+    await createTransporter().sendMail({
+      from: `"${BRAND.name}" <${process.env.SMTP_USER}>`, to, replyTo: app.email,
+      subject: `New seller application — ${app.business_name} | ${BRAND.name}`, html,
+    });
+    return true;
+  } catch (err) {
+    console.error('[Email] Seller application alert failed:', err.message);
+    return false;
+  }
+}
+
+/** Approved seller: login link and temporary password. */
+export async function sendVendorWelcome({ to, name, businessName, password }) {
+  if (!to || !process.env.SMTP_USER) return false;
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 6px;font-family:Georgia,serif;font-size:22px;color:#292524;">Welcome to Tulsi, ${esc(businessName)}! 🎉</h2>
+    <p style="margin:0 0 20px;font-size:14px;color:#57534e;">Hi ${esc(name)}, your seller application is approved. Your Vendor Dashboard is ready — add your products, set prices and stock, and manage orders.</p>
+    ${detailRows([['Login page', `${BRAND.site}/vendor/login`], ['Email', to], ['Temporary password', password]])}
+    <p style="margin:16px 0 0;font-size:13px;color:#57534e;">Please change this password from <strong>Store Profile → Change password</strong> after you sign in, and keep it private. You can also sign in with a one-time code sent to this email — choose “Email code” on the login page.</p>
+    <p style="margin:12px 0 0;font-size:13px;color:#15803d;font-weight:600;">🎁 Lifetime free: 0% platform fee, zero commission, no hidden charges.</p>
+    ${ctaBtn('Open Vendor Dashboard →', `${BRAND.site}/vendor/login`)}
+  `);
+  try {
+    await createTransporter().sendMail({
+      from: `"${BRAND.name}" <${process.env.SMTP_USER}>`, to,
+      subject: `You're approved — welcome to ${BRAND.name} Sellers`, html,
+    });
+    return true;
+  } catch (err) {
+    console.error('[Email] Vendor welcome failed:', err.message);
+    return false;
+  }
+}
+
+/** Rejected application, with the reason. */
+export async function sendVendorApplicationRejected({ to, name, reason }) {
+  if (!to || !process.env.SMTP_USER) return false;
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 6px;font-family:Georgia,serif;font-size:22px;color:#292524;">About your seller application</h2>
+    <p style="margin:0 0 16px;font-size:14px;color:#57534e;">Hi ${esc(name)}, thank you for applying to sell on Tulsi. We couldn't approve your application right now.</p>
+    ${reason ? `<p style="margin:0 0 16px;font-size:14px;color:#292524;"><strong>Reason:</strong> ${esc(reason)}</p>` : ''}
+    <p style="margin:0;font-size:14px;color:#57534e;">You're welcome to apply again once this is sorted — just reply to this email if you have questions.</p>
+    ${ctaBtn('Apply again →', `${BRAND.site}/become-a-vendor`)}
+  `);
+  try {
+    await createTransporter().sendMail({
+      from: `"${BRAND.name}" <${process.env.SMTP_USER}>`, to, replyTo: SELLER_DESK,
+      subject: `Your seller application — ${BRAND.name}`, html,
+    });
+    return true;
+  } catch (err) {
+    console.error('[Email] Seller rejection failed:', err.message);
+    return false;
+  }
+}
+
+/* ═══════════════════════════════════════════
+   CHAT & VENDOR ACCOUNT ALERTS
+   ═══════════════════════════════════════════ */
+
+/** "You have a new message" — sent once per unread burst, not per message. */
+export async function sendChatNotification({ to, fromName, text, link, productName }) {
+  if (!to || !process.env.SMTP_USER) return false;
+  const html = emailWrapper(`
+    <h2 style="margin:0 0 6px;font-family:Georgia,serif;font-size:22px;color:#292524;">New message from ${esc(fromName)} 💬</h2>
+    ${productName ? `<p style="margin:0 0 16px;font-size:13px;color:#78716c;">About: ${esc(productName)}</p>` : ''}
+    <p style="margin:0;padding:14px 18px;background:#f9f9f8;border-radius:12px;font-size:14px;color:#292524;line-height:1.6;">${esc(text).replace(/\n/g, '<br/>')}</p>
+    <p style="margin:16px 0 0;font-size:12px;color:#a8a29e;">Reply on Tulsi — keep payments and contact details on the platform, where your order is protected.</p>
+    ${ctaBtn('Reply →', `${BRAND.site}${link}`)}
+  `);
+  try {
+    await createTransporter().sendMail({ from: `"${BRAND.name}" <${process.env.SMTP_USER}>`, to, subject: `New message from ${fromName} | ${BRAND.name}`, html });
+    return true;
+  } catch (err) {
+    console.error('[Email] Chat notification failed:', err.message);
+    return false;
+  }
+}
+
+/** Security alerts about a vendor login (password changed). */
+export async function sendVendorPasswordChanged({ vendorName, email, at, ip, adminEmails = [] }) {
+  if (!process.env.SMTP_USER) return false;
+  const when = new Date(at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' });
+  const send = (to, heading, body, cta) => createTransporter().sendMail({
+    from: `"${BRAND.name}" <${process.env.SMTP_USER}>`, to,
+    subject: `${heading} | ${BRAND.name}`,
+    html: emailWrapper(`
+      <h2 style="margin:0 0 12px;font-family:Georgia,serif;font-size:22px;color:#292524;">${esc(heading)}</h2>
+      ${body}
+      ${detailRows([['Vendor', vendorName], ['Login', email], ['When', `${when} IST`], ['IP address', ip]])}
+      ${cta}
+    `),
+  });
+  const results = await Promise.allSettled([
+    adminEmails.length && send(adminEmails, `Vendor password changed — ${vendorName}`,
+      '<p style="margin:0 0 16px;font-size:14px;color:#57534e;">A vendor changed their Vendor Portal password. If this looks wrong, deactivate the login or reset the password in Vendors &amp; Payouts.</p>',
+      ctaBtn('Open Vendors →', `${BRAND.site}/admin/vendors`)),
+    email && send(email, 'Your password was changed',
+      '<p style="margin:0 0 16px;font-size:14px;color:#57534e;">Your Tulsi Vendor Portal password was just changed. If this wasn’t you, reply to this email or contact Tulsi immediately.</p>', ''),
+  ]);
+  for (const r of results) if (r.status === 'rejected') console.error('[Email] Password-change alert failed:', r.reason?.message);
+  return results.some((r) => r.status === 'fulfilled' && r.value);
+}

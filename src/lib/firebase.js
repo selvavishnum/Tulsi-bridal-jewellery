@@ -100,6 +100,8 @@ const PRODUCT_PRIVATE_FIELDS = [
 export function toPublicProduct(p) {
   if (!p) return p;
   const out = { ...p };
+  /* Whether "Chat with seller" applies — without saying which seller. */
+  out.sellerChat = !!p.vendorId && p.vendorId !== 'tulsi';
   for (const f of PRODUCT_PRIVATE_FIELDS) delete out[f];
   return out;
 }
