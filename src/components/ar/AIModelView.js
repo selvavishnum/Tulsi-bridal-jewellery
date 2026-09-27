@@ -9,7 +9,7 @@ import { loadImage, makeCutout, drawJewellery } from '@/lib/tryOnClient';
 
 const MAX_W = 1080;
 
-export default function AIModelView({ productImage, kind, model, models, adjust, canvasRef, onReadyChange }) {
+export default function AIModelView({ productImage, cutoutReady = false, kind, model, models, adjust, canvasRef, onReadyChange }) {
   const [cutout, setCutout] = useState(null);
   const [portrait, setPortrait] = useState(null);
   const [error, setError] = useState('');
@@ -20,11 +20,11 @@ export default function AIModelView({ productImage, kind, model, models, adjust,
 
   useEffect(() => {
     let live = true;
-    makeCutout(productImage)
+    makeCutout(productImage, { ready: cutoutReady })
       .then((c) => { if (live) setCutout(c); })
       .catch(() => { if (live) setError('Couldn’t load this piece’s photo.'); });
     return () => { live = false; };
-  }, [productImage]);
+  }, [productImage, cutoutReady]);
 
   useEffect(() => {
     let live = true;

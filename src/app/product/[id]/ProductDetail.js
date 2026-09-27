@@ -520,6 +520,7 @@ export default function ProductDetail({ initialProduct = null }) {
         <Suspense fallback={null}>
           <TryOnModal
             productImage={product.tryOnImage || product.images?.[selectedImage] || product.images?.[0]}
+            cutoutReady={!!product.tryOnImage}
             productName={product.name}
             category={tryOnType}
             productUrl={absoluteUrl(`/product/${id}`)}

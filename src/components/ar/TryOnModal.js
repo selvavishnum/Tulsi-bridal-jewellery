@@ -33,7 +33,7 @@ const WaIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" aria-hidden><path d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.16-.17.2-.35.22-.64.07-.3-.15-1.26-.46-2.39-1.47-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.6.13-.14.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.37-.03-.52-.07-.15-.67-1.61-.92-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.07c.15.2 2.1 3.2 5.08 4.49.71.3 1.26.49 1.7.63.71.22 1.36.19 1.87.12.57-.09 1.76-.72 2-1.41.25-.7.25-1.29.18-1.41-.08-.13-.28-.2-.57-.35zM12 21.82a9.8 9.8 0 0 1-5.03-1.39l-.36-.21-3.72.97 1-3.62-.24-.37A9.8 9.8 0 0 1 2.18 12 9.82 9.82 0 1 1 12 21.82zM12 0a12 12 0 0 0-10.46 17.87L.06 23.43a.5.5 0 0 0 .62.61l5.76-1.5A12 12 0 1 0 12 0z" /></svg>
 );
 
-export default function TryOnModal({ productImage, productName, category = 'earring', productUrl, inStock = true, onAddToCart, onClose }) {
+export default function TryOnModal({ productImage, cutoutReady = false, productName, category = 'earring', productUrl, inStock = true, onAddToCart, onClose }) {
   const kind = KIND_LABEL[category] ? category : 'earring';
   const canvasRef = useRef(null);
   const [models, setModels] = useState(null); // null while loading
@@ -176,10 +176,10 @@ export default function TryOnModal({ productImage, productName, category = 'earr
       {/* Stage */}
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {mode === 'ai' && model && (
-          <AIModelView productImage={productImage} kind={kind} model={model} models={models} adjust={adjust} canvasRef={canvasRef} onReadyChange={setReady} />
+          <AIModelView productImage={productImage} cutoutReady={cutoutReady} kind={kind} model={model} models={models} adjust={adjust} canvasRef={canvasRef} onReadyChange={setReady} />
         )}
         {mode === 'live' && (
-          <LiveCameraView productImage={productImage} kind={kind} canvasRef={canvasRef} adjustRef={adjustRef} onReadyChange={setReady} />
+          <LiveCameraView productImage={productImage} cutoutReady={cutoutReady} kind={kind} canvasRef={canvasRef} adjustRef={adjustRef} onReadyChange={setReady} />
         )}
         {mode === null && <div className="flex h-full items-center justify-center"><div className="h-10 w-10 animate-spin rounded-full border-4 border-gold-400 border-t-transparent" /></div>}
       </div>
