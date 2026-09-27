@@ -174,6 +174,7 @@ const PAGE_RULES = [
   ['/admin/inventory/lots', CAN.manageCatalog], // stock-lot costs
   ['/admin/purchase', CAN.manageCatalog],
   ['/admin/products', CAN.editCatalog],
+  ['/admin/try-on-models', CAN.editCatalog],
   ['/admin/categories', CAN.editCatalog],
   ['/admin/variants', CAN.editCatalog],
   ['/admin/photo-editor', CAN.editCatalog],

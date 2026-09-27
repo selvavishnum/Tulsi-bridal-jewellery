@@ -1,336 +1,236 @@
 'use client';
+/* Virtual Try-On: two modes over one canvas.
+     • AI Virtual Model — a model portrait per skin tone with the real
+       jewellery composited on (no camera needed; default when set up).
+     • Live AR Camera — the shopper's own face, tracked live.
+   Save / WhatsApp / Add to Cart act on whichever canvas is showing. */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import toast from 'react-hot-toast';
+import { FiX, FiDownload, FiShoppingCart, FiRotateCcw, FiUser, FiCamera } from 'react-icons/fi';
+import { SKIN_TONES, ADJUST, clampAdjust } from '@/lib/tryOn';
+import { drawCredit } from '@/lib/tryOnClient';
+import AIModelView from './AIModelView';
+import LiveCameraView from './LiveCameraView';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { FiX, FiCamera, FiDownload, FiRotateCcw, FiPlus, FiMinus } from 'react-icons/fi';
+const TONE_KEY = 'tulsi-tryon-tone';
+const KIND_LABEL = { earring: 'Earrings', necklace: 'Necklace', choker: 'Choker' };
 
-const WASM_CDN  = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm';
-const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+let modelsPromise = null;
+function fetchModels() {
+  modelsPromise ||= fetch('/api/try-on/models').then((r) => r.json()).then((d) => (d.success ? d.data : []))
+    .catch(() => { modelsPromise = null; return []; });
+  return modelsPromise;
+}
 
-// Ear landmarks
-const LEFT_EAR_IDX  = 234;
-const RIGHT_EAR_IDX = 454;
-// Face bounds for sizing
-const LEFT_CHIN_IDX  = 172;
-const TOP_IDX        = 10;
-const CHIN_TIP_IDX   = 152;   // bottom-centre of chin — necklace starts here
-const FACE_LEFT_IDX  = 234;   // widest left point
-const FACE_RIGHT_IDX = 454;   // widest right point
+function readTone() {
+  try { return localStorage.getItem(TONE_KEY); } catch { return null; }
+}
+function rememberTone(id) {
+  try { localStorage.setItem(TONE_KEY, id); } catch { /* private mode */ }
+}
 
-export default function TryOnModal({ productImage, productName, category = 'earring', onClose }) {
-  const isNecklace = category === 'necklace';
+const WaIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" aria-hidden><path d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.16-.17.2-.35.22-.64.07-.3-.15-1.26-.46-2.39-1.47-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.6.13-.14.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.37-.03-.52-.07-.15-.67-1.61-.92-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.07c.15.2 2.1 3.2 5.08 4.49.71.3 1.26.49 1.7.63.71.22 1.36.19 1.87.12.57-.09 1.76-.72 2-1.41.25-.7.25-1.29.18-1.41-.08-.13-.28-.2-.57-.35zM12 21.82a9.8 9.8 0 0 1-5.03-1.39l-.36-.21-3.72.97 1-3.62-.24-.37A9.8 9.8 0 0 1 2.18 12 9.82 9.82 0 1 1 12 21.82zM12 0a12 12 0 0 0-10.46 17.87L.06 23.43a.5.5 0 0 0 .62.61l5.76-1.5A12 12 0 1 0 12 0z" /></svg>
+);
 
-  const videoRef      = useRef(null);
-  const canvasRef     = useRef(null);
-  const animFrameRef  = useRef(null);
-  const landmarkerRef = useRef(null);
-  const imgRef        = useRef(null);
-  const streamRef     = useRef(null);
+export default function TryOnModal({ productImage, productName, category = 'earring', productUrl, inStock = true, onAddToCart, onClose }) {
+  const kind = KIND_LABEL[category] ? category : 'earring';
+  const canvasRef = useRef(null);
+  const [models, setModels] = useState(null); // null while loading
+  const [mode, setMode] = useState(null); // 'ai' | 'live'
+  const [toneId, setToneId] = useState(null);
+  const [adjust, setAdjust] = useState({ scale: 1, offset: 0 });
+  const adjustRef = useRef(adjust);
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  const scaleRef  = useRef(1.0);
-  const offsetRef = useRef(0);
-
-  const [scale,  setScale]  = useState(1.0);
-  const [offset, setOffset] = useState(0);
-  const [status,  setStatus]  = useState('loading');
-  const [loadMsg, setLoadMsg] = useState('Loading AR model…');
-  const [saved,   setSaved]   = useState(false);
-
-  function changeScale(delta) {
-    setScale((s) => {
-      const next = Math.round(Math.min(2.5, Math.max(0.3, s + delta)) * 10) / 10;
-      scaleRef.current = next;
-      return next;
-    });
-  }
-  function changeOffset(delta) {
-    setOffset((o) => {
-      const next = Math.round(Math.min(0.5, Math.max(-0.4, o + delta)) * 10) / 10;
-      offsetRef.current = next;
-      return next;
-    });
-  }
-  function resetAdj() {
-    scaleRef.current  = 1.0;  setScale(1.0);
-    offsetRef.current = 0;    setOffset(0);
-  }
+  useEffect(() => { adjustRef.current = adjust; }, [adjust]);
 
   useEffect(() => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = productImage;
-    imgRef.current = img;
-  }, [productImage]);
-
-  const startCamera = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-    } catch {
-      setStatus('error');
-      setLoadMsg('Camera access denied. Please allow camera permission.');
-    }
+    let live = true;
+    fetchModels().then((list) => {
+      if (!live) return;
+      setModels(list);
+      setMode((m) => m || (list.length ? 'ai' : 'live'));
+      const saved = readTone();
+      setToneId(list.find((t) => t.id === saved)?.id || list.find((t) => t.id === 'wheatish')?.id || list[0]?.id || null);
+    });
+    return () => { live = false; };
   }, []);
 
-  const initLandmarker = useCallback(async () => {
+  /* Lock page scroll while open; Esc closes. */
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey); };
+  }, [onClose]);
+
+  const model = useMemo(() => models?.find((m) => m.id === toneId) || null, [models, toneId]);
+
+  function switchMode(next) {
+    if (next === mode) return;
+    setReady(false);
+    setAdjust({ scale: 1, offset: 0 });
+    setMode(next);
+  }
+  function pickTone(id) {
+    setToneId(id);
+    rememberTone(id);
+  }
+  const setAdj = (k) => (e) => setAdjust((a) => clampAdjust({ ...a, [k]: Number(e.target.value) }));
+
+  /* The look as a PNG, with a small credit in the corner. */
+  const snapshot = useCallback(() => new Promise((resolve, reject) => {
+    const src = canvasRef.current;
+    if (!src?.width) { reject(new Error('Nothing to save yet')); return; }
+    const out = document.createElement('canvas');
+    out.width = src.width;
+    out.height = src.height;
+    const ctx = out.getContext('2d');
+    ctx.drawImage(src, 0, 0);
+    drawCredit(ctx, out.width, out.height, mode === 'ai' ? 'AI model · tulsijewels.in' : 'tulsijewels.in');
     try {
-      setStatus('loading');
-      setLoadMsg('Loading face detection model…');
-      const { FaceLandmarker, FilesetResolver } = await import('@mediapipe/tasks-vision');
-      const vision = await FilesetResolver.forVisionTasks(WASM_CDN);
-      const landmarker = await FaceLandmarker.createFromOptions(vision, {
-        baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
-        outputFaceBlendshapes: false,
-        runningMode: 'VIDEO',
-        numFaces: 1,
-      });
-      landmarkerRef.current = landmarker;
-      setLoadMsg('Starting camera…');
-      await startCamera();
-      setStatus('ready');
-    } catch (err) {
-      console.error('TryOn init error:', err);
-      setStatus('error');
-      setLoadMsg('Failed to load AR model. Please try again.');
+      out.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not create the image'))), 'image/png');
+    } catch (e) {
+      reject(e);
     }
-  }, [startCamera]);
+  }), [mode]);
 
-  const renderFrame = useCallback(() => {
-    const video     = videoRef.current;
-    const canvas    = canvasRef.current;
-    const landmarker = landmarkerRef.current;
-    const img       = imgRef.current;
+  const fileName = `${(productName || 'tulsi-look').replace(/[^\w-]+/g, '-').toLowerCase()}-look.png`;
 
-    if (!video || !canvas || !landmarker || video.readyState < 2) {
-      animFrameRef.current = requestAnimationFrame(renderFrame);
-      return;
+  function download(blob) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  async function save() {
+    try {
+      download(await snapshot());
+      toast.success('Look saved to your device');
+    } catch {
+      toast.error('Couldn’t save this look.');
     }
-    const W = video.videoWidth;
-    const H = video.videoHeight;
-    if (W === 0 || H === 0) { animFrameRef.current = requestAnimationFrame(renderFrame); return; }
+  }
 
-    canvas.width  = W;
-    canvas.height = H;
-    const ctx = canvas.getContext('2d');
-
-    // Mirror — selfie mode
-    ctx.save();
-    ctx.translate(W, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(video, 0, 0, W, H);
-    ctx.restore();
-
-    let result;
-    try { result = landmarker.detectForVideo(video, performance.now()); } catch {
-      animFrameRef.current = requestAnimationFrame(renderFrame); return;
+  async function share() {
+    const text = `Check out ${productName || 'this piece'} on Tulsi Jewels 💍 ${productUrl || ''}`.trim();
+    setBusy(true);
+    try {
+      const blob = await snapshot();
+      const file = new File([blob], fileName, { type: 'image/png' });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], text, title: productName });
+        return;
+      }
+      /* Desktop / older phones: save the photo, open WhatsApp with the link. */
+      download(blob);
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+      toast('Photo saved — attach it in WhatsApp', { icon: '📎' });
+    } catch (e) {
+      if (e?.name !== 'AbortError') window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+    } finally {
+      setBusy(false);
     }
+  }
 
-    if (!result?.faceLandmarks?.length) {
-      setStatus('no-face');
-      animFrameRef.current = requestAnimationFrame(renderFrame);
-      return;
-    }
+  function addToCart() {
+    onAddToCart?.();
+  }
 
-    setStatus('detecting');
-    const lm = result.faceLandmarks[0];
-
-    if (!img.complete || img.naturalWidth === 0) {
-      animFrameRef.current = requestAnimationFrame(renderFrame); return;
-    }
-
-    const faceH = Math.abs(lm[LEFT_CHIN_IDX].y - lm[TOP_IDX].y) * H;
-    const vOff  = offsetRef.current * faceH;
-
-    if (isNecklace) {
-      /* ── NECKLACE MODE ──
-         Place necklace below chin, centred on face, width ≈ face width × 1.3 */
-      const chinTip   = lm[CHIN_TIP_IDX];
-      const faceLeft  = lm[FACE_LEFT_IDX];
-      const faceRight = lm[FACE_RIGHT_IDX];
-
-      // Face width in pixels (mirrored — swap left/right)
-      const faceW = Math.abs(faceLeft.x - faceRight.x) * W;
-
-      const neckW = faceW * 1.4 * scaleRef.current;
-      const neckH = img.naturalHeight > 0
-        ? neckW * (img.naturalHeight / img.naturalWidth)
-        : neckW;
-
-      // Chin centre X in mirrored coordinates
-      const chinX = (1 - chinTip.x) * W;
-      const chinY = chinTip.y * H;
-
-      // Draw necklace centred below chin
-      ctx.drawImage(img, chinX - neckW / 2, chinY + vOff, neckW, neckH);
-
-    } else {
-      /* ── EARRING MODE ──
-         lm[454] = right ear in face → display-left (mirrored)
-         lm[234] = left ear in face  → display-right (mirrored) */
-      const leftScreenEar  = lm[RIGHT_EAR_IDX];
-      const rightScreenEar = lm[LEFT_EAR_IDX];
-
-      const earH = faceH * 0.38 * scaleRef.current;
-      const earW = img.naturalHeight > 0
-        ? earH * (img.naturalWidth / img.naturalHeight)
-        : earH;
-
-      [leftScreenEar, rightScreenEar].forEach((ear) => {
-        const ex = (1 - ear.x) * W;
-        const ey = ear.y * H + vOff;
-        ctx.drawImage(img, ex - earW / 2, ey, earW, earH);
-      });
-    }
-
-    animFrameRef.current = requestAnimationFrame(renderFrame);
-  }, [isNecklace]);
-
-  useEffect(() => {
-    initLandmarker();
-    return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      landmarkerRef.current?.close?.();
-    };
-  }, [initLandmarker]);
-
-  useEffect(() => {
-    if (status === 'ready' || status === 'detecting' || status === 'no-face') {
-      animFrameRef.current = requestAnimationFrame(renderFrame);
-    }
-    return () => { if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current); };
-  }, [status, renderFrame]);
-
-  const savePhoto = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const link = document.createElement('a');
-    link.download = `${productName || category}-tryon.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  const statusMsg = {
-    loading:   loadMsg,
-    ready:     isNecklace ? 'Show your face & neck in the camera…' : 'Position your face in the camera…',
-    'no-face': 'Face-ஐ camera-க்கு நேரா வையுங்க',
-    detecting: `Trying on: ${productName || category}`,
-    error:     loadMsg,
-  }[status] || '';
-
-  const isActive = status === 'ready' || status === 'no-face' || status === 'detecting';
-
-  const tips = isNecklace
-    ? [['📏 Too small?', 'Tap + on Size'], ['📐 Position?', 'Tap ▲▼ to adjust'], ['👚 Best result', 'Show neck & chest']]
-    : [['📏 Too small?', 'Tap + on Size'], ['📐 Position?', 'Tap ▲▼ to adjust'], ['🔆 Best result', 'Face the light']];
+  const aiAvailable = !!models?.length;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
-
+    <div className="fixed inset-0 z-50 flex h-[100dvh] flex-col bg-stone-950 text-white" role="dialog" aria-modal="true" aria-label="Virtual try-on">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-purple-900 to-indigo-900">
-        <div>
-          <p className="text-white font-bold text-sm tracking-wide">
-            ✨ Virtual Try-On — {isNecklace ? 'Necklace' : 'Earring'}
-          </p>
-          <p className="text-purple-200 text-xs truncate max-w-[220px]">{productName}</p>
+      <div className="flex items-center gap-3 px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-gold-300">Virtual Try-On · {KIND_LABEL[kind]}</p>
+          <p className="truncate text-sm font-semibold">{productName}</p>
         </div>
-        <button onClick={onClose} className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center text-white hover:bg-white/30 transition">
+        <button onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-white/20" aria-label="Close try-on">
           <FiX size={18} />
         </button>
       </div>
 
-      {/* Camera + Canvas */}
-      <div className="relative flex-1 overflow-hidden bg-black">
-        <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover opacity-0" playsInline muted />
-        <canvas ref={canvasRef} className="w-full h-full object-contain" />
-
-        {/* Guide oval */}
-        {status === 'ready' && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            {isNecklace
-              ? <div className="w-52 h-72 rounded-full border-2 border-dashed border-white/30 mt-16" />
-              : <div className="w-48 h-64 rounded-full border-2 border-dashed border-white/30" />
-            }
-          </div>
-        )}
-
-        {/* Loading / error overlay */}
-        {(status === 'loading' || status === 'error') && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85">
-            {status === 'loading' && <div className="w-12 h-12 border-4 border-purple-400 border-t-transparent rounded-full animate-spin mb-5" />}
-            {status === 'error' && <div className="text-4xl mb-4">📷</div>}
-            <p className="text-white text-sm text-center px-10 leading-relaxed">{loadMsg}</p>
-            {status === 'error' && (
-              <button onClick={initLandmarker} className="mt-5 px-5 py-2.5 bg-purple-500 text-white text-sm font-bold rounded-xl flex items-center gap-2">
-                <FiRotateCcw size={14} /> Retry
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Status pill */}
-        {isActive && (
-          <div className="absolute top-3 left-0 right-0 flex justify-center pointer-events-none">
-            <div className={`px-4 py-1.5 rounded-full text-xs font-semibold backdrop-blur-md shadow-lg ${
-              status === 'detecting' ? 'bg-green-500/85 text-white' :
-              status === 'no-face'  ? 'bg-amber-500/85 text-white' : 'bg-black/60 text-white/80'
-            }`}>
-              {status === 'detecting' && <span className="inline-block w-1.5 h-1.5 bg-white rounded-full mr-1.5 animate-pulse align-middle" />}
-              {statusMsg}
-            </div>
-          </div>
-        )}
-
-        {/* Adjustment panel */}
-        {isActive && (
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-2">
-            <div className="bg-black/70 backdrop-blur-sm rounded-2xl p-2 flex flex-col items-center gap-1.5 shadow-lg">
-              <span className="text-white/60 text-[9px] uppercase tracking-wider">Size</span>
-              <button onClick={() => changeScale(0.1)} className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/30 flex items-center justify-center text-white transition"><FiPlus size={13} /></button>
-              <span className="text-white text-[11px] font-bold w-8 text-center">{scale.toFixed(1)}×</span>
-              <button onClick={() => changeScale(-0.1)} className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/30 flex items-center justify-center text-white transition"><FiMinus size={13} /></button>
-            </div>
-            <div className="bg-black/70 backdrop-blur-sm rounded-2xl p-2 flex flex-col items-center gap-1.5 shadow-lg">
-              <span className="text-white/60 text-[9px] uppercase tracking-wider">Up/Down</span>
-              <button onClick={() => changeOffset(-0.05)} className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/30 flex items-center justify-center text-white transition text-base leading-none">▲</button>
-              <span className="text-white text-[9px] font-semibold">pos</span>
-              <button onClick={() => changeOffset(0.05)} className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/30 flex items-center justify-center text-white transition text-base leading-none">▼</button>
-            </div>
-            <button onClick={resetAdj} className="bg-black/70 backdrop-blur-sm rounded-2xl p-2 flex flex-col items-center gap-0.5 shadow-lg hover:bg-white/20 transition">
-              <FiRotateCcw size={13} className="text-white/60" />
-              <span className="text-white/50 text-[9px]">Reset</span>
+      {/* Mode switcher */}
+      <div className="px-4 pb-3">
+        <div className="grid grid-cols-2 rounded-xl bg-white/10 p-1 text-sm font-semibold" role="tablist">
+          {[
+            ['live', 'Live AR Camera', FiCamera, true],
+            ['ai', 'AI Virtual Model', FiUser, aiAvailable],
+          ].map(([id, label, Icon, enabled]) => (
+            <button key={id} role="tab" aria-selected={mode === id} disabled={!enabled && models !== null} onClick={() => switchMode(id)}
+              className={`flex items-center justify-center gap-2 rounded-lg py-2.5 transition-colors ${mode === id ? 'bg-white text-stone-900 shadow' : 'text-white/75 hover:text-white disabled:opacity-40'}`}>
+              <Icon aria-hidden /> {label}
             </button>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
 
-      {/* Bottom Controls */}
-      <div className="px-5 py-4 bg-gradient-to-r from-purple-900/95 to-indigo-900/95 backdrop-blur-sm">
-        <div className="flex items-center justify-center gap-3 mb-3">
-          <button onClick={savePhoto} disabled={status !== 'detecting'}
-            className="flex items-center gap-2 px-6 py-3 bg-gold-500 hover:bg-gold-400 text-black font-bold rounded-xl disabled:opacity-40 transition text-sm shadow-lg">
-            {saved ? '✓ Saved!' : <><FiDownload size={15} /> Save Photo</>}
-          </button>
-          <button onClick={onClose} className="flex items-center gap-2 px-5 py-3 bg-white/15 hover:bg-white/25 text-white font-semibold rounded-xl transition text-sm">
-            <FiX size={15} /> Close
+      {/* Stage */}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        {mode === 'ai' && model && (
+          <AIModelView productImage={productImage} kind={kind} model={model} models={models} adjust={adjust} canvasRef={canvasRef} onReadyChange={setReady} />
+        )}
+        {mode === 'live' && (
+          <LiveCameraView productImage={productImage} kind={kind} canvasRef={canvasRef} adjustRef={adjustRef} onReadyChange={setReady} />
+        )}
+        {mode === null && <div className="flex h-full items-center justify-center"><div className="h-10 w-10 animate-spin rounded-full border-4 border-gold-400 border-t-transparent" /></div>}
+      </div>
+
+      {/* Controls sheet */}
+      <div className="space-y-3 rounded-t-3xl bg-stone-900 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-[0_-8px_30px_rgba(0,0,0,0.4)]">
+        {mode === 'ai' && aiAvailable && (
+          <div>
+            <p className="mb-2 text-[11px] uppercase tracking-[0.18em] text-white/50">Skin tone</p>
+            <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]" role="radiogroup" aria-label="Model skin tone">
+              {SKIN_TONES.map((t) => {
+                const has = models.some((m) => m.id === t.id);
+                const on = toneId === t.id;
+                return (
+                  <button key={t.id} role="radio" aria-checked={on} disabled={!has} onClick={() => pickTone(t.id)}
+                    className={`flex min-w-[5.5rem] flex-1 touch-manipulation items-center gap-2 rounded-full border px-2.5 py-1.5 text-xs font-semibold transition ${on ? 'border-gold-400 bg-white/10' : 'border-white/15 hover:border-white/40'} disabled:opacity-30`}>
+                    <span className={`h-6 w-6 flex-shrink-0 rounded-full ring-2 ${on ? 'ring-gold-400' : 'ring-white/20'}`} style={{ background: t.hex }} />
+                    <span className="whitespace-nowrap">{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-3">
+          <label className="block">
+            <span className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-white/50">Size</span>
+            <input type="range" min={ADJUST.scale.min} max={ADJUST.scale.max} step={ADJUST.scale.step} value={adjust.scale} onChange={setAdj('scale')}
+              className="h-8 w-full touch-manipulation accent-gold-400" aria-valuetext={`${Math.round(adjust.scale * 100)}%`} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-white/50">Position</span>
+            <input type="range" min={ADJUST.offset.min} max={ADJUST.offset.max} step={ADJUST.offset.step} value={adjust.offset} onChange={setAdj('offset')}
+              className="h-8 w-full touch-manipulation accent-gold-400" aria-label="Move up or down" />
+          </label>
+          <button onClick={() => setAdjust({ scale: 1, offset: 0 })} className="mb-1 flex h-8 w-8 items-center justify-center rounded-full bg-white/10 hover:bg-white/20" aria-label="Reset size and position">
+            <FiRotateCcw size={14} />
           </button>
         </div>
-        <div className="grid grid-cols-3 gap-1.5 text-center">
-          {tips.map(([title, tip]) => (
-            <div key={title} className="bg-white/10 rounded-lg px-2 py-1.5">
-              <p className="text-white text-[10px] font-semibold">{title}</p>
-              <p className="text-white/60 text-[9px]">{tip}</p>
-            </div>
-          ))}
+
+        <div className="grid grid-cols-[auto_auto_1fr] gap-2">
+          <button onClick={save} disabled={!ready} className="flex h-12 items-center justify-center gap-2 rounded-xl bg-white/10 px-4 text-sm font-semibold hover:bg-white/20 disabled:opacity-40" aria-label="Save photo">
+            <FiDownload /> <span className="hidden sm:inline">Save</span>
+          </button>
+          <button onClick={share} disabled={!ready || busy} className="flex h-12 items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 text-sm font-semibold text-white disabled:opacity-40" aria-label="Share on WhatsApp">
+            <WaIcon /> <span className="hidden sm:inline">WhatsApp</span>
+          </button>
+          <button onClick={addToCart} disabled={!inStock} className="flex h-12 items-center justify-center gap-2 rounded-xl bg-gold-500 text-sm font-bold text-stone-900 hover:bg-gold-400 disabled:opacity-40">
+            <FiShoppingCart /> {inStock ? 'Add to Cart' : 'Out of stock'}
+          </button>
         </div>
       </div>
     </div>
