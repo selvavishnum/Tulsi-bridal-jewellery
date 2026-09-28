@@ -43,11 +43,15 @@ export function cldGrid(url) {
   return cldBase(url, 600);
 }
 
-/* High-resolution zoom tier — fetched only once the viewer explicitly
-   zooms (opens the full-screen viewer or hovers the desktop loupe), never
-   during the initial page render. */
+/* Deep-zoom tiers (8000px masters) — fetched only on demand, never during
+   page render. Opening the full-screen viewer loads w_3000 at q_90 (sharp
+   on any phone at 1×–2× zoom); pinching past 2× swaps in w_5000 so single
+   stones and chain links stay crisp. c_limit never upscales. */
 export function cldZoom(url) {
-  return withTransform(url, 'f_auto,q_auto:best,w_4000');
+  return withTransform(url, 'f_auto,q_90,w_3000,c_limit');
+}
+export function cldDeepZoom(url) {
+  return withTransform(url, 'f_auto,q_90,w_5000,c_limit');
 }
 
 /* Small thumbnail tier — the 48–64px selector strip has no business
@@ -56,23 +60,29 @@ export function cldThumb(url, w = 160) {
   return withTransform(url, `f_auto,q_auto:best,w_${w},dpr_auto`);
 }
 
-/* ── Catalog cards: pure-white, retina-sharp tiles ──
+/* ── Catalog cards: edge-to-edge, retina-sharp tiles ──
 
    Each card tile gets a srcset of Cloudinary renditions, so the browser
    picks the right width for the tile's rendered size and the screen's
-   pixel density — up to 1600px (an 800px tile at 2×). c_limit never
-   upscales a smaller original, so fine chains aren't softened.
+   pixel density — up to 2000px (a 1000px tile at 2×).
 
    With the Cloudinary "AI Background Removal" add-on switched on
    (NEXT_PUBLIC_CLOUDINARY_BG_REMOVAL=true), coloured backdrops and props
    are removed and the piece sits on pure white (#FFFFFF). The flag keeps
    the transformation off when the add-on isn't active — otherwise every
    tile URL would fail. */
-export const CARD_WIDTHS = Object.freeze([320, 480, 640, 800, 1200, 1600]);
+export const CARD_WIDTHS = Object.freeze([400, 600, 800, 1000, 1400, 2000]);
 const WHITE_BG = process.env.NEXT_PUBLIC_CLOUDINARY_BG_REMOVAL === 'true';
 
-export function cldCard(url, w = 800, { whiteBg = WHITE_BG } = {}) {
-  const tile = `f_auto,q_auto:best,w_${w},c_limit`;
+/**
+ * Grid tile, edge-to-edge: a 3:4 crop that fills the card, with
+ * Cloudinary's content-aware gravity (g_auto) keeping the jewellery in
+ * frame so it appears zoomed-in and large. Widths up to 2000 (a 1000px
+ * tile at 2×) come from the srcset — the browser picks per device, so a
+ * phone never downloads desktop pixels.
+ */
+export function cldCard(url, w = 1000, { whiteBg = WHITE_BG } = {}) {
+  const tile = `f_auto,q_auto:best,w_${w},ar_3:4,c_fill,g_auto`;
   /* Background removal first (its own step), then flatten onto white. */
   return withTransform(url, whiteBg ? `e_background_removal/b_rgb:FFFFFF,${tile}` : tile);
 }
@@ -85,7 +95,7 @@ export function cldCardSrcSet(url, opts) {
 
 /** ~1KB blurred preview shown while the sharp tile loads (LQIP). */
 export function cldPlaceholder(url) {
-  return isCloudinary(url) ? withTransform(url, 'f_auto,q_auto:low,w_32,e_blur:400') : null;
+  return isCloudinary(url) ? withTransform(url, 'f_auto,q_auto:low,w_32,ar_3:4,c_fill,g_auto,e_blur:400') : null;
 }
 
 export const isCloudinary = (url) => typeof url === 'string' && url.includes('res.cloudinary.com') && url.includes(UPLOAD_MARKER);
