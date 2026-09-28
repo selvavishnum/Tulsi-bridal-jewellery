@@ -55,3 +55,37 @@ export function cldZoom(url) {
 export function cldThumb(url, w = 160) {
   return withTransform(url, `f_auto,q_auto:best,w_${w},dpr_auto`);
 }
+
+/* ── Catalog cards: pure-white, retina-sharp tiles ──
+
+   Each card tile gets a srcset of Cloudinary renditions, so the browser
+   picks the right width for the tile's rendered size and the screen's
+   pixel density — up to 1600px (an 800px tile at 2×). c_limit never
+   upscales a smaller original, so fine chains aren't softened.
+
+   With the Cloudinary "AI Background Removal" add-on switched on
+   (NEXT_PUBLIC_CLOUDINARY_BG_REMOVAL=true), coloured backdrops and props
+   are removed and the piece sits on pure white (#FFFFFF). The flag keeps
+   the transformation off when the add-on isn't active — otherwise every
+   tile URL would fail. */
+export const CARD_WIDTHS = Object.freeze([320, 480, 640, 800, 1200, 1600]);
+const WHITE_BG = process.env.NEXT_PUBLIC_CLOUDINARY_BG_REMOVAL === 'true';
+
+export function cldCard(url, w = 800, { whiteBg = WHITE_BG } = {}) {
+  const tile = `f_auto,q_auto:best,w_${w},c_limit`;
+  /* Background removal first (its own step), then flatten onto white. */
+  return withTransform(url, whiteBg ? `e_background_removal/b_rgb:FFFFFF,${tile}` : tile);
+}
+
+/** srcset for a card tile, e.g. "…w_320… 320w, …w_480… 480w, …". */
+export function cldCardSrcSet(url, opts) {
+  if (!isCloudinary(url)) return undefined;
+  return CARD_WIDTHS.map((w) => `${cldCard(url, w, opts)} ${w}w`).join(', ');
+}
+
+/** ~1KB blurred preview shown while the sharp tile loads (LQIP). */
+export function cldPlaceholder(url) {
+  return isCloudinary(url) ? withTransform(url, 'f_auto,q_auto:low,w_32,e_blur:400') : null;
+}
+
+export const isCloudinary = (url) => typeof url === 'string' && url.includes('res.cloudinary.com') && url.includes(UPLOAD_MARKER);

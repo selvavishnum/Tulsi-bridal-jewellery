@@ -18,7 +18,7 @@ export default function FeaturedProducts() {
   }, []);
 
   return (
-    <section className="py-12">
+    <section className="py-12 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-end justify-between mb-8">
           <div>
@@ -36,7 +36,7 @@ export default function FeaturedProducts() {
           <p className="text-center text-gray-400 py-12">No featured products yet.</p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-            {products.map((p) => <ProductCard key={p._id} product={p} />)}
+            {products.map((p) => <ProductCard key={p._id} product={p} showCategory />)}
           </div>
         )}
 
