@@ -156,8 +156,8 @@ export default function ShopContent() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-x-2 gap-y-6">
-              {products.map((p) => <ProductCard key={p._id} product={p} />)}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+              {products.map((p, i) => <ProductCard key={p._id} product={p} priority={i < 4} />)}
             </div>
             {pages > 1 && (
               <div className="flex justify-center gap-2 mt-8">

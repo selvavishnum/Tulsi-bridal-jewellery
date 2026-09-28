@@ -80,7 +80,7 @@ export default function CatalogContent() {
     <div className="min-h-screen bg-white">
 
       {/* ── Title header — arshis.in style ── */}
-      <div className="bg-[#f5ede6] py-7 text-center border-b border-stone-200">
+      <div className="bg-white py-7 text-center border-b border-gray-100">
         <h1 className="font-serif text-3xl font-bold text-stone-800 tracking-wide">
           {search ? `"${search}"` : categoryTitle(category)}
         </h1>
@@ -159,8 +159,8 @@ export default function CatalogContent() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-x-2 gap-y-6">
-            {products.map((p) => <ProductCard key={p._id || p.id} product={p} />)}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+            {products.map((p, i) => <ProductCard key={p._id || p.id} product={p} priority={i < 4} />)}
           </div>
         )}
       </div>

@@ -3,16 +3,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';import Link from 'next/link';
 import Image from 'next/image';
 import {
-  FiHeart, FiShoppingCart, FiShield, FiRefreshCw,
+  FiShoppingCart, FiShield, FiRefreshCw,
   FiLock, FiStar, FiCalendar, FiArrowRight, FiChevronLeft, FiChevronRight,
   FiInstagram, FiExternalLink, FiFilter,
 } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
-import { useWishlist } from '@/context/WishlistContext';
-import { formatPrice, getDiscountPercentage } from '@/lib/utils';
 import { cacheGet, cacheSet } from '@/lib/clientCache';
-import { cldGrid } from '@/lib/cloudinaryImage';
-import toast from 'react-hot-toast';
+import ProductCard from '@/components/shop/ProductCard';
 
 function getCookie(name) {
   if (typeof document === 'undefined') return '';
@@ -282,100 +279,6 @@ function HeroSlider({ slides }) {
   );
 }
 
-/* ── Product Card ── */
-function ProductCard({ product }) {
-  const { dispatch } = useCart();
-  const { toggle, isWishlisted } = useWishlist();
-  const wrapRef = useRef(null);
-  const discount = getDiscountPercentage(product.price, product.discountPrice);
-  const displayPrice = product.discountPrice || product.price;
-  const id = product._id || product.id;
-  const wishlisted = isWishlisted(id);
-
-  function addToCart(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    dispatch({ type: 'ADD_ITEM', payload: product });
-    toast.success('Added to cart!');
-  }
-
-  function toggleWish(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    toggle(product);
-  }
-
-  function handleMouseMove(e) {
-    const el = wrapRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const x = ((e.clientX - r.left) / r.width  - 0.5) * 14;
-    const y = ((e.clientY - r.top)  / r.height - 0.5) * -10;
-    el.style.transition = 'transform 0.08s ease';
-    el.style.transform  = `perspective(900px) rotateY(${x}deg) rotateX(${y}deg) translateZ(6px)`;
-  }
-  function handleMouseLeave() {
-    const el = wrapRef.current;
-    if (!el) return;
-    el.style.transition = 'transform 0.55s cubic-bezier(0.22,1,0.36,1)';
-    el.style.transform  = '';
-  }
-
-  return (
-    <Link href={`/product/${id}`} className="group block">
-      <div
-        ref={wrapRef}
-        className="card-3d"
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-      >
-      <div className="relative overflow-hidden bg-white aspect-square rounded-t-2xl border border-stone-100 group-hover:border-gold-200/60 transition-colors duration-300">
-        {product.images?.[0] ? (
-          <Image
-            src={cldGrid(product.images[0])}
-            alt={product.name}
-            fill
-            unoptimized
-            className="object-cover transition-transform duration-700 group-hover:scale-105"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-stone-200 text-6xl">💍</div>
-        )}
-
-        {/* Badges */}
-        <div className="absolute top-3 left-3 flex flex-col gap-1.5">
-          {discount > 0 && <span className="badge-sale">-{discount}%</span>}
-          {product.isAvailableForRent && <span className="badge-rental"><FiCalendar className="text-[9px]" /> Rent</span>}
-        </div>
-
-        {/* Wishlist */}
-        <button onClick={toggleWish} className={`absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-sm transition-all duration-200 shadow-sm ${wishlisted ? 'bg-wine-700 text-white' : 'bg-white/90 text-stone-400 hover:bg-wine-700 hover:text-white'}`}>
-          <FiHeart className={`text-sm ${wishlisted ? 'fill-current' : ''}`} />
-        </button>
-
-        {/* Quick Add */}
-        {product.stock > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 translate-y-0 sm:translate-y-full sm:group-hover:translate-y-0 transition-transform duration-300">
-            <button onClick={addToCart} className="w-full py-3 bg-wine-700 text-white text-xs font-semibold tracking-luxury uppercase flex items-center justify-center gap-2 hover:bg-wine-800 transition-colors">
-              <FiShoppingCart className="text-xs" /> Add to Cart
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="pt-3 pb-1 px-0.5">
-        <p className="text-2xs text-gold-600 uppercase tracking-widest font-semibold mb-1 capitalize">{product.category}</p>
-        <p className="font-serif text-base text-stone-800 font-semibold leading-snug line-clamp-2 group-hover:text-wine-700 transition-colors">{product.name}</p>
-        <div className="flex items-baseline gap-2 mt-2 pb-3">
-          <span className="font-serif font-bold text-wine-700 text-base">{formatPrice(displayPrice)}</span>
-          {discount > 0 && <span className="text-xs text-stone-400 line-through">{formatPrice(product.price)}</span>}
-        </div>
-      </div>
-      </div>
-    </Link>
-  );
-}
-
 /* ── Main Page ── */
 export default function HomeClient() {
   const { charges } = useCart();
@@ -579,7 +482,7 @@ export default function HomeClient() {
       })()}
 
       {/* ── BROWSE ALL PRODUCTS (Infinite Scroll) ── */}
-      <section className="py-12 bg-ivory-50" id="shop">
+      <section className="py-12 bg-white" id="shop">
         <div className="section-container">
           {/* Header */}
           <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
@@ -624,7 +527,7 @@ export default function HomeClient() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5">
               {Array.from({ length: BROWSE_LIMIT }).map((_, i) => (
                 <div key={i}>
-                  <div className="aspect-square skeleton rounded-2xl mb-3" />
+                  <div className="aspect-square skeleton rounded-xl border border-gray-100 mb-3" />
                   <div className="h-2.5 skeleton rounded w-1/3 mb-2" />
                   <div className="h-3.5 skeleton rounded w-3/4 mb-1.5" />
                   <div className="h-3 skeleton rounded w-1/2" />
@@ -640,7 +543,7 @@ export default function HomeClient() {
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5">
                 {browseProducts.map((p) => (
-                  <ProductCard key={(p._id || p.id) + browseCat} product={p} />
+                  <ProductCard key={(p._id || p.id) + browseCat} product={p} showCategory />
                 ))}
               </div>
 
@@ -649,7 +552,7 @@ export default function HomeClient() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mt-3">
                   {Array.from({ length: 4 }).map((_, i) => (
                     <div key={i}>
-                      <div className="aspect-square skeleton rounded-2xl mb-3" />
+                      <div className="aspect-square skeleton rounded-xl border border-gray-100 mb-3" />
                       <div className="h-2.5 skeleton rounded w-1/3 mb-2" />
                       <div className="h-3.5 skeleton rounded w-3/4" />
                     </div>
