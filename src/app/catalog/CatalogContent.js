@@ -159,7 +159,7 @@ export default function CatalogContent() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
             {products.map((p, i) => <ProductCard key={p._id || p.id} product={p} priority={i < 4} />)}
           </div>
         )}

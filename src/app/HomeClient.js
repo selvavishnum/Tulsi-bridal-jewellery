@@ -524,10 +524,10 @@ export default function HomeClient() {
 
           {/* Product Grid */}
           {!browseInitDone ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
               {Array.from({ length: BROWSE_LIMIT }).map((_, i) => (
                 <div key={i}>
-                  <div className="aspect-square skeleton rounded-xl border border-gray-100 mb-3" />
+                  <div className="aspect-[3/4] skeleton rounded-lg mb-2" />
                   <div className="h-2.5 skeleton rounded w-1/3 mb-2" />
                   <div className="h-3.5 skeleton rounded w-3/4 mb-1.5" />
                   <div className="h-3 skeleton rounded w-1/2" />
@@ -541,7 +541,7 @@ export default function HomeClient() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
                 {browseProducts.map((p) => (
                   <ProductCard key={(p._id || p.id) + browseCat} product={p} showCategory />
                 ))}
@@ -549,10 +549,10 @@ export default function HomeClient() {
 
               {/* Loading skeletons for next batch */}
               {browseLoading && (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5 mt-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 mt-3">
                   {Array.from({ length: 4 }).map((_, i) => (
                     <div key={i}>
-                      <div className="aspect-square skeleton rounded-xl border border-gray-100 mb-3" />
+                      <div className="aspect-[3/4] skeleton rounded-lg mb-2" />
                       <div className="h-2.5 skeleton rounded w-1/3 mb-2" />
                       <div className="h-3.5 skeleton rounded w-3/4" />
                     </div>
