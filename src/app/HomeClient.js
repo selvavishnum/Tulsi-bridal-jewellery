@@ -279,6 +279,16 @@ function HeroSlider({ slides }) {
   );
 }
 
+/* Instagram handle from whatever was saved in settings: a profile link
+   (often with a share-tracking "?igsh=…" tail), "@handle" or "handle". */
+export function instagramHandle(value, fallback = 'tulsibridal') {
+  const v = String(value || '').trim();
+  if (!v) return fallback;
+  const m = v.match(/instagram\.com\/([^/?#]+)/i);
+  const h = (m ? m[1] : v).replace(/^@/, '').split(/[/?#]/)[0];
+  return /^[A-Za-z0-9._]{1,30}$/.test(h) ? h : fallback;
+}
+
 /* ── Main Page ── */
 export default function HomeClient() {
   const { charges } = useCart();
@@ -382,23 +392,16 @@ export default function HomeClient() {
     return () => obs.disconnect();
   }, [browseHasMore, browseLoading, browseCat, browseSort, fetchBrowse]);
 
+  const igHandle = instagramHandle(siteSettings.instagram);
+  const igUrl = `https://www.instagram.com/${igHandle}/`;
+  /* Only posts that actually have a photo — no empty grey tiles. */
+  const igPosts = instagramFeed.filter((post) => post && post.imageUrl);
+
   return (
     <div className="min-h-screen bg-white">
 
       {/* ── HERO SLIDER ── */}
       <HeroSlider slides={heroSlides} />
-
-      {/* ── ANNOUNCEMENT STRIP ── */}
-      <div className="bg-velvet-950 border-b border-gold-900/30 py-2.5">
-        <div className="flex items-center justify-center gap-6 md:gap-10 flex-wrap px-4">
-          {['New Arrivals Every Week', 'Free Delivery Above ₹2,000', 'Cash on Delivery', '100% Authentic Jewellery'].map((item, i) => (
-            <span key={item} className="flex items-center gap-6 text-[10px] text-gold-400/70 tracking-[0.22em] font-semibold uppercase whitespace-nowrap">
-              {i > 0 && <span className="w-px h-3 bg-gold-700/50 hidden md:block" />}
-              <span>✦ {item}</span>
-            </span>
-          ))}
-        </div>
-      </div>
 
       {/* ── TOP CATEGORIES ── */}
       {(() => {
@@ -572,26 +575,23 @@ export default function HomeClient() {
       </section>
 
       {/* ── SHOP PROMO ── */}
-      <section className="relative py-20 overflow-hidden bg-luxury-gradient">
-        <div className="absolute inset-0 opacity-[0.04]" style={{
-          backgroundImage: 'repeating-linear-gradient(45deg, #c9973a 0, #c9973a 1px, transparent 0, transparent 40px)',
-        }} />
-        <div className="section-container relative z-10">
+      <section className="relative py-16 bg-white border-y border-stone-100">
+        <div className="section-container relative">
           <div className="max-w-xl mx-auto text-center">
-            <span className="inline-block text-xs tracking-[0.4em] uppercase font-semibold text-gold-400 mb-5 border border-gold-400/40 px-3 py-1 rounded-full">
+            <span className="inline-block text-xs tracking-[0.4em] uppercase font-semibold text-gold-700 mb-5 border border-gold-300 px-3 py-1 rounded-full">
               Crafted for Your Special Day
             </span>
-            <h2 className="font-serif text-4xl md:text-5xl font-bold text-white mb-5 leading-tight">
-              Exquisite Bridal<br /><span className="text-gold-400">Jewellery Collection</span>
+            <h2 className="font-serif text-4xl md:text-5xl font-bold text-stone-900 mb-5 leading-tight">
+              Exquisite Bridal<br /><span className="text-wine-700">Jewellery Collection</span>
             </h2>
-            <p className="text-white/50 text-sm leading-relaxed mb-10">
+            <p className="text-stone-500 text-sm leading-relaxed mb-10">
               Discover our exclusive collection of handcrafted bridal jewellery — timeless designs for your most memorable moments.
             </p>
             <div className="grid grid-cols-3 gap-6 mb-10 max-w-xs mx-auto">
               {[['500+', 'Designs'], ['100%', 'Authentic'], deliveryStat].map(([val, label]) => (
                 <div key={label}>
-                  <p className="font-serif text-2xl font-bold text-gold-400">{val}</p>
-                  <p className="text-white/40 text-xs tracking-wider">{label}</p>
+                  <p className="font-serif text-2xl font-bold text-gold-700">{val}</p>
+                  <p className="text-stone-500 text-xs tracking-wider">{label}</p>
                 </div>
               ))}
             </div>
@@ -600,7 +600,7 @@ export default function HomeClient() {
                 <FiShoppingCart /> Shop Now
               </Link>
               <a href={`https://wa.me/${waNumber}?text=${encodeURIComponent("Hi! I'd like to enquire about your bridal jewellery collection.")}`} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-8 py-3.5 border border-white/30 hover:border-gold-400 text-white hover:text-gold-400 font-semibold text-sm tracking-luxury uppercase transition-all duration-300">
+                className="inline-flex items-center gap-2 px-8 py-3.5 border border-stone-300 hover:border-wine-700 text-stone-800 hover:text-wine-700 font-semibold text-sm tracking-luxury uppercase transition-all duration-300">
                 WhatsApp Us
               </a>
             </div>
@@ -627,16 +627,16 @@ export default function HomeClient() {
       </section>
 
       {/* ── HAPPY CUSTOMERS ── */}
-      <section className="py-16 bg-velvet-950">
+      <section className="py-16 bg-white">
         <div className="section-container">
           <div className="text-center mb-10">
-            <div className="luxury-label justify-center mb-3 text-gold-400">What Our Brides Say</div>
-            <h2 className="font-serif text-3xl font-bold text-white">Happy Customers</h2>
+            <div className="luxury-label justify-center mb-3">What Our Brides Say</div>
+            <h2 className="font-serif text-3xl font-bold text-stone-900">Happy Customers</h2>
           </div>
           {/* Mobile: horizontal scroll; Desktop: 3-column grid */}
           <div className="flex gap-5 overflow-x-auto pb-3 md:overflow-visible md:grid md:grid-cols-3 md:pb-0 snap-x snap-mandatory md:snap-none scrollbar-hide">
             {testimonials.map((t, i) => (
-              <div key={i} className="bg-velvet-900/60 border border-gold-800/30 rounded-2xl p-6 backdrop-blur-sm flex-shrink-0 w-[80vw] max-w-xs md:w-auto md:max-w-none snap-start flex flex-col hover:border-gold-600/50 transition-colors duration-300">
+              <div key={i} className="bg-white border border-stone-100 shadow-sm rounded-2xl p-6 flex-shrink-0 w-[80vw] max-w-xs md:w-auto md:max-w-none snap-start flex flex-col hover:border-gold-300 transition-colors duration-300">
                 {/* Customer photo + info at top */}
                 <div className="flex items-center gap-3 mb-4">
                   {t.photo ? (
@@ -644,22 +644,22 @@ export default function HomeClient() {
                       <Image src={t.photo} alt={t.name} fill className="object-cover" />
                     </div>
                   ) : (
-                    <div className="w-12 h-12 rounded-full bg-wine-900 flex items-center justify-center flex-shrink-0 border-2 border-gold-500/50 shadow-sm">
-                      <span className="text-gold-400 font-serif font-bold text-lg">{(t.name || 'C')[0].toUpperCase()}</span>
+                    <div className="w-12 h-12 rounded-full bg-wine-50 flex items-center justify-center flex-shrink-0 border-2 border-gold-300">
+                      <span className="text-wine-700 font-serif font-bold text-lg">{(t.name || 'C')[0].toUpperCase()}</span>
                     </div>
                   )}
                   <div>
-                    <p className="font-semibold text-white/90 text-sm">{t.name}</p>
-                    {t.location && <p className="text-gold-500 text-xs font-medium">{t.location}</p>}
+                    <p className="font-semibold text-stone-900 text-sm">{t.name}</p>
+                    {t.location && <p className="text-gold-700 text-xs font-medium">{t.location}</p>}
                     <div className="flex gap-0.5 mt-1">
                       {Array.from({ length: 5 }).map((_, si) => (
-                        <FiStar key={si} className={`text-xs ${si < (t.rating || 5) ? 'text-gold-400 fill-current' : 'text-velvet-700 fill-current'}`} />
+                        <FiStar key={si} className={`text-xs ${si < (t.rating || 5) ? 'text-gold-500 fill-current' : 'text-stone-200 fill-current'}`} />
                       ))}
                     </div>
                   </div>
                 </div>
                 {/* Review text */}
-                <p className="font-serif text-white/50 text-sm leading-relaxed italic flex-1">"{t.review || t.text}"</p>
+                <p className="font-serif text-stone-600 text-sm leading-relaxed italic flex-1">"{t.review || t.text}"</p>
               </div>
             ))}
           </div>
@@ -671,17 +671,17 @@ export default function HomeClient() {
         <div className="section-container">
           <div className="text-center mb-10">
             <div className="luxury-label justify-center mb-3">
-              {siteSettings.instagram ? `@${siteSettings.instagram.replace(/^https?:\/\/(www\.)?instagram\.com\/?/, '').replace(/\/$/, '')}` : '@tulsibridal'}
+              @{igHandle}
             </div>
             <h2 className="font-serif text-3xl font-bold text-stone-800">Follow Us on Instagram</h2>
           </div>
 
-          {instagramFeed.length > 0 ? (
+          {igPosts.length > 0 ? (
             <div className="grid grid-cols-3 gap-2 md:gap-3 mb-8">
-              {instagramFeed.slice(0, 6).map((post, i) => (
+              {igPosts.slice(0, 6).map((post, i) => (
                 <a
                   key={i}
-                  href={post.postUrl || siteSettings.instagram || 'https://instagram.com/tulsibridal'}
+                  href={post.postUrl || igUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="group relative aspect-square overflow-hidden rounded-xl bg-stone-100 block"
@@ -711,12 +711,12 @@ export default function HomeClient() {
               <FiInstagram className="text-5xl text-stone-300 mb-4" />
               <p className="text-stone-500 font-medium mb-1">Follow us on Instagram</p>
               <a
-                href={siteSettings.instagram || 'https://instagram.com/tulsibridal'}
+                href={igUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-wine-700 font-semibold text-sm hover:underline"
               >
-                @tulsibridal
+                @{igHandle}
               </a>
             </div>
           )}
@@ -724,28 +724,28 @@ export default function HomeClient() {
           {/* Follow button */}
           <div className="text-center">
             <a
-              href={siteSettings.instagram || 'https://instagram.com/tulsibridal'}
+              href={igUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2.5 px-8 py-3.5 bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 text-white font-semibold text-sm tracking-luxury uppercase rounded-full hover:shadow-lg hover:scale-105 transition-all duration-300"
             >
               <FiInstagram className="text-base" />
-              Follow @{siteSettings.instagram ? siteSettings.instagram.replace(/^https?:\/\/(www\.)?instagram\.com\/?/, '').replace(/\/$/, '') : 'tulsibridal'} on Instagram
+              Follow @{igHandle} on Instagram
             </a>
           </div>
         </div>
       </section>
 
       {/* ── CTA STRIP ── */}
-      <section className="bg-wine-900 py-14 text-center px-4">
-        <p className="text-xs tracking-[0.35em] uppercase text-wine-300 font-semibold mb-3">Begin Your Bridal Journey</p>
-        <h2 className="font-serif text-3xl font-bold text-white mb-8">Find Your Perfect Jewellery</h2>
+      <section className="bg-white border-t border-stone-100 py-14 text-center px-4">
+        <p className="text-xs tracking-[0.35em] uppercase text-gold-700 font-semibold mb-3">Begin Your Bridal Journey</p>
+        <h2 className="font-serif text-3xl font-bold text-stone-900 mb-8">Find Your Perfect Jewellery</h2>
         <div className="flex justify-center gap-4 flex-wrap">
           <Link href="/catalog" className="inline-flex items-center gap-2 px-9 py-3.5 bg-gold-gradient text-white font-semibold text-sm tracking-luxury uppercase rounded-xl hover:shadow-gold transition-all duration-300">
             View Catalogue
           </Link>
           <a href={`https://wa.me/${waNumber}?text=${encodeURIComponent("Hi! I'm interested in your bridal jewellery collection.")}`} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-9 py-3.5 border border-white/25 hover:border-white/60 text-white font-semibold text-sm tracking-luxury uppercase rounded-xl transition-all duration-300">
+            className="inline-flex items-center gap-2 px-9 py-3.5 border border-stone-300 hover:border-wine-700 text-stone-800 hover:text-wine-700 font-semibold text-sm tracking-luxury uppercase rounded-xl transition-all duration-300">
             WhatsApp Us
           </a>
         </div>
