@@ -11,18 +11,20 @@
    Pure module — no '@/…' imports — so `node --test` can exercise it.
    ───────────────────────────────────────────── */
 
-export const PRODUCT_CATEGORIES = Object.freeze(['necklace', 'earrings', 'bangles', 'bracelet', 'ring', 'maang-tikka', 'nose-ring', 'anklet', 'set', 'other']);
+export const PRODUCT_CATEGORIES = Object.freeze(['necklace', 'earrings', 'bangles', 'bracelet', 'ring', 'maang-tikka', 'nose-ring', 'anklet', 'set', 'chain', 'other']);
 export const PRODUCT_MATERIALS = Object.freeze(['gold', 'silver', 'gold-plated', 'silver-plated', 'kundan', 'meenakari', 'polki', 'other']);
 
 export const VENDOR_EDITABLE_FIELDS = Object.freeze([
   'name', 'sku', 'category', 'material', 'description', 'shortDescription', 'images',
   'price', 'discountPrice', 'stock', 'shippingCharge',
   'weight', 'color', 'occasion', 'purity', 'metalType', 'stoneType', 'usageInstructions', 'tags',
+  /* Quick Add: design type (Temple / Matte / Kundan…) and the low-stock alert level. */
+  'subCategory', 'lowStockAt',
 ]);
 
 const TEXT_LIMITS = {
   name: 120, sku: 40, description: 5000, shortDescription: 300, weight: 40, color: 40,
-  occasion: 60, purity: 40, metalType: 60, stoneType: 60, usageInstructions: 1000,
+  occasion: 60, purity: 40, metalType: 60, stoneType: 60, usageInstructions: 1000, subCategory: 40,
 };
 const MAX_IMAGES = 8;
 const MAX_PRICE = 10_000_000; // ₹1 crore — a typo guard, not a business rule
@@ -50,6 +52,7 @@ export function parseVendorProduct(body, current = null) {
   }
   /* Titles end up in staff print-outs and emails: no markup characters. */
   if (data.name && /[<>]/.test(data.name)) return fail('Product title can’t contain < or >.');
+  if (data.subCategory && /[<>]/.test(data.subCategory)) return fail('Design type can’t contain < or >.');
   if (!current && !data.name) return fail('Product title is required.');
   if (current && body.name !== undefined && !data.name) return fail('Product title is required.');
   if (data.sku !== undefined && data.sku !== '' && !SKU.test(data.sku)) {
@@ -87,6 +90,12 @@ export function parseVendorProduct(body, current = null) {
     const n = Number(body.stock);
     if (!Number.isInteger(n) || n < 0 || n > 100000) return fail('Stock must be a whole number from 0 to 100000.');
     data.stock = n;
+  }
+
+  if (body.lowStockAt !== undefined) {
+    const n = body.lowStockAt === '' || body.lowStockAt === null ? 2 : Number(body.lowStockAt);
+    if (!Number.isInteger(n) || n < 0 || n > 999) return fail('Low-stock alert must be a whole number from 0 to 999.');
+    data.lowStockAt = n;
   }
 
   /* Per-piece shipping the vendor pays out of their payout. Blank = none
@@ -165,6 +174,8 @@ export function toVendorProduct(id, p) {
     price: Number(p.price) || 0,
     discountPrice: Number(p.discountPrice) || 0,
     stock: Number(p.stock) || 0,
+    subCategory: p.subCategory || '',
+    lowStockAt: Number.isInteger(p.lowStockAt) ? p.lowStockAt : null,
     shippingCharge: typeof p.vendorShipping === 'number' ? p.vendorShipping : null,
     weight: p.weight || '',
     color: p.color || '',

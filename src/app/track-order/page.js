@@ -220,10 +220,12 @@ function TrackOrderContent() {
                     <span>Discount</span><span>-{formatPrice(order.discount)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-gray-500">
-                  <span>Shipping</span>
-                  <span>{order.shippingCost === 0 ? 'FREE' : formatPrice(order.shippingCost)}</span>
-                </div>
+                {order.shippingCost > 0 && (
+                  <div className="flex justify-between text-gray-500">
+                    <span>Shipping</span>
+                    <span>{formatPrice(order.shippingCost)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-bold text-gray-800 text-base">
                   <span>Total</span><span>{formatPrice(order.total)}</span>
                 </div>

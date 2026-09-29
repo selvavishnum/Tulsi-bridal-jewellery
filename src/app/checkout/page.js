@@ -463,6 +463,8 @@ export default function CheckoutPage() {
                   </div>
                   <div className="border-t pt-3 space-y-2 text-sm text-gray-600">
                     <div className="flex justify-between"><span>Subtotal</span><span>{formatPrice(subtotal)}</span></div>
+                    {/* Shipping included in product prices (fee off in Store settings) → no shipping row. */}
+                    {charges.enable_shipping_fee && (
                     <div className="flex justify-between">
                       <span>Shipping</span>
                       {shippingCost === 0 ? (
@@ -471,6 +473,7 @@ export default function CheckoutPage() {
                         </span>
                       ) : <span>{formatPrice(shippingCost)}</span>}
                     </div>
+                    )}
                     {charges.enable_shipping_fee && shippingCost > 0 && charges.free_shipping_threshold > 0 && (
                       <p className="text-xs text-gray-400 -mt-1">Add {formatPrice(charges.free_shipping_threshold - subtotal)} more for free delivery</p>
                     )}

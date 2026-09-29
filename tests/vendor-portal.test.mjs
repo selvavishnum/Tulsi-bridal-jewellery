@@ -371,3 +371,25 @@ test('vendor delete: only without trading history; removes vendor, login and pro
   assert.ok(!col('staff').has('sNew'));
   assert.ok(!col('products').has('pNew'));
 });
+
+/* ── Vendor Quick Add ── */
+test('vendor quick add: design type, Chains category and low-stock level are saved; product goes to review; bad values refused', async () => {
+  signInAs('a@vendor.test');
+  const r = await call(products, 'POST', { url: 'http://tulsi.test/api/vendor/products', body: {
+    name: 'Rose Gold Pendant Chain', category: 'chain', subCategory: 'Minimalist', sku: 'V-CH-TEST01',
+    price: 999, discountPrice: 799, stock: 5, lowStockAt: 1, images: ['https://res.cloudinary.com/x/image/upload/v1/tulsi-bridal/vendors/vA/a.jpg'], shippingCharge: 60,
+  } });
+  assert.equal(r.status, 201, JSON.stringify(r.json));
+  assert.equal(r.json.data.subCategory, 'Minimalist');
+  assert.equal(r.json.data.lowStockAt, 1);
+  assert.equal(r.json.data.shippingCharge, 60);
+  assert.equal(r.json.data.status, 'in_review', 'Tulsi reviews it first');
+  const saved = [...db.store.get('products').values()].find((p) => p.sku === 'V-CH-TEST01');
+  assert.equal(saved.vendorId, 'vA');
+  assert.equal(saved.isActive, false);
+  const bad = await call(products, 'POST', { url: 'http://tulsi.test/api/vendor/products', body: { name: 'X piece', category: 'chain', price: 500, stock: 1, lowStockAt: -3 } });
+  assert.equal(bad.status, 400);
+  assert.match(bad.json.message, /Low-stock/);
+  const markup = await call(products, 'POST', { url: 'http://tulsi.test/api/vendor/products', body: { name: 'Y piece', category: 'chain', price: 500, stock: 1, subCategory: '<b>' } });
+  assert.equal(markup.status, 400);
+});

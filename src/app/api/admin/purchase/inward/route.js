@@ -2,14 +2,8 @@ import { NextResponse } from 'next/server';
 import { getDB, snapshotToArr, docToObj } from '@/lib/firebase';
 import { requireAccess } from '@/lib/adminCollection';
 import { CAN } from '@/lib/access';
+import { nextLotNumber } from '@/lib/stockLots';
 
-async function generateLotNumber(db) {
-  const snap = await db.collection('stockLots').orderBy('lotNumber', 'desc').limit(1).get();
-  if (snap.empty) return 'LOT-TBJ-0001';
-  const last = snap.docs[0].data().lotNumber || 'LOT-TBJ-0000';
-  const num = parseInt(last.split('-').pop() || '0') + 1;
-  return `LOT-TBJ-${String(num).padStart(4, '0')}`;
-}
 
 export async function GET() {
   try {
@@ -69,7 +63,7 @@ export async function POST(request) {
           stockBatch.update(productRef, updateData);
 
           // Create FIFO stock lot
-          const lotNumber = await generateLotNumber(db);
+          const lotNumber = await nextLotNumber(db);
           const lotRef = db.collection('stockLots').doc();
           stockBatch.set(lotRef, {
             lotNumber,

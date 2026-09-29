@@ -117,10 +117,12 @@ function OrderSuccessContent() {
                   <span>−{fmt(order.discount)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-sm text-stone-500">
-                <span>Shipping</span>
-                <span>{order.shippingCost === 0 ? 'FREE' : fmt(order.shippingCost)}</span>
-              </div>
+              {order.shippingCost > 0 && (
+                <div className="flex justify-between text-sm text-stone-500">
+                  <span>Shipping</span>
+                  <span>{fmt(order.shippingCost)}</span>
+                </div>
+              )}
               {order.codFee > 0 && (
                 <div className="flex justify-between text-sm text-stone-500">
                   <span>COD Fee</span>

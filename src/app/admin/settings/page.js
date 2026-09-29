@@ -399,7 +399,7 @@ function ChargesCard() {
 
   return (
     <SectionCard title="Shipping & Payment Charges" description="What customers pay on top of their items. Checked again on the server for every order.">
-      <Toggle value={!!c.enable_shipping_fee} onChange={(v) => set('enable_shipping_fee', v)} label="Enable Shipping Fee" description="Off = free delivery on every order" />
+      <Toggle value={!!c.enable_shipping_fee} onChange={(v) => set('enable_shipping_fee', v)} label="Enable Shipping Fee" description="Off = shipping included in product prices — customers see no shipping charge or shipping line anywhere" />
       <div className="grid md:grid-cols-2 gap-4 py-3">
         {money('shipping_fee_amount', 'Standard Shipping Amount (₹)', null, !c.enable_shipping_fee)}
         {money('free_shipping_threshold', 'Free Shipping Above Order Value (₹)', '0 = never free', !c.enable_shipping_fee)}

@@ -18,7 +18,7 @@ export default function VendorDashboardPage() {
   const s = summary.data.summary;
   const list = products.data;
   const count = (st) => list.filter((p) => p.status === st).length;
-  const lowStock = list.filter((p) => p.status === 'live' && p.stock <= LOW_STOCK);
+  const lowStock = list.filter((p) => p.status === 'live' && p.stock <= (p.lowStockAt ?? LOW_STOCK));
   const openOrders = orderList.filter((o) => ['pending', 'confirmed', 'processing', 'shipped'].includes(o.status));
 
   return (
