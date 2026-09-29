@@ -9,6 +9,10 @@
 
    Props:
      open, onClose
+     mode             — 'admin' (Inventory screen) or 'vendor' (Vendor Portal:
+                        no purchase cost, own shipping charge, photos through
+                        /api/vendor/upload, saved for Tulsi's review)
+     categories       — slugs offered under "More…"
      pricing          — may set prices / purchase cost (Super Admin, Business Manager)
      onOptimistic(p)  — a pending row to show immediately
      onSaved(tempId, product) / onFailed(tempId)  — swap it for the real one / drop it */
@@ -24,8 +28,28 @@ import {
 
 const blank = (keep = {}) => ({
   name: '', category: keep.category || 'necklace', designType: keep.designType || '', sku: '',
-  purchasePrice: '', mrp: '', salePrice: '', stock: '1', lowStockAt: '2',
+  purchasePrice: '', mrp: '', salePrice: '', stock: '1', lowStockAt: '2', shippingCharge: keep.shippingCharge ?? '',
 });
+
+/* Vendor photos go through the portal's upload route (per-vendor folder),
+   with progress via XHR. Resolves to the Cloudinary URL. */
+function uploadVendorPhoto(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const xhr = new XMLHttpRequest();
+    xhr.upload.addEventListener('progress', (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); });
+    xhr.addEventListener('load', () => {
+      try {
+        const d = JSON.parse(xhr.responseText);
+        if (d.success) resolve({ url: d.data.secure_url || d.data.url }); else reject(new Error(d.message));
+      } catch { reject(new Error('Upload failed')); }
+    });
+    xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
+    xhr.open('POST', '/api/vendor/upload');
+    xhr.send(fd);
+  });
+}
 
 const inp = (err) => `w-full rounded-xl border bg-white px-3 py-2.5 text-[15px] text-gray-900 outline-none placeholder:text-gray-400 focus:ring-2 ${
   err ? 'border-red-400 focus:ring-red-200' : 'border-gray-200 focus:border-amber-400 focus:ring-amber-200'}`;
@@ -43,7 +67,9 @@ function Field({ label, htmlFor, error, hint, children, className = '' }) {
 const onlyMoney = (v) => v.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
 const onlyInt = (v) => v.replace(/\D/g, '');
 
-export default function QuickAddModal({ open, onClose, pricing = true, onOptimistic, onSaved, onFailed }) {
+export default function QuickAddModal({ open, onClose, mode = 'admin', categories = ALL_CATEGORIES, pricing: pricingProp = true, onOptimistic, onSaved, onFailed }) {
+  const vendor = mode === 'vendor';
+  const pricing = vendor || pricingProp;
   const uid = useId();
   const id = (k) => `${uid}-${k}`;
   const [form, setForm] = useState(blank);
@@ -73,7 +99,9 @@ export default function QuickAddModal({ open, onClose, pricing = true, onOptimis
   const off = discountPercent(form.mrp, form.salePrice);
   const uploading = images.some((i) => !i.url && !i.error);
   const cost = Number(form.purchasePrice); const sale = Number(form.salePrice || form.mrp);
-  const grossMargin = pricing && cost > 0 && sale > 0 ? { amt: sale - cost, pct: Math.round(((sale - cost) / sale) * 100) } : null;
+  const grossMargin = pricing && !vendor && cost > 0 && sale > 0 ? { amt: sale - cost, pct: Math.round(((sale - cost) / sale) * 100) } : null;
+  /* Vendor: what reaches them per piece (0% commission) after their own shipping. */
+  const vendorGets = vendor && sale > 0 ? sale - (Number(form.shippingCharge) || 0) : null;
 
   function addFiles(files) {
     const room = MAX_IMAGES - images.length;
@@ -83,9 +111,13 @@ export default function QuickAddModal({ open, onClose, pricing = true, onOptimis
       const key = `${file.name}-${file.size}-${Math.random().toString(36).slice(2, 7)}`;
       const preview = URL.createObjectURL(file);
       setImages((list) => [...list, { key, preview, url: null, progress: 0, error: null }]);
-      uploadToCloudinary(file, 'tulsi-bridal/products', (pct) => setImages((list) => list.map((i) => (i.key === key ? { ...i, progress: pct } : i))))
+      const progress = (pct) => setImages((list) => list.map((i) => (i.key === key ? { ...i, progress: pct } : i)));
+      (vendor ? uploadVendorPhoto(file, progress) : uploadToCloudinary(file, 'tulsi-bridal/products', progress))
         .then((res) => setImages((list) => list.map((i) => (i.key === key ? { ...i, url: res.secure_url || res.url, progress: 100 } : i))))
-        .catch(() => setImages((list) => list.map((i) => (i.key === key ? { ...i, error: 'Upload failed' } : i))));
+        .catch((err) => {
+          setImages((list) => list.map((i) => (i.key === key ? { ...i, error: 'Upload failed' } : i)));
+          if (err?.message) toast.error(err.message);
+        });
     }
   }
   function removeImage(key) {
@@ -121,8 +153,15 @@ export default function QuickAddModal({ open, onClose, pricing = true, onOptimis
     });
     setSaving(true);
     try {
-      const res = await fetch('/api/admin/products/quick-add', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      /* Vendors save through their own product API (reviewed by Tulsi). */
+      const body = vendor ? {
+        name: d.name, category: d.category, subCategory: d.designType, ...(d.sku && { sku: d.sku }),
+        price: d.mrp, discountPrice: d.salePrice < d.mrp ? d.salePrice : 0,
+        stock: d.stock, lowStockAt: d.lowStockAt, images: payload.images,
+        shippingCharge: form.shippingCharge === '' ? null : Number(form.shippingCharge),
+      } : payload;
+      const res = await fetch(vendor ? '/api/vendor/products' : '/api/admin/products/quick-add', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       const out = await res.json().catch(() => ({}));
       if (!out.success) {
@@ -132,12 +171,13 @@ export default function QuickAddModal({ open, onClose, pricing = true, onOptimis
         return;
       }
       onSaved?.(tempId, out.data);
-      toast.success(pricing ? `Added “${out.data.name}” · ${out.data.stock} in stock` : `Draft “${out.data.name}” added — a Super Admin will price & publish it`);
+      toast.success(vendor ? `“${out.data.name}” sent to Tulsi for review`
+        : pricing ? `Added “${out.data.name}” · ${out.data.stock} in stock` : `Draft “${out.data.name}” added — a Super Admin will price & publish it`);
       images.forEach((i) => URL.revokeObjectURL(i.preview));
       setImages([]);
       setErrors({});
       if (another) {
-        setForm(blank({ category: form.category, designType: form.designType }));
+        setForm(blank({ category: form.category, designType: form.designType, shippingCharge: form.shippingCharge }));
         setTimeout(() => nameRef.current?.focus(), 30);
       } else {
         setForm(blank());
@@ -163,7 +203,7 @@ export default function QuickAddModal({ open, onClose, pricing = true, onOptimis
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3.5">
           <div>
             <h2 id={id('title')} className="text-lg font-bold text-gray-900">Quick add product</h2>
-            <p className="text-xs text-gray-400">{pricing ? 'Goes live in the shop with its stock.' : 'Saved as a draft — prices are set by a Super Admin.'}</p>
+            <p className="text-xs text-gray-400">{vendor ? 'Tulsi reviews it, then it goes live in the shop.' : pricing ? 'Goes live in the shop with its stock.' : 'Saved as a draft — prices are set by a Super Admin.'}</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-full p-2 text-gray-500 hover:bg-gray-100" aria-label="Close"><FiX size={18} /></button>
         </div>
@@ -189,7 +229,7 @@ export default function QuickAddModal({ open, onClose, pricing = true, onOptimis
                   onChange={(e) => e.target.value && setForm((f) => ({ ...f, category: e.target.value }))}
                   className={`rounded-full border px-3 py-1.5 text-sm capitalize ${quick.includes(form.category) ? 'border-gray-200 text-gray-500' : 'border-maroon-950 bg-maroon-950 text-white'}`}>
                   <option value="">More…</option>
-                  {ALL_CATEGORIES.filter((c) => !quick.includes(c)).map((c) => <option key={c} value={c}>{c.replace(/-/g, ' ')}</option>)}
+                  {categories.filter((c) => !quick.includes(c)).map((c) => <option key={c} value={c}>{c.replace(/-/g, ' ')}</option>)}
                 </select>
               </div>
             </Field>
@@ -203,7 +243,7 @@ export default function QuickAddModal({ open, onClose, pricing = true, onOptimis
                 <div className="flex gap-2">
                   <input id={id('sku')} value={form.sku} onChange={set('sku', (v) => v.toUpperCase().replace(/\s+/g, '-'))} maxLength={40}
                     autoCapitalize="characters" autoComplete="off" placeholder="TJ-NK-1024" className={`${inp(errors.sku)} font-mono`} />
-                  <button type="button" onClick={() => { setForm((f) => ({ ...f, sku: generateSku(f.category) })); setErrors(({ sku: _drop, ...r }) => r); }}
+                  <button type="button" onClick={() => { setForm((f) => ({ ...f, sku: generateSku(f.category, Date.now(), vendor ? 'V' : 'TJ') })); setErrors(({ sku: _drop, ...r }) => r); }}
                     className="flex flex-shrink-0 items-center gap-1 rounded-xl border border-gray-200 px-3 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Auto-generate">
                     <FiRefreshCw size={14} /> Auto
                   </button>
@@ -215,10 +255,12 @@ export default function QuickAddModal({ open, onClose, pricing = true, onOptimis
           {/* 2. Pricing */}
           {pricing && (
             <section className="space-y-2">
-              <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                <Field label="Cost ₹" htmlFor={id('purchasePrice')} error={errors.purchasePrice} hint="Private">
-                  <input id={id('purchasePrice')} inputMode="numeric" value={form.purchasePrice} onChange={set('purchasePrice', onlyMoney)} placeholder="0" className={`${inp(errors.purchasePrice)} tabular-nums`} />
-                </Field>
+              <div className={`grid gap-2 sm:gap-3 ${vendor ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                {!vendor && (
+                  <Field label="Cost ₹" htmlFor={id('purchasePrice')} error={errors.purchasePrice} hint="Private">
+                    <input id={id('purchasePrice')} inputMode="numeric" value={form.purchasePrice} onChange={set('purchasePrice', onlyMoney)} placeholder="0" className={`${inp(errors.purchasePrice)} tabular-nums`} />
+                  </Field>
+                )}
                 <Field label="MRP ₹" htmlFor={id('mrp')} error={errors.mrp}>
                   <input id={id('mrp')} inputMode="numeric" value={form.mrp} onChange={set('mrp', onlyMoney)} placeholder="0" className={`${inp(errors.mrp)} tabular-nums`} />
                 </Field>
@@ -233,19 +275,29 @@ export default function QuickAddModal({ open, onClose, pricing = true, onOptimis
                     Margin ₹{grossMargin.amt.toLocaleString('en-IN')} ({grossMargin.pct}%)
                   </span>
                 )}
-                {!off && !grossMargin && <span className="text-gray-400">Enter the MRP above the selling price to show a discount.</span>}
+                {vendorGets !== null && (
+                  <span className={`rounded-full px-2.5 py-1 font-semibold tabular-nums ${vendorGets >= 0 ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'}`}>
+                    You get ₹{vendorGets.toLocaleString('en-IN')} per piece · 0% commission
+                  </span>
+                )}
+                {!off && !grossMargin && vendorGets === null && <span className="text-gray-400">Enter the MRP above the selling price to show a discount.</span>}
               </div>
             </section>
           )}
 
           {/* 3. Stock */}
-          <section className="grid grid-cols-2 gap-3">
-            <Field label="Opening stock" htmlFor={id('stock')} error={errors.stock}>
+          <section className={`grid gap-3 ${vendor ? 'grid-cols-3' : 'grid-cols-2'}`}>
+            <Field label={vendor ? 'Stock' : 'Opening stock'} htmlFor={id('stock')} error={errors.stock}>
               <input id={id('stock')} inputMode="numeric" value={form.stock} onChange={set('stock', onlyInt)} className={`${inp(errors.stock)} tabular-nums`} />
             </Field>
-            <Field label="Low-stock alert at" htmlFor={id('lowStockAt')} error={errors.lowStockAt}>
+            <Field label={vendor ? 'Alert at' : 'Low-stock alert at'} htmlFor={id('lowStockAt')} error={errors.lowStockAt}>
               <input id={id('lowStockAt')} inputMode="numeric" value={form.lowStockAt} onChange={set('lowStockAt', onlyInt)} className={`${inp(errors.lowStockAt)} tabular-nums`} />
             </Field>
+            {vendor && (
+              <Field label="Shipping ₹" htmlFor={id('shippingCharge')} hint="Per piece">
+                <input id={id('shippingCharge')} inputMode="numeric" value={form.shippingCharge} onChange={set('shippingCharge', onlyMoney)} placeholder="—" className={`${inp()} tabular-nums`} />
+              </Field>
+            )}
           </section>
 
           {/* 4. Photos */}

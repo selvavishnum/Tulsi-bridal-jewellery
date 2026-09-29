@@ -45,12 +45,20 @@ export function Stat({ label, value, hint, tone = 'text-stone-900' }) {
 export const Loading = () => <div className="py-20 flex justify-center"><LoadingSpinner size="lg" /></div>;
 
 /* GET a vendor API; `refresh()` reloads it. Optional polling while the tab is visible. */
+/* Fired after a Quick Add, so open product lists and the dashboard refresh. */
+export const VENDOR_PRODUCTS_CHANGED = 'tulsi:vendor-products-changed';
+
 export function useVendorData(url, { pollMs = 0 } = {}) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const load = useCallback(() => fetch(url, { cache: 'no-store' }).then((r) => r.json())
     .then((d) => { if (d.success) { setData(d.data); setError(''); } else setError(d.message || 'Could not load.'); })
     .catch(() => setError('Could not load. Check your connection and refresh.')), [url]);
+  useEffect(() => {
+    if (!/\/api\/vendor\/(products|summary)/.test(url)) return undefined;
+    window.addEventListener(VENDOR_PRODUCTS_CHANGED, load);
+    return () => window.removeEventListener(VENDOR_PRODUCTS_CHANGED, load);
+  }, [url, load]);
   useEffect(() => {
     load();
     if (!pollMs) return undefined;

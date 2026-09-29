@@ -32,10 +32,10 @@ export const MAX_IMAGES = 3;
 export const SKU_RE = /^[A-Z0-9][A-Z0-9-]{2,39}$/;
 
 /** "TJ-NK-L8K2QX" — category code + a time-based suffix (unique per second). */
-export function generateSku(category, now = Date.now()) {
+export function generateSku(category, now = Date.now(), prefix = 'TJ') {
   const code = QUICK_CATEGORIES.find((c) => c.slug === category)?.code
     || String(category || 'PR').replace(/[^a-z]/gi, '').slice(0, 2).toUpperCase() || 'PR';
-  return `TJ-${code}-${now.toString(36).toUpperCase().slice(-6)}`;
+  return `${prefix}-${code}-${now.toString(36).toUpperCase().slice(-6)}`;
 }
 
 /** % off from MRP and selling price (0 when there's no real discount). */
