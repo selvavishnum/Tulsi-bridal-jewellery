@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
   FiPlus, FiRefreshCw, FiBarChart2, FiSearch, FiX, FiEdit2,
-  FiTrash2, FiSave, FiPackage, FiEye, FiEyeOff,
+  FiTrash2, FiSave, FiPackage, FiEye, FiEyeOff, FiZap,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { useSession } from 'next-auth/react';
@@ -13,11 +13,13 @@ import { CAN } from '@/lib/access';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import Badge from '@/components/ui/Badge';
 import { formatPrice } from '@/lib/utils';
+import { isLowStock } from '@/lib/quickAddProduct';
+import QuickAddModal from '@/components/admin/inventory/quick-add-modal';
 
 const CATEGORIES = [
   '', 'necklace', 'earrings', 'bangles', 'bracelet', 'ring', 'maang-tikka',
   'nose-ring', 'anklet', 'set', 'mala', 'haar', 'jhumka', 'kada', 'choker',
-  'pendant', 'mangalsutra', 'other',
+  'pendant', 'mangalsutra', 'chain', 'other',
 ];
 
 const LIMITS = [25, 50, 100];
@@ -35,6 +37,14 @@ export default function InventoryPage() {
   const [limit, setLimit] = useState(50);
   const [drafts, setDrafts] = useState({});
   const [saving, setSaving] = useState({});
+  /* Quick Add: product staff and pricing roles can create products;
+     prices / cost only for Super Admin & Business Manager. */
+  const canCreate = !session?.user?.tier || CAN.editCatalog.includes(session.user.tier);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const closeQuick = useCallback(() => setQuickOpen(false), []);
+  const addPending = useCallback((p) => setProducts((list) => [p, ...list]), []);
+  const confirmPending = useCallback((tempId, saved) => setProducts((list) => list.map((p) => (p.id === tempId ? saved : p))), []);
+  const dropPending = useCallback((tempId) => setProducts((list) => list.filter((p) => p.id !== tempId)), []);
 
   async function fetchInventory() {
     setLoading(true);
@@ -116,7 +126,7 @@ export default function InventoryPage() {
   }
 
   const totalValue = products.reduce((s, p) => s + (p.price || 0) * (p.stock || 0), 0);
-  const lowStockCount = products.filter((p) => (p.stock || 0) <= 3).length;
+  const lowStockCount = products.filter(isLowStock).length;
 
   const inp = 'w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400 bg-white transition';
 
@@ -133,11 +143,18 @@ export default function InventoryPage() {
             )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {canCreate && (
+            <button onClick={() => setQuickOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 text-white text-sm font-bold rounded-xl hover:bg-amber-600 transition shadow-sm"
+            >
+              <FiZap /> Quick Add
+            </button>
+          )}
           <Link href="/admin/products"
             className="flex items-center gap-2 px-4 py-2.5 bg-maroon-950 text-white text-sm font-bold rounded-xl hover:bg-maroon-900 transition shadow-sm"
           >
-            <FiPlus /> Add Product
+            <FiPlus /> Full Product Form
           </Link>
           <button onClick={fetchInventory}
             className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-600 text-sm font-semibold rounded-xl hover:bg-gray-50 transition"
@@ -222,7 +239,12 @@ export default function InventoryPage() {
                       {(product.showMe !== false) ? <FiEye className="text-[10px]" /> : <FiEyeOff className="text-[10px]" />}
                     </span>
                   </div>
-                  {currentStock <= 3 && (
+                  {product.pending && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/60">
+                      <span className="flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-600 shadow"><LoadingSpinner size="sm" /> Saving…</span>
+                    </div>
+                  )}
+                  {isLowStock({ ...product, stock: currentStock }) && (
                     <div className="absolute bottom-2 left-2">
                       <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">LOW</span>
                     </div>
@@ -303,7 +325,9 @@ export default function InventoryPage() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1.5 pt-1">
-                    {isDirty ? (
+                    {product.pending ? (
+                      <p className="text-xs text-gray-400">Adding to inventory…</p>
+                    ) : isDirty ? (
                       <>
                         <button onClick={() => saveCard(product)} disabled={isSaving}
                           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-maroon-950 text-white text-xs font-bold rounded-lg hover:bg-maroon-900 disabled:opacity-50 transition"
@@ -346,6 +370,9 @@ export default function InventoryPage() {
           })}
         </div>
       )}
+
+      <QuickAddModal open={quickOpen} onClose={closeQuick} pricing={!isCatalog}
+        onOptimistic={addPending} onSaved={confirmPending} onFailed={dropPending} />
     </div>
   );
 }
