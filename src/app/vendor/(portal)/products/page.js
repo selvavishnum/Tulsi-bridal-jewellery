@@ -6,7 +6,7 @@ import { FiPlus, FiSearch, FiEdit2 } from 'react-icons/fi';
 import { cldThumb } from '@/lib/cloudinaryImage';
 import { Loading, Pill, PRODUCT_STATUS, inr, useVendorData } from '@/components/vendor/ui';
 
-const FILTERS = [['all', 'All'], ['live', 'Live'], ['in_review', 'In review'], ['out_of_stock', 'Out of stock'], ['hidden', 'Hidden']];
+const FILTERS = [['all', 'All'], ['live', 'Live'], ['in_review', 'In review'], ['rejected', 'Not approved'], ['out_of_stock', 'Out of stock'], ['hidden', 'Hidden']];
 
 export default function VendorProductsPage() {
   const { data, error } = useVendorData('/api/vendor/products');
@@ -73,6 +73,9 @@ export default function VendorProductsPage() {
                     <Pill className={cls}>{text}</Pill>
                     <FiEdit2 className="text-stone-400" aria-hidden />
                   </div>
+                  {p.status === 'rejected' && p.reviewNote && (
+                    <p className="mt-1 text-xs text-red-700 line-clamp-2">Tulsi: {p.reviewNote} — edit to resubmit.</p>
+                  )}
                 </div>
               </Link>
             );

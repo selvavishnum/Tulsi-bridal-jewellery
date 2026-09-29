@@ -133,14 +133,18 @@ test('customers never see supply cost or vendor settlement fields', () => {
   assert.equal(mixedOrder.items[0].supplyCost, 900, 'must not mutate the stored order');
 });
 
-test('vendor products must carry a margin (₹ or %) and the price must cover margin + vendor shipping', () => {
+test('vendor margin may be ₹0 / 0% (free for sellers); the price must still cover margin + vendor shipping', () => {
   assert.equal(validateVendorPricing({ price: 1000 }), null);
   assert.equal(validateVendorPricing({ vendorId: PLATFORM_VENDOR_ID, price: 1000 }), null);
-  assert.match(validateVendorPricing({ vendorId: 'v1', price: 1000 }), /margin/);
+  assert.equal(validateVendorPricing({ vendorId: 'v1', price: 1000 }), null, 'no margin = free for the seller');
+  assert.equal(validateVendorPricing({ vendorId: 'v1', price: 249, supplyCost: 0, vendorShipping: 50 }), null, '₹0 margin allowed');
+  assert.match(validateVendorPricing({ vendorId: 'v1', price: 1000, supplyCost: -5 }), /negative/);
+  assert.match(validateVendorPricing({ vendorId: 'v1', price: 40, supplyCost: 0, vendorShipping: 50 }), /cover/, 'price must still cover shipping');
   assert.match(validateVendorPricing({ vendorId: 'v1', price: 1000, discountPrice: 700, supplyCost: 800 }), /doesn't cover the margin/);
   assert.equal(validateVendorPricing({ vendorId: 'v1', price: 1000, supplyCost: 800 }), null);
   // percentage margin
-  assert.match(validateVendorPricing({ vendorId: 'v1', price: 1000, marginMode: 'percent', marginPercent: 0 }), /percentage/);
+  assert.equal(validateVendorPricing({ vendorId: 'v1', price: 1000, marginMode: 'percent', marginPercent: 0 }), null, '0% allowed');
+  assert.match(validateVendorPricing({ vendorId: 'v1', price: 1000, marginMode: 'percent', marginPercent: -1 }), /percentage/);
   assert.match(validateVendorPricing({ vendorId: 'v1', price: 1000, marginMode: 'percent', marginPercent: 100 }), /percentage/);
   assert.equal(validateVendorPricing({ vendorId: 'v1', price: 1000, marginMode: 'percent', marginPercent: 20 }), null);
   // vendor shipping must fit in what's left

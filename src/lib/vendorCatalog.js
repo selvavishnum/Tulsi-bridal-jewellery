@@ -143,6 +143,7 @@ export function vendorPriceFloorError(merged) {
 /* Where a vendor's product stands, in their words. */
 export function vendorProductStatus(p) {
   if (p.reviewStatus === 'pending' && p.isActive === false) return 'in_review';
+  if (p.reviewStatus === 'rejected' && p.isActive === false) return 'rejected';
   if (p.isActive === false || p.showMe === false) return 'hidden';
   if (!(Number(p.stock) > 0)) return 'out_of_stock';
   return 'live';
@@ -152,6 +153,7 @@ export function vendorProductStatus(p) {
    margin, no platform flags, no stock-lot or warehouse data. */
 export function toVendorProduct(id, p) {
   return {
+    reviewNote: p.reviewStatus === 'rejected' ? p.reviewNote || '' : '',
     id,
     name: p.name || '',
     sku: p.sku || '',

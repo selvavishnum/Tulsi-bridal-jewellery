@@ -282,3 +282,39 @@ test('parseVendorProduct: whitelist, price and offer rules, image origin', () =>
   assert.equal(parseVendorProfile({ platformFeeBps: 1 }).status, 403);
   assert.ok(parseVendorProfile({ pickupAddress: { line1: 'x', city: 'y', state: 'z', pincode: '12' } }).error);
 });
+
+/* ── Vendor product review (approve / reject) ── */
+test('review: catalog managers approve (₹0 margin ok) or reject with a reason; vendors and staff without pricing rights cannot', async () => {
+  const review = await import(src('app/api/admin/products/[id]/review/route.js'));
+  const post = (id, body) => review.POST(new Request('http://tulsi.test/x', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }), { params: Promise.resolve({ id }) })
+    .then(async (r) => ({ status: r.status, json: await r.json() }));
+  const col = () => db.store.get('products');
+  col().set('pNew', { name: 'Chain', vendorId: 'vA', price: 249, vendorShipping: 50, supplyCost: 0, stock: 10, isActive: false, showMe: false, reviewStatus: 'pending' });
+  col().set('pBad', { name: 'Blurry', vendorId: 'vA', price: 500, stock: 2, isActive: false, showMe: false, reviewStatus: 'pending' });
+
+  signInAs('a@vendor.test');
+  assert.equal((await post('pNew', { decision: 'approve' })).status, 403, 'a vendor can’t approve their own product');
+  signInAs('owner@tulsi.test');
+  const ok = await post('pNew', { decision: 'approve' });
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+  assert.equal(col().get('pNew').isActive, true);
+  assert.equal(col().get('pNew').showMe, true);
+  assert.equal(col().get('pNew').reviewStatus, 'approved');
+  assert.equal((await post('pNew', { decision: 'approve' })).status, 409, 'already reviewed');
+
+  assert.equal((await post('pBad', { decision: 'reject' })).status, 400, 'reason required');
+  assert.equal((await post('pBad', { decision: 'reject', reason: 'Please add clearer photos' })).status, 200);
+  assert.equal(col().get('pBad').reviewStatus, 'rejected');
+  assert.equal(col().get('pBad').isActive, false);
+
+  /* The vendor sees the reason, fixes the product, and it returns to review. */
+  signInAs('a@vendor.test');
+  const list = await call(products, 'GET', { url: 'http://tulsi.test/api/vendor/products' });
+  const bad = list.json.data.find((p) => p.id === 'pBad');
+  assert.equal(bad.status, 'rejected');
+  assert.equal(bad.reviewNote, 'Please add clearer photos');
+  const fixed = await call(productById, 'PUT', { params: { id: 'pBad' }, body: { description: 'New sharp photos added' } });
+  assert.equal(fixed.status, 200, JSON.stringify(fixed.json));
+  assert.equal(col().get('pBad').reviewStatus, 'pending');
+  assert.equal(col().get('pBad').reviewNote, null);
+});

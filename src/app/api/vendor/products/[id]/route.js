@@ -53,6 +53,9 @@ export async function PUT(request, context) {
       await logVendorStockChange(ctx, id, Number(current.stock) || 0, data.stock);
     }
 
+    /* A product Tulsi didn't approve goes back into review once fixed. */
+    if (current.reviewStatus === 'rejected') Object.assign(data, { reviewStatus: 'pending', reviewNote: null });
+
     const saved = await ctx.sdb.update('products', id, data);
     if (!saved) return notFound();
     return NextResponse.json({ success: true, data: toVendorProduct(saved.id, saved) });
