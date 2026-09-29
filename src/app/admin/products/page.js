@@ -479,7 +479,7 @@ export default function AdminProductsPage() {
                 <Field label="Sold by">
                   <select value={form.vendorId} onChange={(e) => upd('vendorId', e.target.value)} className={sel}>
                     <option value="">Tulsi (own stock)</option>
-                    {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}{v.status === 'suspended' ? ' (suspended)' : ''}</option>)}
+                    {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}{v.status && v.status !== 'active' ? ` (${v.status})` : ''}</option>)}
                   </select>
                 </Field>
               </div>

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { FiBriefcase, FiPlus, FiEdit2, FiSend, FiRefreshCw, FiX, FiAlertTriangle, FiChevronDown, FiChevronUp } from 'react-icons/fi';
+import { FiBriefcase, FiPlus, FiEdit2, FiSend, FiRefreshCw, FiX, FiAlertTriangle, FiChevronDown, FiChevronUp, FiPause, FiPlay, FiSlash, FiTrash2 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import { RETURN_WINDOW_DAYS } from '@/lib/settlement';
 
@@ -27,7 +27,8 @@ function StatusChip({ status }) {
     settled: 'bg-green-50 text-green-700',
     reversed: 'bg-gray-100 text-gray-500 line-through',
     active: 'bg-green-50 text-green-700',
-    suspended: 'bg-red-50 text-red-700',
+    suspended: 'bg-amber-50 text-amber-800',
+    blocked: 'bg-red-50 text-red-700',
   };
   return <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${map[status] || 'bg-gray-100 text-gray-600'}`}>{status}</span>;
 }
@@ -68,6 +69,54 @@ export default function VendorsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  /* Suspend / block / reactivate — hides or restores the vendor's products
+     in the shop, and turns their login off / on for block. */
+  const STATUS_CONFIRM = {
+    suspended: (v) => `Suspend ${v.name}?\n\nTheir products are hidden from the shop. They can still sign in to finish existing orders and see earnings.`,
+    blocked: (v) => `Block ${v.name}?\n\nTheir products are hidden and their dashboard login is turned off. Money you owe them stays in the ledger.`,
+    active: (v) => `Reactivate ${v.name}?\n\nTheir products come back to the shop${v.status === 'blocked' ? ' and their login is turned back on' : ''}.`,
+  };
+  async function changeStatus(v, next) {
+    if (!window.confirm(STATUS_CONFIRM[next](v))) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/vendors?id=${encodeURIComponent(v.id)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: next }),
+      });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.message);
+      const c = d.data || {};
+      const parts = [
+        c.productsHidden ? `${c.productsHidden} product${c.productsHidden !== 1 ? 's' : ''} hidden` : '',
+        c.productsRestored ? `${c.productsRestored} product${c.productsRestored !== 1 ? 's' : ''} back in the shop` : '',
+        c.loginsOff ? 'login turned off' : '', c.loginsOn ? 'login turned on' : '',
+      ].filter(Boolean);
+      toast.success(`${v.name}: ${next === 'active' ? 'active' : next}${parts.length ? ` — ${parts.join(', ')}` : ''}`);
+      load();
+    } catch (e) {
+      toast.error(e.message || 'Could not change the status');
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function removeVendor(v) {
+    const typed = window.prompt(`Delete ${v.name} permanently?\n\nThis removes the vendor, their login, their products and chats. It can't be undone. Vendors with orders or payouts can't be deleted — block them instead.\n\nType the vendor name to confirm:`);
+    if (typed === null) return;
+    if (typed.trim() !== v.name) { toast.error('Name didn’t match — nothing was deleted.'); return; }
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/vendors?id=${encodeURIComponent(v.id)}`, { method: 'DELETE' });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.message);
+      toast.success(`${v.name} deleted (${d.data.products} product${d.data.products !== 1 ? 's' : ''} removed)`);
+      load();
+    } catch (e) {
+      toast.error(e.message || 'Could not delete', { duration: 8000 });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function decidePayout(v, decision) {
     if (decision === 'approve' && !window.confirm(`Send all future payouts for ${v.name} to ${destination(v.pendingPayout)}?`)) return;
@@ -270,6 +319,31 @@ export default function VendorsPage() {
                       {v.inReviewCount} new product{v.inReviewCount !== 1 ? 's' : ''} to review — check the margin and publish →
                     </a>
                   )}
+                  {isOwner && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {v.status === 'active' || !v.status ? (
+                        <button onClick={() => changeStatus(v, 'suspended')} disabled={busy}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-amber-200 text-amber-800 text-xs font-semibold hover:bg-amber-50 disabled:opacity-40">
+                          <FiPause /> Suspend
+                        </button>
+                      ) : (
+                        <button onClick={() => changeStatus(v, 'active')} disabled={busy}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-green-200 text-green-700 text-xs font-semibold hover:bg-green-50 disabled:opacity-40">
+                          <FiPlay /> {v.status === 'blocked' ? 'Unblock' : 'Reactivate'}
+                        </button>
+                      )}
+                      {v.status !== 'blocked' && (
+                        <button onClick={() => changeStatus(v, 'blocked')} disabled={busy}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-red-200 text-red-700 text-xs font-semibold hover:bg-red-50 disabled:opacity-40">
+                          <FiSlash /> Block
+                        </button>
+                      )}
+                      <button onClick={() => removeVendor(v)} disabled={busy}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 text-xs font-semibold hover:border-red-300 hover:text-red-700 disabled:opacity-40">
+                        <FiTrash2 /> Delete
+                      </button>
+                    </div>
+                  )}
                   {v.pendingPayout && (
                     <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 p-2 text-xs text-amber-900">
                       <p><span className="font-semibold">Vendor asked to change payouts to:</span> <span className="font-mono">{destination(v.pendingPayout)}</span></p>
@@ -406,7 +480,8 @@ export default function VendorsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <select id="v-status" value={form.values.status} onChange={(e) => setField('status', e.target.value)} className={inp}>
                   <option value="active">Selling (active)</option>
-                  <option value="suspended">Suspended — products can&apos;t be ordered</option>
+                  <option value="suspended">Suspended — products hidden, vendor can still sign in</option>
+                  <option value="blocked">Blocked — products hidden, login turned off</option>
                 </select>
                 <label className="flex items-center gap-2 text-sm"><input id="v-login" type="checkbox" checked={!!form.values.loginActive} onChange={(e) => setField('loginActive', e.target.checked)} /> Dashboard login enabled</label>
                 <input id="v-newpw" type="password" minLength={8} placeholder="New login password (optional)" value={form.values.newPassword} onChange={(e) => setField('newPassword', e.target.value)} className={`${inp} col-span-2`} />

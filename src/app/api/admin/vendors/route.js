@@ -6,6 +6,8 @@ import { requireRole, ROLES, CAN } from '@/lib/requireRole';
 import { summarizeLedger, PLATFORM_VENDOR_ID } from '@/lib/settlement';
 import { parsePayout } from '@/lib/payoutDestination';
 import { createVendorAccount, ProvisionError } from '@/lib/vendorProvision';
+import { VENDOR_STATUSES } from '@/lib/vendorStatus';
+import { setVendorStatus, deleteVendor, VendorLifecycleError } from '@/lib/vendorLifecycle';
 
 function adminEmails() {
   return (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
@@ -189,9 +191,10 @@ export async function PUT(request) {
     }
     if (body.contactName !== undefined) update.contactName = String(body.contactName).trim();
     if (body.phone !== undefined) update.phone = String(body.phone).trim();
-    if (body.status !== undefined) {
-      if (!['active', 'suspended'].includes(body.status)) return NextResponse.json({ success: false, message: 'Status must be active or suspended.' }, { status: 400 });
-      update.status = body.status;
+    /* Status goes through setVendorStatus below (hides / restores their
+       products and turns logins off / on). */
+    if (body.status !== undefined && !VENDOR_STATUSES.includes(body.status)) {
+      return NextResponse.json({ success: false, message: 'Status must be active, suspended or blocked.' }, { status: 400 });
     }
     if (body.platformFeePercent !== undefined) {
       const bps = parseFeeBps(body.platformFeePercent);
@@ -247,8 +250,26 @@ export async function PUT(request) {
       }
       await Promise.all(logins.docs.map((d) => d.ref.update(patch)));
     }
-    return NextResponse.json({ success: true });
+    /* Last, so blocking always wins over the form's login checkbox. */
+    const change = body.status !== undefined ? await setVendorStatus(db, id, body.status, session.user.email || null) : null;
+    return NextResponse.json({ success: true, data: change });
   } catch (e) {
+    return NextResponse.json({ success: false, message: e.message }, { status: 500 });
+  }
+}
+
+/* DELETE /api/admin/vendors?id=… — permanently remove a vendor with no
+   orders or payout history (owner only). Otherwise refused: block them. */
+export async function DELETE(request) {
+  try {
+    const session = await requireOwner();
+    if (!session) return NextResponse.json({ success: false, message: 'Only the store owner can delete vendors.' }, { status: 403 });
+    const id = new URL(request.url).searchParams.get('id');
+    if (!id || id === PLATFORM_VENDOR_ID) return NextResponse.json({ success: false, message: 'Vendor id required' }, { status: 400 });
+    const removed = await deleteVendor(getDB(), id);
+    return NextResponse.json({ success: true, data: removed });
+  } catch (e) {
+    if (e instanceof VendorLifecycleError) return NextResponse.json({ success: false, message: e.message }, { status: e.status });
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }
 }
