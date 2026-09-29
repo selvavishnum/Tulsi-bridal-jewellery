@@ -69,6 +69,9 @@ export const quickAddSchema = z.object({
   purchasePrice: money,
   mrp: money,
   salePrice: money,
+  /* Shipping is built into the price the customer sees (never shown as a
+     separate charge): it is added to both MRP and selling price. */
+  shipping: money,
   stock: count(1, 9999, 1),
   lowStockAt: count(0, 999, 2),
   images: z.array(z.string().regex(/^https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\//, 'Upload images through the form'))
@@ -93,11 +96,25 @@ export function parseQuickAdd(input, { pricing = true } = {}) {
   if (pricing && !errors.salePrice && !(num(input?.salePrice) > 0) && !(num(input?.mrp) > 0)) errors.salePrice = 'Enter the selling price';
   if (Object.keys(errors).length) return { errors };
   const d = r.data;
-  if (!pricing) return { data: { ...d, purchasePrice: null, mrp: null, salePrice: null } };
+  if (!pricing) return { data: { ...d, purchasePrice: null, mrp: null, salePrice: null, shipping: 0 } };
   /* MRP defaults to the selling price when left blank (no discount). */
   const mrp = d.mrp > 0 ? d.mrp : d.salePrice;
   const sale = d.salePrice > 0 ? d.salePrice : mrp;
-  return { data: { ...d, mrp, salePrice: sale } };
+  return { data: { ...d, mrp, salePrice: sale, shipping: d.shipping || 0 } };
+}
+
+/**
+ * What the customer sees once shipping is built in: MRP and selling price
+ * each + shipping, rounded to the rupee-paise. discountPrice is 0 when
+ * there's no real offer (the store's convention).
+ */
+export function customerPrices({ mrp, salePrice, shipping = 0 }) {
+  const ship = Number(shipping) || 0;
+  const m = Number(mrp) || 0; const s = Number(salePrice) || m;
+  const r = (v) => Math.round(v * 100) / 100;
+  const price = r(m + ship);
+  const offer = s < m ? r(s + ship) : 0;
+  return { price, discountPrice: offer, pays: offer || price, includedShipping: r(ship) };
 }
 
 /** Low-stock line for the inventory screen (older products default to 3). */

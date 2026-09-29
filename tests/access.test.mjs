@@ -124,3 +124,10 @@ test('fulfilment and catalog views drop every cost field', () => {
   assert.ok(f.includes('9876543210'), 'fulfilment still gets the shipping phone');
   assert.ok(!JSON.stringify(stripCostFields({ name: 'x', supplyCost: 1, purchasePrice: 2, costPrice: 3, vendorId: 'vA', warehouseId: 'w1', internalNotes: 'n' })).match(/supplyCost|purchasePrice|costPrice|vendorId|warehouseId|internalNotes/));
 });
+
+test('shoppers never see a vendor’s purchase rate or Tulsi’s cost fields', async () => {
+  const { toPublicProduct } = await import('../src/lib/firebase.js');
+  const pub = toPublicProduct({ name: 'Kemp Studs', price: 1059, discountPrice: 859, includedShipping: 60, vendorCost: 400, purchasePrice: 300, supplyCost: 0, vendorId: 'vA' });
+  for (const k of ['vendorCost', 'purchasePrice', 'supplyCost', 'vendorId']) assert.equal(pub[k], undefined, k);
+  assert.equal(pub.discountPrice, 859);
+});

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { fakeFirestore } from './helpers/fakeFirestore.mjs';
-import { parseQuickAdd, generateSku, discountPercent, isLowStock } from '../src/lib/quickAddProduct.js';
+import { parseQuickAdd, generateSku, discountPercent, isLowStock, customerPrices } from '../src/lib/quickAddProduct.js';
 
 process.env.ADMIN_EMAILS = 'owner@tulsi.test';
 delete process.env.NEXT_PUBLIC_ADMIN_BYPASS;
@@ -116,4 +116,17 @@ test('duplicate SKU → 409 naming the other product; bad input → 400 with fie
   const bad = await post(valid({ name: '<b>x</b>', category: 'spaceship' }));
   assert.equal(bad.status, 400);
   assert.ok(bad.json.errors.name && bad.json.errors.category);
+});
+
+test('shipping is built into the customer price: added to MRP and selling price, stored for reference', async () => {
+  assert.deepEqual(customerPrices({ mrp: 999, salePrice: 799, shipping: 60 }), { price: 1059, discountPrice: 859, pays: 859, includedShipping: 60 });
+  assert.deepEqual(customerPrices({ mrp: 500, salePrice: 500, shipping: 50 }), { price: 550, discountPrice: 0, pays: 550, includedShipping: 50 }, 'no offer → no discountPrice');
+  signInAs('owner@tulsi.test');
+  const r = await post(valid({ shipping: '60' }));
+  assert.equal(r.status, 201, JSON.stringify(r.json));
+  assert.equal(r.json.data.price, 4560, 'MRP 4500 + 60');
+  assert.equal(r.json.data.discountPrice, 3660, 'selling 3600 + 60');
+  assert.equal(r.json.data.includedShipping, 60);
+  signInAs('pm@tulsi.test');
+  assert.equal((await post({ ...valid({ purchasePrice: undefined, mrp: undefined, salePrice: undefined }), shipping: '60' })).status, 403, 'staff can’t set shipping/prices');
 });

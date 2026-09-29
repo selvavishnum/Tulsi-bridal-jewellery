@@ -20,6 +20,9 @@ export const VENDOR_EDITABLE_FIELDS = Object.freeze([
   'weight', 'color', 'occasion', 'purity', 'metalType', 'stoneType', 'usageInstructions', 'tags',
   /* Quick Add: design type (Temple / Matte / Kundan…) and the low-stock alert level. */
   'subCategory', 'lowStockAt',
+  /* The vendor's own purchase rate (private to them and Tulsi) and the
+     shipping already built into their prices. */
+  'vendorCost', 'includedShipping',
 ]);
 
 const TEXT_LIMITS = {
@@ -90,6 +93,17 @@ export function parseVendorProduct(body, current = null) {
     const n = Number(body.stock);
     if (!Number.isInteger(n) || n < 0 || n > 100000) return fail('Stock must be a whole number from 0 to 100000.');
     data.stock = n;
+  }
+
+  for (const key of ['vendorCost', 'includedShipping']) {
+    if (body[key] === undefined) continue;
+    if (body[key] === '' || body[key] === null) { data[key] = null; continue; }
+    const n = Number(body[key]);
+    if (!Number.isFinite(n) || n < 0 || n > MAX_PRICE) return fail(key === 'vendorCost' ? 'Purchase rate must be ₹0 or more.' : 'Shipping must be ₹0 or more.');
+    data[key] = Math.round(n * 100) / 100;
+  }
+  if (data.includedShipping > 0 && data.includedShipping >= (data.price ?? Number(current?.price) ?? 0)) {
+    return fail('Shipping can’t be more than the price.');
   }
 
   if (body.lowStockAt !== undefined) {
@@ -175,6 +189,8 @@ export function toVendorProduct(id, p) {
     discountPrice: Number(p.discountPrice) || 0,
     stock: Number(p.stock) || 0,
     subCategory: p.subCategory || '',
+    vendorCost: typeof p.vendorCost === 'number' ? p.vendorCost : null,
+    includedShipping: typeof p.includedShipping === 'number' ? p.includedShipping : null,
     lowStockAt: Number.isInteger(p.lowStockAt) ? p.lowStockAt : null,
     shippingCharge: typeof p.vendorShipping === 'number' ? p.vendorShipping : null,
     weight: p.weight || '',

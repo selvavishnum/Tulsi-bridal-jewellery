@@ -23,12 +23,12 @@ import { uploadToCloudinary } from '@/lib/cloudinaryUpload';
 import { cldThumb } from '@/lib/cloudinaryImage';
 import {
   QUICK_CATEGORIES, ALL_CATEGORIES, DESIGN_TYPES, MAX_IMAGES,
-  generateSku, discountPercent, parseQuickAdd,
+  generateSku, discountPercent, parseQuickAdd, customerPrices,
 } from '@/lib/quickAddProduct';
 
 const blank = (keep = {}) => ({
   name: '', category: keep.category || 'necklace', designType: keep.designType || '', sku: '',
-  purchasePrice: '', mrp: '', salePrice: '', stock: '1', lowStockAt: '2', shippingCharge: keep.shippingCharge ?? '',
+  purchasePrice: '', mrp: '', salePrice: '', shipping: keep.shipping ?? '', stock: '1', lowStockAt: '2',
 });
 
 /* Vendor photos go through the portal's upload route (per-vendor folder),
@@ -96,12 +96,18 @@ export default function QuickAddModal({ open, onClose, mode = 'admin', categorie
     setForm((f) => ({ ...f, [k]: clean(e.target.value) }));
     if (errors[k]) setErrors(({ [k]: _drop, ...rest }) => rest);
   };
-  const off = discountPercent(form.mrp, form.salePrice);
+  /* Shipping is built into the customer's price (added to MRP and selling). */
+  const ship = Number(form.shipping) || 0;
+  const baseSale = Number(form.salePrice || form.mrp) || 0;
+  const cp = baseSale > 0 ? customerPrices({ mrp: Number(form.mrp) || baseSale, salePrice: baseSale, shipping: ship }) : null;
+  const off = cp ? discountPercent(cp.price, cp.discountPrice) : 0;
   const uploading = images.some((i) => !i.url && !i.error);
-  const cost = Number(form.purchasePrice); const sale = Number(form.salePrice || form.mrp);
-  const grossMargin = pricing && !vendor && cost > 0 && sale > 0 ? { amt: sale - cost, pct: Math.round(((sale - cost) / sale) * 100) } : null;
-  /* Vendor: what reaches them per piece (0% commission) after their own shipping. */
-  const vendorGets = vendor && sale > 0 ? sale - (Number(form.shippingCharge) || 0) : null;
+  /* Profit on the piece itself: selling price − purchase rate (shipping
+     passes through to the courier). */
+  const cost = Number(form.purchasePrice);
+  const grossMargin = pricing && cost > 0 && baseSale > 0 ? { amt: Math.round((baseSale - cost) * 100) / 100, pct: Math.round(((baseSale - cost) / baseSale) * 100) } : null;
+  /* Vendor: shipping is deducted from payout, so they receive their selling price (0% commission). */
+  const vendorGets = vendor && baseSale > 0 ? baseSale : null;
 
   function addFiles(files) {
     const room = MAX_IMAGES - images.length;
@@ -132,7 +138,7 @@ export default function QuickAddModal({ open, onClose, mode = 'admin', categorie
     const payload = {
       ...form,
       images: images.filter((i) => i.url).map((i) => i.url),
-      ...(!pricing && { purchasePrice: undefined, mrp: undefined, salePrice: undefined }),
+      ...(!pricing && { purchasePrice: undefined, mrp: undefined, salePrice: undefined, shipping: undefined }),
     };
     const check = parseQuickAdd(payload, { pricing });
     if (check.errors) {
@@ -148,17 +154,21 @@ export default function QuickAddModal({ open, onClose, mode = 'admin', categorie
     const d = check.data;
     onOptimistic?.({
       id: tempId, _id: tempId, pending: true, name: d.name, sku: d.sku || '…', category: d.category, subCategory: d.designType,
-      price: d.mrp || 0, discountPrice: d.salePrice < d.mrp ? d.salePrice : 0, stock: d.stock, lowStockAt: d.lowStockAt,
+      ...(pricing ? customerPrices(d) : { price: 0, discountPrice: 0 }), stock: d.stock, lowStockAt: d.lowStockAt,
       images: payload.images, showMe: pricing, createdAt: new Date().toISOString(),
     });
     setSaving(true);
     try {
       /* Vendors save through their own product API (reviewed by Tulsi). */
+      const vp = vendor ? customerPrices(d) : null;
       const body = vendor ? {
         name: d.name, category: d.category, subCategory: d.designType, ...(d.sku && { sku: d.sku }),
-        price: d.mrp, discountPrice: d.salePrice < d.mrp ? d.salePrice : 0,
+        /* Customer prices include the shipping; the same amount is
+           deducted from the vendor's payout to pay the courier. */
+        price: vp.price, discountPrice: vp.discountPrice, includedShipping: vp.includedShipping,
+        shippingCharge: vp.includedShipping > 0 ? vp.includedShipping : null,
+        vendorCost: d.purchasePrice,
         stock: d.stock, lowStockAt: d.lowStockAt, images: payload.images,
-        shippingCharge: form.shippingCharge === '' ? null : Number(form.shippingCharge),
       } : payload;
       const res = await fetch(vendor ? '/api/vendor/products' : '/api/admin/products/quick-add', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -177,7 +187,7 @@ export default function QuickAddModal({ open, onClose, mode = 'admin', categorie
       setImages([]);
       setErrors({});
       if (another) {
-        setForm(blank({ category: form.category, designType: form.designType, shippingCharge: form.shippingCharge }));
+        setForm(blank({ category: form.category, designType: form.designType, shipping: form.shipping }));
         setTimeout(() => nameRef.current?.focus(), 30);
       } else {
         setForm(blank());
@@ -252,15 +262,13 @@ export default function QuickAddModal({ open, onClose, mode = 'admin', categorie
             </div>
           </section>
 
-          {/* 2. Pricing */}
+          {/* 2. Pricing — shipping is built into the customer's price */}
           {pricing && (
             <section className="space-y-2">
-              <div className={`grid gap-2 sm:gap-3 ${vendor ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                {!vendor && (
-                  <Field label="Cost ₹" htmlFor={id('purchasePrice')} error={errors.purchasePrice} hint="Private">
-                    <input id={id('purchasePrice')} inputMode="numeric" value={form.purchasePrice} onChange={set('purchasePrice', onlyMoney)} placeholder="0" className={`${inp(errors.purchasePrice)} tabular-nums`} />
-                  </Field>
-                )}
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                <Field label={vendor ? 'Purchase ₹' : 'Cost ₹'} htmlFor={id('purchasePrice')} error={errors.purchasePrice} hint="Private">
+                  <input id={id('purchasePrice')} inputMode="numeric" value={form.purchasePrice} onChange={set('purchasePrice', onlyMoney)} placeholder="0" className={`${inp(errors.purchasePrice)} tabular-nums`} />
+                </Field>
                 <Field label="MRP ₹" htmlFor={id('mrp')} error={errors.mrp}>
                   <input id={id('mrp')} inputMode="numeric" value={form.mrp} onChange={set('mrp', onlyMoney)} placeholder="0" className={`${inp(errors.mrp)} tabular-nums`} />
                 </Field>
@@ -268,36 +276,40 @@ export default function QuickAddModal({ open, onClose, mode = 'admin', categorie
                   <input id={id('salePrice')} inputMode="numeric" value={form.salePrice} onChange={set('salePrice', onlyMoney)} placeholder="0" className={`${inp(errors.salePrice)} tabular-nums font-semibold`} />
                 </Field>
               </div>
+              <Field label="Shipping ₹ per piece" htmlFor={id('shipping')} error={errors.shipping}
+                hint="Added to the MRP and selling price — customers see one all-in price, no separate shipping.">
+                <input id={id('shipping')} inputMode="numeric" value={form.shipping} onChange={set('shipping', onlyMoney)} placeholder="0" className={`${inp(errors.shipping)} tabular-nums`} />
+              </Field>
               <div className="flex flex-wrap items-center gap-2 text-xs" aria-live="polite">
+                {cp && (
+                  <span className="rounded-full bg-gray-100 px-2.5 py-1 font-semibold text-gray-800 tabular-nums">
+                    Customer pays ₹{cp.pays.toLocaleString('en-IN')}{ship > 0 ? ` (₹${baseSale.toLocaleString('en-IN')} + ₹${ship.toLocaleString('en-IN')} shipping)` : ''}
+                  </span>
+                )}
                 {off > 0 && <span className="rounded-full bg-green-50 px-2.5 py-1 font-bold text-green-700 tabular-nums">{off}% OFF</span>}
+                {vendorGets !== null && (
+                  <span className="rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-800 tabular-nums">
+                    You get ₹{vendorGets.toLocaleString('en-IN')} · 0% commission
+                  </span>
+                )}
                 {grossMargin && (
                   <span className={`rounded-full px-2.5 py-1 font-semibold tabular-nums ${grossMargin.amt >= 0 ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'}`}>
-                    Margin ₹{grossMargin.amt.toLocaleString('en-IN')} ({grossMargin.pct}%)
+                    {vendor ? 'Profit' : 'Margin'} ₹{grossMargin.amt.toLocaleString('en-IN')} ({grossMargin.pct}%)
                   </span>
                 )}
-                {vendorGets !== null && (
-                  <span className={`rounded-full px-2.5 py-1 font-semibold tabular-nums ${vendorGets >= 0 ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'}`}>
-                    You get ₹{vendorGets.toLocaleString('en-IN')} per piece · 0% commission
-                  </span>
-                )}
-                {!off && !grossMargin && vendorGets === null && <span className="text-gray-400">Enter the MRP above the selling price to show a discount.</span>}
+                {!cp && <span className="text-gray-400">Enter the selling price; put the MRP above it to show a discount.</span>}
               </div>
             </section>
           )}
 
           {/* 3. Stock */}
-          <section className={`grid gap-3 ${vendor ? 'grid-cols-3' : 'grid-cols-2'}`}>
-            <Field label={vendor ? 'Stock' : 'Opening stock'} htmlFor={id('stock')} error={errors.stock}>
+          <section className="grid grid-cols-2 gap-3">
+            <Field label="Opening stock" htmlFor={id('stock')} error={errors.stock}>
               <input id={id('stock')} inputMode="numeric" value={form.stock} onChange={set('stock', onlyInt)} className={`${inp(errors.stock)} tabular-nums`} />
             </Field>
-            <Field label={vendor ? 'Alert at' : 'Low-stock alert at'} htmlFor={id('lowStockAt')} error={errors.lowStockAt}>
+            <Field label="Low-stock alert at" htmlFor={id('lowStockAt')} error={errors.lowStockAt}>
               <input id={id('lowStockAt')} inputMode="numeric" value={form.lowStockAt} onChange={set('lowStockAt', onlyInt)} className={`${inp(errors.lowStockAt)} tabular-nums`} />
             </Field>
-            {vendor && (
-              <Field label="Shipping ₹" htmlFor={id('shippingCharge')} hint="Per piece">
-                <input id={id('shippingCharge')} inputMode="numeric" value={form.shippingCharge} onChange={set('shippingCharge', onlyMoney)} placeholder="—" className={`${inp()} tabular-nums`} />
-              </Field>
-            )}
           </section>
 
           {/* 4. Photos */}

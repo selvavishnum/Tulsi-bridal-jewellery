@@ -3,11 +3,11 @@ import { getDB } from '@/lib/firebase';
 import { requireRole, CAN } from '@/lib/requireRole';
 import { stripCostFields } from '@/lib/access';
 import { PLATFORM_VENDOR_ID } from '@/lib/settlement';
-import { parseQuickAdd, generateSku } from '@/lib/quickAddProduct';
+import { parseQuickAdd, generateSku, customerPrices } from '@/lib/quickAddProduct';
 import { nextLotNumber, lotDoc } from '@/lib/stockLots';
 
 const slugify = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
-const PRICE_KEYS = ['purchasePrice', 'mrp', 'salePrice'];
+const PRICE_KEYS = ['purchasePrice', 'mrp', 'salePrice', 'shipping'];
 
 /* POST /api/admin/products/quick-add — add a new Tulsi piece to stock from
    the Inventory screen in one step.
@@ -37,6 +37,9 @@ export async function POST(request) {
       return NextResponse.json({ success: false, message: `SKU "${sku}" is already used by “${dup.docs[0].data().name || 'another product'}”.`, errors: { sku: 'Already in use — tap Auto to get a new one' } }, { status: 409 });
     }
 
+    /* Shipping is built into what the customer pays — added to MRP and
+       selling price, never charged separately. */
+    const prices = pricing ? customerPrices(d) : { price: 0, discountPrice: 0, includedShipping: 0 };
     const now = new Date().toISOString();
     const ref = db.collection('products').doc();
     const product = {
@@ -47,8 +50,9 @@ export async function POST(request) {
       subCategory: d.designType || '',
       description: '',
       images: d.images,
-      price: pricing ? d.mrp : 0,
-      discountPrice: pricing && d.salePrice < d.mrp ? d.salePrice : 0,
+      price: prices.price,
+      discountPrice: prices.discountPrice,
+      includedShipping: prices.includedShipping,
       stock: d.stock,
       lowStockAt: d.lowStockAt,
       ...(pricing && d.purchasePrice !== null && { purchasePrice: d.purchasePrice }),

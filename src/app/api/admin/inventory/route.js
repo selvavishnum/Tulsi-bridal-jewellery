@@ -41,10 +41,10 @@ export async function PATCH(request) {
     const auth = await requireRole(CAN.editStock);
     if (auth.error) return auth.error;
     const body = await request.json();
-    const { id, sku, mrp, discPct, inStock, showMe } = body;
+    const { id, sku, mrp, discPct, salePrice, inStock, showMe } = body;
     /* Catalog staff manage stock counts and SKUs; price (mrp / discount)
        and publishing (showMe) are SUPER_ADMIN decisions. */
-    if (!CAN.manageCatalog.includes(auth.tier) && (mrp !== undefined || discPct !== undefined || showMe !== undefined)) {
+    if (!CAN.manageCatalog.includes(auth.tier) && (mrp !== undefined || discPct !== undefined || salePrice !== undefined || showMe !== undefined)) {
       return NextResponse.json({ success: false, message: 'Forbidden: price and visibility changes need a Super Admin' }, { status: 403 });
     }
     if (!id) return NextResponse.json({ success: false, message: 'ID required' }, { status: 400 });
@@ -59,9 +59,21 @@ export async function PATCH(request) {
       updateData.sku = sku;
     }
     if (mrp !== undefined) updateData.price = mrp;
-    if (discPct !== undefined) {
-      updateData.discPct = discPct;
-      if (mrp !== undefined) updateData.discountPrice = Math.round(mrp * (1 - discPct / 100));
+    if (salePrice !== undefined) {
+      /* Exact selling price (0 = no offer). */
+      const cur = (await ref.get()).data() || {};
+      const mrpNow = mrp !== undefined ? mrp : Number(cur.price) || 0;
+      const sp = Number(salePrice);
+      if (!Number.isFinite(sp) || sp < 0) return NextResponse.json({ success: false, message: 'Selling price must be ₹0 or more.' }, { status: 400 });
+      if (sp > mrpNow) return NextResponse.json({ success: false, message: 'Selling price can’t be above the MRP.' }, { status: 400 });
+      updateData.discountPrice = sp > 0 && sp < mrpNow ? Math.round(sp * 100) / 100 : 0;
+      updateData.discPct = null; // legacy field — prices are the source of truth
+    } else if (discPct !== undefined) {
+      /* Older clients: a % — rounded to the paise, not the rupee. */
+      const cur = (await ref.get()).data() || {};
+      const mrpNow = mrp !== undefined ? mrp : Number(cur.price) || 0;
+      updateData.discountPrice = discPct > 0 ? Math.round(mrpNow * (1 - discPct / 100) * 100) / 100 : 0;
+      updateData.discPct = null;
     }
     if (inStock !== undefined) {
       if (!Number.isInteger(inStock) || inStock < 0) {
