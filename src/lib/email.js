@@ -159,7 +159,7 @@ export async function sendOrderConfirmation(order) {
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;border-top:2px solid #f5f5f4;">
       <tr><td style="padding:8px 0;font-size:13px;color:#78716c;">Subtotal</td><td style="padding:8px 0;text-align:right;font-size:13px;color:#78716c;">${fmt(order.subtotal)}</td></tr>
       ${order.discount > 0 ? `<tr><td style="padding:4px 0;font-size:13px;color:#16a34a;">Discount</td><td style="padding:4px 0;text-align:right;font-size:13px;color:#16a34a;">−${fmt(order.discount)}</td></tr>` : ''}
-      <tr><td style="padding:4px 0;font-size:13px;color:#78716c;">Shipping</td><td style="padding:4px 0;text-align:right;font-size:13px;color:#78716c;">${order.shippingCost === 0 ? 'FREE' : fmt(order.shippingCost)}</td></tr>
+      ${order.shippingCost > 0 ? `<tr><td style="padding:4px 0;font-size:13px;color:#78716c;">Shipping</td><td style="padding:4px 0;text-align:right;font-size:13px;color:#78716c;">${fmt(order.shippingCost)}</td></tr>` : ''}
       <tr><td style="padding:10px 0 0;font-size:16px;font-weight:700;color:#292524;border-top:1px solid #e7e5e4;">Total Paid</td><td style="padding:10px 0 0;text-align:right;font-size:18px;font-weight:700;color:#8b1a4a;border-top:1px solid #e7e5e4;">${fmt(order.total)}</td></tr>
     </table>
 

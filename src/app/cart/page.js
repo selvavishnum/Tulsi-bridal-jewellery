@@ -9,7 +9,7 @@ import { formatPrice } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
 export default function CartPage() {
-  const { items, dispatch, subtotal, shippingCost, total, discount, coupon } = useCart();
+  const { items, dispatch, subtotal, shippingCost, total, discount, coupon, charges } = useCart();
   const [couponCode, setCouponCode] = useState('');
   const [couponLoading, setCouponLoading] = useState(false);
 
@@ -113,7 +113,10 @@ export default function CartPage() {
               <h3 className="font-semibold text-gray-700 mb-4">Order Summary</h3>
               <div className="space-y-2 text-sm text-gray-600 mb-4">
                 <div className="flex justify-between"><span>Subtotal</span><span>{formatPrice(subtotal)}</span></div>
-                <div className="flex justify-between"><span>Shipping</span><span className={shippingCost === 0 ? 'text-green-600 font-semibold' : ''}>{shippingCost === 0 ? 'FREE' : formatPrice(shippingCost)}</span></div>
+                {/* Shipping included in product prices (fee off in Store settings) → no shipping row at all. */}
+                {charges?.enable_shipping_fee !== false && (
+                  <div className="flex justify-between"><span>Shipping</span><span className={shippingCost === 0 ? 'text-green-600 font-semibold' : ''}>{shippingCost === 0 ? 'FREE' : formatPrice(shippingCost)}</span></div>
+                )}
                 {discount > 0 && <div className="flex justify-between text-green-600"><span>Discount</span><span>-{formatPrice(discount)}</span></div>}
               </div>
               <div className="flex justify-between font-bold text-gray-800 border-t pt-3 text-lg mb-4">
