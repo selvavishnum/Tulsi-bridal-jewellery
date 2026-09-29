@@ -110,7 +110,7 @@ export default function VendorProfilePage() {
   if (error) return <p className="text-sm text-red-600">{error}</p>;
   if (!data || !form) return <Loading />;
 
-  const locked = data.status === 'suspended';
+  const locked = data.status !== 'active';
   const upd = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const updAddr = (k, v) => setForm((f) => ({ ...f, pickupAddress: { ...f.pickupAddress, [k]: v } }));
 

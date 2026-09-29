@@ -282,3 +282,92 @@ test('parseVendorProduct: whitelist, price and offer rules, image origin', () =>
   assert.equal(parseVendorProfile({ platformFeeBps: 1 }).status, 403);
   assert.ok(parseVendorProfile({ pickupAddress: { line1: 'x', city: 'y', state: 'z', pincode: '12' } }).error);
 });
+
+/* ── Vendor product review (approve / reject) ── */
+test('review: catalog managers approve (₹0 margin ok) or reject with a reason; vendors and staff without pricing rights cannot', async () => {
+  const review = await import(src('app/api/admin/products/[id]/review/route.js'));
+  const post = (id, body) => review.POST(new Request('http://tulsi.test/x', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }), { params: Promise.resolve({ id }) })
+    .then(async (r) => ({ status: r.status, json: await r.json() }));
+  const col = () => db.store.get('products');
+  col().set('pNew', { name: 'Chain', vendorId: 'vA', price: 249, vendorShipping: 50, supplyCost: 0, stock: 10, isActive: false, showMe: false, reviewStatus: 'pending' });
+  col().set('pBad', { name: 'Blurry', vendorId: 'vA', price: 500, stock: 2, isActive: false, showMe: false, reviewStatus: 'pending' });
+
+  signInAs('a@vendor.test');
+  assert.equal((await post('pNew', { decision: 'approve' })).status, 403, 'a vendor can’t approve their own product');
+  signInAs('owner@tulsi.test');
+  const ok = await post('pNew', { decision: 'approve' });
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+  assert.equal(col().get('pNew').isActive, true);
+  assert.equal(col().get('pNew').showMe, true);
+  assert.equal(col().get('pNew').reviewStatus, 'approved');
+  assert.equal((await post('pNew', { decision: 'approve' })).status, 409, 'already reviewed');
+
+  assert.equal((await post('pBad', { decision: 'reject' })).status, 400, 'reason required');
+  assert.equal((await post('pBad', { decision: 'reject', reason: 'Please add clearer photos' })).status, 200);
+  assert.equal(col().get('pBad').reviewStatus, 'rejected');
+  assert.equal(col().get('pBad').isActive, false);
+
+  /* The vendor sees the reason, fixes the product, and it returns to review. */
+  signInAs('a@vendor.test');
+  const list = await call(products, 'GET', { url: 'http://tulsi.test/api/vendor/products' });
+  const bad = list.json.data.find((p) => p.id === 'pBad');
+  assert.equal(bad.status, 'rejected');
+  assert.equal(bad.reviewNote, 'Please add clearer photos');
+  const fixed = await call(productById, 'PUT', { params: { id: 'pBad' }, body: { description: 'New sharp photos added' } });
+  assert.equal(fixed.status, 200, JSON.stringify(fixed.json));
+  assert.equal(col().get('pBad').reviewStatus, 'pending');
+  assert.equal(col().get('pBad').reviewNote, null);
+});
+
+/* ── Suspend / block / delete a vendor ── */
+test('vendor lifecycle: suspend hides products, block also turns login off, reactivate restores exactly what was hidden', async () => {
+  const put = (id, body) => call(adminVendors, 'PUT', { url: `http://tulsi.test/api/admin/vendors?id=${id}`, body });
+  const col = (c) => db.store.get(c);
+  col('products').set('pHidden', { name: 'Already hidden', vendorId: 'vA', price: 500, stock: 1, isActive: true, showMe: false });
+
+  signInAs('a@vendor.test');
+  assert.equal((await put('vA', { status: 'blocked' })).status, 403, 'vendors can’t change their own status');
+
+  signInAs('owner@tulsi.test');
+  const sus = await put('vA', { status: 'suspended' });
+  assert.equal(sus.status, 200, JSON.stringify(sus.json));
+  assert.equal(col('vendors').get('vA').status, 'suspended');
+  assert.equal(col('products').get('pA').showMe, false, 'live product hidden from the shop');
+  assert.equal(col('staff').get('vA').status, 'Active', 'suspended vendor can still sign in');
+
+  const blk = await put('vA', { status: 'blocked' });
+  assert.equal(blk.json.data.loginsOff, 1);
+  assert.equal(col('staff').get('vA').status, 'Inactive');
+  signInAs('a@vendor.test');
+  assert.equal((await call(products, 'GET', { url: 'http://tulsi.test/api/vendor/products' })).status, 403, 'blocked vendor is locked out');
+
+  signInAs('owner@tulsi.test');
+  const back = await put('vA', { status: 'active' });
+  assert.equal(back.json.data.productsRestored, 1);
+  assert.equal(col('products').get('pA').showMe, true);
+  assert.equal(col('products').get('pHidden').showMe, false, 'a product hidden before suspension stays hidden');
+  assert.equal(col('staff').get('vA').status, 'Active', 'login back on');
+  assert.equal((await put('vA', { status: 'deleted' })).status, 400);
+});
+
+test('vendor delete: only without trading history; removes vendor, login and products', async () => {
+  const del = (id) => call(adminVendors, 'DELETE', { url: `http://tulsi.test/api/admin/vendors?id=${id}` });
+  const col = (c) => db.store.get(c);
+  col('vendors').set('vNew', { name: 'Fresh Seller', status: 'active' });
+  col('staff').set('sNew', { email: 'fresh@vendor.test', role: 'VENDOR', vendorId: 'vNew', status: 'Active' });
+  col('products').set('pNew', { name: 'Draft', vendorId: 'vNew', price: 300, stock: 1 });
+  col('orders').set('oHist', { orderNumber: 'TBJ-H', vendorIds: ['vB'], items: [] });
+
+  signInAs('owner@tulsi.test');
+  const blocked = await del('vB');
+  assert.equal(blocked.status, 409, 'has orders — must block instead');
+  assert.match(blocked.json.message, /Block them instead/);
+  assert.ok(col('vendors').has('vB'));
+
+  const ok = await del('vNew');
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+  assert.deepEqual(ok.json.data, { products: 1, logins: 1, chats: 0 });
+  assert.ok(!col('vendors').has('vNew'));
+  assert.ok(!col('staff').has('sNew'));
+  assert.ok(!col('products').has('pNew'));
+});

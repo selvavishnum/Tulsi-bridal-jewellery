@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiX, FiUpload, FiImage, FiPackage } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiX, FiUpload, FiImage, FiPackage, FiCheck } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
 import { uploadToCloudinary } from '@/lib/cloudinaryUpload';
 import Badge from '@/components/ui/Badge';
@@ -44,6 +44,7 @@ export default function AdminProductsPage() {
   /* Catalog staff edit media, copy, categories and stock only; the API
      refuses anything else. These flags just keep the form honest. */
   const isCatalog = !!session?.user?.tier && !CAN.manageCatalog.includes(session.user.tier); // product/inventory staff: no prices or costs
+  const canPublish = !isCatalog; // Super Admin / Business Manager approve vendor products
   const [products, setProducts] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -197,6 +198,31 @@ export default function AdminProductsPage() {
     } finally { setSaving(false); }
   }
 
+  /* One-tap review of a vendor-submitted product. */
+  const [reviewing, setReviewing] = useState(null);
+  async function reviewProduct(p, decision) {
+    const pid = p.id || p._id;
+    let reason = '';
+    if (decision === 'reject') {
+      reason = window.prompt(`Why can't "${p.name}" be published? The seller will see this.`, 'Please add clearer photos');
+      if (!reason || !reason.trim()) return;
+    }
+    setReviewing(pid);
+    try {
+      const res = await fetch(`/api/admin/products/${pid}/review`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision, reason }),
+      });
+      const d = await res.json();
+      if (!d.success) { toast.error(d.message || 'Could not update'); return; }
+      toast.success(decision === 'approve' ? `"${p.name}" is live in the shop` : 'Sent back to the seller');
+      fetchProducts();
+    } catch {
+      toast.error('Network error — try again');
+    } finally {
+      setReviewing(null);
+    }
+  }
+
   async function handleDelete(id) {
     if (!confirm('Delete this product? This cannot be undone.')) return;
     const res  = await fetch(`/api/products/${id}`, { method: 'DELETE' });
@@ -291,8 +317,25 @@ export default function AdminProductsPage() {
                         <div className="min-w-0">
                           <p className="font-semibold text-gray-800 truncate">{p.name}</p>
                           <p className="text-xs text-gray-400">{p.sku || '—'}</p>
-                          {p.reviewStatus === 'pending' && p.isActive === false && (
-                            <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-semibold">Vendor submitted — check margin &amp; publish</span>
+                          {p.reviewStatus === 'pending' && (
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-semibold">Vendor submitted</span>
+                              {canPublish && (
+                                <>
+                                  <button type="button" onClick={() => reviewProduct(p, 'approve')} disabled={reviewing === (p.id || p._id)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-green-600 hover:bg-green-700 text-white text-[11px] font-semibold disabled:opacity-50">
+                                    <FiCheck /> Approve &amp; publish
+                                  </button>
+                                  <button type="button" onClick={() => reviewProduct(p, 'reject')} disabled={reviewing === (p.id || p._id)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 text-[11px] font-semibold disabled:opacity-50">
+                                    <FiX /> Reject
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                          {p.reviewStatus === 'rejected' && (
+                            <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-red-50 text-red-700 text-[10px] font-semibold" title={p.reviewNote || ''}>Not approved — waiting for the seller to fix</span>
                           )}
                         </div>
                       </div>
@@ -436,7 +479,7 @@ export default function AdminProductsPage() {
                 <Field label="Sold by">
                   <select value={form.vendorId} onChange={(e) => upd('vendorId', e.target.value)} className={sel}>
                     <option value="">Tulsi (own stock)</option>
-                    {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}{v.status === 'suspended' ? ' (suspended)' : ''}</option>)}
+                    {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}{v.status && v.status !== 'active' ? ` (${v.status})` : ''}</option>)}
                   </select>
                 </Field>
               </div>
@@ -450,7 +493,7 @@ export default function AdminProductsPage() {
                 return (
                   <div className="space-y-3 -mt-1">
                     <div className="grid grid-cols-2 gap-4">
-                      <Field label="Tulsi margin" required>
+                      <Field label="Tulsi margin (0 = free for seller)">
                         <div className="flex gap-2">
                           <div className="inline-flex rounded-xl border border-gray-200 p-0.5 flex-shrink-0" role="radiogroup" aria-label="Margin type">
                             {[['fixed', '₹'], ['percent', '%']].map(([m, sym]) => (
@@ -461,9 +504,9 @@ export default function AdminProductsPage() {
                             ))}
                           </div>
                           {form.marginMode === 'percent' ? (
-                            <input type="number" value={form.marginPercent} onChange={(e) => upd('marginPercent', e.target.value)} className={inp} placeholder="e.g. 20" min="0" max="99.99" step="0.01" aria-label="Margin percent" />
+                            <input type="number" value={form.marginPercent} onChange={(e) => upd('marginPercent', e.target.value)} className={inp} placeholder="0" min="0" max="99.99" step="0.01" aria-label="Margin percent" />
                           ) : (
-                            <input type="number" value={form.supplyCost} onChange={(e) => upd('supplyCost', e.target.value)} className={inp} placeholder="e.g. 400" min="0" aria-label="Margin in rupees" />
+                            <input type="number" value={form.supplyCost} onChange={(e) => upd('supplyCost', e.target.value)} className={inp} placeholder="0" min="0" aria-label="Margin in rupees" />
                           )}
                         </div>
                       </Field>

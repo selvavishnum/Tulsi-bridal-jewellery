@@ -248,18 +248,19 @@ export function vendorShippingOf(product) {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-/* A vendor-owned product must carry a margin, and its selling price must
-   cover that margin plus the vendor's shipping charge — otherwise the
-   platform ships the piece and keeps nothing (or the vendor owes money). */
+/* A vendor product's margin may be ₹0 / 0% — selling on Tulsi is free
+   for sellers — but never negative, and its selling price must still
+   cover the vendor's shipping charge (otherwise the vendor owes money). */
 export function validateVendorPricing(product) {
   const vid = product?.vendorId;
   if (!vid || vid === PLATFORM_VENDOR_ID) return null;
+  const blank = (v) => v === undefined || v === null || v === '';
   if (product.marginMode === 'percent') {
-    const pct = Number(product.marginPercent);
-    if (!Number.isFinite(pct) || pct <= 0 || pct >= 100) return 'Margin percentage must be more than 0 and less than 100.';
+    const pct = blank(product.marginPercent) ? 0 : Number(product.marginPercent);
+    if (!Number.isFinite(pct) || pct < 0 || pct >= 100) return 'Margin percentage must be from 0 to under 100.';
   } else {
-    const fixed = Number(product.supplyCost);
-    if (!Number.isFinite(fixed) || fixed <= 0) return 'Vendor products need a margin greater than ₹0.';
+    const fixed = blank(product.supplyCost) ? 0 : Number(product.supplyCost);
+    if (!Number.isFinite(fixed) || fixed < 0) return 'Margin can’t be negative (₹0 = free for the seller).';
   }
   const raw = product.vendorShipping;
   if (raw !== null && raw !== undefined && raw !== '' && vendorShippingOf(product) === null) return 'Vendor shipping charge must be ₹0 or more.';

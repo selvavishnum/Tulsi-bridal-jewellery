@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireRole, ROLES } from '@/lib/requireRole';
 import { getDB } from '@/lib/firebase';
 import { scopedDb } from '@/lib/data/scopedDb';
+import { vendorCanSell } from '@/lib/vendorStatus';
 
 /* Gate for /api/vendor/* — an outside vendor's own login only. The tier and
    vendorId are re-read from the staff record on every request (zero trust),
@@ -25,7 +26,7 @@ export async function requireActiveVendor() {
   const snap = await ctx.db.collection('vendors').doc(ctx.vendorId).get();
   if (!snap.exists) return { error: NextResponse.json({ success: false, message: 'Vendor not found' }, { status: 404 }) };
   const vendor = snap.data();
-  if (vendor.status === 'suspended') {
+  if (!vendorCanSell(vendor)) {
     return { error: NextResponse.json({ success: false, message: 'Your store is paused. Contact Tulsi to make changes.' }, { status: 403 }) };
   }
   return { ...ctx, vendor };

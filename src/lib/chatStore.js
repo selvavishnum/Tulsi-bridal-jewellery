@@ -14,6 +14,7 @@
    ───────────────────────────────────────────── */
 import { conversationId, cleanMessage, conversationView, messageView, preview, THREAD_LIMIT } from './chat.js';
 import { PLATFORM_VENDOR_ID } from './data/scopedDb.js';
+import { vendorCanSell } from './vendorStatus.js';
 
 export class ChatError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
@@ -59,7 +60,7 @@ export async function customerSendAboutProduct(db, customer, { productId, orderN
   const p = pSnap.data();
   if (!p.vendorId || p.vendorId === PLATFORM_VENDOR_ID) throw new ChatError('This piece is sold by Tulsi — please use WhatsApp or the contact page.');
   const vSnap = await db.collection('vendors').doc(p.vendorId).get();
-  if (!vSnap.exists || vSnap.data().status === 'suspended') throw new ChatError('This seller isn’t taking messages right now.', 409);
+  if (!vSnap.exists || !vendorCanSell(vSnap.data())) throw new ChatError('This seller isn’t taking messages right now.', 409);
 
   let order = null;
   if (orderNumber) {
@@ -93,7 +94,7 @@ export async function sendInConversation(db, id, side, ownerId, text) {
   const { ref, conversation } = await getConversation(db, id, side, ownerId);
   if (side === 'customer') {
     const v = await db.collection('vendors').doc(conversation.vendorId).get();
-    if (!v.exists || v.data().status === 'suspended') throw new ChatError('This seller isn’t taking messages right now.', 409);
+    if (!v.exists || !vendorCanSell(v.data())) throw new ChatError('This seller isn’t taking messages right now.', 409);
   }
   const r = await append(db, ref, null, side, clean);
   return { ...r, conversation };

@@ -13,6 +13,7 @@ import { normalizeEmail, isValidEmail } from '@/lib/otp';
 import { computeCharges } from '@/lib/storeCharges';
 import { getStoreCharges } from '@/lib/storeChargesServer';
 import crypto from 'crypto';
+import { vendorCanSell } from '@/lib/vendorStatus';
 
 /* Shipping and COD fees come from the admin's Shipping & Payment Charges
    (settings/store_settings), read fresh for every order — see
@@ -210,7 +211,7 @@ export async function POST(request) {
         }
         const vendor = vendorCache.get(vendorId);
         const pricingError = validateVendorPricing({ ...prod, vendorId });
-        if (!vendor || vendor.status === 'suspended' || pricingError) {
+        if (!vendorCanSell(vendor) || pricingError) {
           console.error('[orders POST] vendor product not sellable:', item.product, pricingError || (vendor ? 'vendor suspended' : 'vendor missing'));
           return NextResponse.json({ success: false, message: `Product no longer available: ${prod.name || item.name}` }, { status: 400 });
         }

@@ -10,6 +10,7 @@ export const PRODUCT_STATUS = {
   live: ['Live', 'bg-green-50 text-green-700'],
   out_of_stock: ['Out of stock', 'bg-amber-50 text-amber-700'],
   in_review: ['In review', 'bg-blue-50 text-blue-700'],
+  rejected: ['Not approved', 'bg-red-50 text-red-700'],
   hidden: ['Hidden by Tulsi', 'bg-stone-100 text-stone-500'],
 };
 

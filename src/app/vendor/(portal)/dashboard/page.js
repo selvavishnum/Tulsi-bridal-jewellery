@@ -26,7 +26,7 @@ export default function VendorDashboardPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-serif text-2xl font-bold text-stone-900">{summary.data.vendor.name}</h1>
-          {summary.data.vendor.status === 'suspended' && (
+          {summary.data.vendor.status && summary.data.vendor.status !== 'active' && (
             <p className="text-sm text-red-600 mt-1">Your store is paused — changes are locked. Contact Tulsi.</p>
           )}
         </div>
