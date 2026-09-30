@@ -2,9 +2,10 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FiPlus, FiSearch, FiEdit2 } from 'react-icons/fi';
+import { FiSearch, FiEdit2 } from 'react-icons/fi';
 import { cldThumb } from '@/lib/cloudinaryImage';
 import { Loading, Pill, PRODUCT_STATUS, inr, useVendorData } from '@/components/vendor/ui';
+import QuickAddButton from '@/components/vendor/QuickAddButton';
 
 const FILTERS = [['all', 'All'], ['live', 'Live'], ['in_review', 'In review'], ['rejected', 'Not approved'], ['out_of_stock', 'Out of stock'], ['hidden', 'Hidden']];
 
@@ -23,9 +24,7 @@ export default function VendorProductsPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-serif text-2xl font-bold text-stone-900">Products <span className="text-base font-sans font-normal text-stone-400">({data.length})</span></h1>
-        <Link href="/vendor/products/new" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-wine-700 hover:bg-wine-800 text-white text-sm font-semibold">
-          <FiPlus /> Add a product
-        </Link>
+        <QuickAddButton showFullFormLink />
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">

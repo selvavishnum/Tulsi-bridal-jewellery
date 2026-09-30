@@ -1,7 +1,8 @@
 'use client';
 import Link from 'next/link';
-import { FiPlus, FiAlertTriangle } from 'react-icons/fi';
+import { FiAlertTriangle } from 'react-icons/fi';
 import { Card, Stat, Loading, Pill, inrPaise, inr, shortDate, useVendorData } from '@/components/vendor/ui';
+import QuickAddButton from '@/components/vendor/QuickAddButton';
 
 const LOW_STOCK = 2;
 
@@ -30,9 +31,7 @@ export default function VendorDashboardPage() {
             <p className="text-sm text-red-600 mt-1">Your store is paused — changes are locked. Contact Tulsi.</p>
           )}
         </div>
-        <Link href="/vendor/products/new" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-wine-700 hover:bg-wine-800 text-white text-sm font-semibold">
-          <FiPlus /> Add a product
-        </Link>
+        <QuickAddButton />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

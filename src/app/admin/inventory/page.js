@@ -72,9 +72,9 @@ export default function InventoryPage() {
       [product.id]: {
         sku: product.sku || '',
         mrp: product.price || '',
-        discPct: product.discPct || (product.price && product.discountPrice
-          ? Math.round(((product.price - product.discountPrice) / product.price) * 100)
-          : 0),
+        /* The exact selling price, never a rounded % — a stored discPct
+           goes stale when the vendor or the product form changes prices. */
+        salePrice: product.discountPrice > 0 && product.discountPrice < product.price ? product.discountPrice : '',
         inStock: product.stock ?? 0,
         showMe: product.showMe !== false,
       },
@@ -99,7 +99,7 @@ export default function InventoryPage() {
           inStock: parseInt(draft.inStock) || 0,
           ...(!isCatalog && {
             mrp: parseFloat(draft.mrp) || 0,
-            discPct: parseFloat(draft.discPct) || 0,
+            salePrice: draft.salePrice === '' ? 0 : parseFloat(draft.salePrice) || 0,
             showMe: draft.showMe,
           }),
         }),
@@ -278,10 +278,15 @@ export default function InventoryPage() {
                       )}
                     </div>
                     <div>
-                      <label className="block text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Disc %</label>
+                      <label className="block text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">{isDirty && !isCatalog ? 'Selling (₹)' : 'Disc %'}</label>
                       {isDirty && !isCatalog ? (
-                        <input type="number" value={draft.discPct} onChange={(e) => updateDraft(product.id, 'discPct', e.target.value)}
-                          className={inp} placeholder="0" min="0" max="100" />
+                        <>
+                          <input type="number" inputMode="decimal" value={draft.salePrice} onChange={(e) => updateDraft(product.id, 'salePrice', e.target.value)}
+                            className={inp} placeholder="No offer" min="0" />
+                          {Number(draft.salePrice) > 0 && Number(draft.salePrice) < Number(draft.mrp) && (
+                            <p className="text-[10px] text-green-600 font-semibold mt-0.5">{Math.round(((draft.mrp - draft.salePrice) / draft.mrp) * 100)}% off</p>
+                          )}
+                        </>
                       ) : (
                         <p className="text-sm text-green-600 font-semibold">
                           {product.discountPrice && product.price

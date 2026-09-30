@@ -393,3 +393,33 @@ test('vendor quick add: design type, Chains category and low-stock level are sav
   const markup = await call(products, 'POST', { url: 'http://tulsi.test/api/vendor/products', body: { name: 'Y piece', category: 'chain', price: 500, stock: 1, subCategory: '<b>' } });
   assert.equal(markup.status, 400);
 });
+
+test('vendor quick add: purchase rate stays private; shipping built into prices and deducted from payout', async () => {
+  signInAs('a@vendor.test');
+  const r = await call(products, 'POST', { url: 'http://tulsi.test/api/vendor/products', body: {
+    name: 'Kemp Studs', category: 'earrings', price: 1059, discountPrice: 859, includedShipping: 60, shippingCharge: 60, vendorCost: 400, stock: 2,
+  } });
+  assert.equal(r.status, 201, JSON.stringify(r.json));
+  assert.equal(r.json.data.vendorCost, 400, 'vendor sees their own purchase rate');
+  assert.equal(r.json.data.includedShipping, 60);
+  const saved = [...db.store.get('products').values()].find((p) => p.name === 'Kemp Studs');
+  assert.equal(saved.vendorShipping, 60, 'deducted from payout → vendor nets ₹799');
+  const bad = await call(products, 'POST', { url: 'http://tulsi.test/api/vendor/products', body: { name: 'Bad ship', category: 'earrings', price: 100, includedShipping: 150, stock: 1 } });
+  assert.equal(bad.status, 400);
+});
+
+test('inventory edit keeps the vendor’s exact offer price (no stale or rounded discount %)', async () => {
+  const col = () => db.store.get('products');
+  /* Vendor set ₹999 → ₹750; an old inventory edit had stored discPct 20. */
+  col().set('pV', { name: 'Vendor piece', vendorId: 'vA', price: 999, discountPrice: 750, discPct: 20, stock: 3, isActive: true });
+  signInAs('owner@tulsi.test');
+  const inv = await import(src('app/api/admin/inventory/route.js'));
+  const patch = (body) => call(inv, 'PATCH', { url: 'http://tulsi.test/api/admin/inventory', body });
+  const r = await patch({ id: 'pV', mrp: 999, salePrice: 750, inStock: 3 });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(col().get('pV').discountPrice, 750, 'exact — not 799 from the stale 20%, not 749 from rounding');
+  assert.equal(col().get('pV').discPct, null, 'stale % cleared');
+  assert.equal((await patch({ id: 'pV', mrp: 999, salePrice: 1200 })).status, 400, 'selling above MRP refused');
+  await patch({ id: 'pV', mrp: 999, salePrice: 0 });
+  assert.equal(col().get('pV').discountPrice, 0, '0 = no offer');
+});

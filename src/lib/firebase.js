@@ -96,6 +96,8 @@ const PRODUCT_PRIVATE_FIELDS = [
   /* Vendor self-service bookkeeping (who submitted/reviewed a listing). */
   'submittedBy', 'reviewStatus', 'reviewedBy', 'reviewedAt', 'restockQty',
   'marginMode', 'marginPercent', 'vendorShipping',
+  /* A vendor's own purchase rate — never shown to shoppers. */
+  'vendorCost',
 ];
 export function toPublicProduct(p) {
   if (!p) return p;
