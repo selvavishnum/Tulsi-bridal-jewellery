@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { FiSearch, FiX, FiChevronDown, FiChevronUp, FiPhone, FiTruck, FiPackage, FiExternalLink, FiPrinter, FiList } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
 import Badge from '@/components/ui/Badge';
@@ -10,6 +10,8 @@ import toast from 'react-hot-toast';
 import { useSession } from 'next-auth/react';
 import { ROLES, FULFILLMENT_STATUSES } from '@/lib/access';
 import { escapeHtml } from '@/lib/escapeHtml';
+import { cldThumb } from '@/lib/cloudinaryImage';
+import ImageZoomModal from '@/components/shop/ImageZoomModal';
 
 const STATUS_BADGE = {
   pending: 'warning', confirmed: 'success', processing: 'gold',
@@ -428,6 +430,9 @@ export default function AdminOrdersPage() {
   const [search, setSearch]       = useState('');
   const [selected, setSelected]   = useState(null);
   const [expanded, setExpanded]   = useState(null);
+  /* Full-screen view of an ordered item's photo. */
+  const [zoomItem, setZoomItem] = useState(null);
+  const closeZoom = useCallback(() => setZoomItem(null), []);
   const [updating, setUpdating]   = useState(null);
   const [shipModal, setShipModal] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -811,7 +816,12 @@ export default function AdminOrdersPage() {
                                     <div key={i} className="flex items-center justify-between text-sm gap-2">
                                       <div className="flex items-center gap-2 min-w-0 flex-1">
                                         {item.image ? (
-                                          <img src={item.image} alt={item.name} className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-gray-200" />
+                                          <button type="button" onClick={() => setZoomItem({ image: item.image, name: item.name, caption: [item.sku, o.orderNumber && `Order #${o.orderNumber}`].filter(Boolean).join(' · ') })}
+                                            title="Click to view full image" aria-label={`Click to view full image of ${item.name}`}
+                                            className="flex-shrink-0 cursor-pointer rounded-lg transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500">
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img src={cldThumb(item.image, 80)} alt={item.name} className="w-10 h-10 rounded-lg object-cover border border-gray-200" />
+                                          </button>
                                         ) : (
                                           <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 text-gray-300 text-lg">💍</div>
                                         )}
@@ -958,6 +968,9 @@ export default function AdminOrdersPage() {
 
       {shipModal && (
         <ShipmentModal order={shipModal} onClose={() => setShipModal(null)} onShipped={fetchOrders} canSetCost={isSuper} />
+      )}
+      {zoomItem && (
+        <ImageZoomModal images={[zoomItem.image]} productName={zoomItem.name} caption={zoomItem.caption} onClose={closeZoom} />
       )}
     </div>
   );
