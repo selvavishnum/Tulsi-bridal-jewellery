@@ -152,11 +152,12 @@ export function classifySource({ utm = {}, referrer = '', ua = '', siteHost = ''
 
   /* 4. Referrer host. */
   if (refHost) {
+    /* Webmail first: mail.google.com / mail.yahoo.com are not search. */
+    if (/mail\./.test(refHost)) return out('email', refHost, 'email');
     if (/(^|\.)google\.[a-z.]+$/.test(refHost)) return out('google_organic', 'google', 'organic');
     if (/(^|\.)(bing\.com|yahoo\.com|duckduckgo\.com|yandex\.[a-z]+|ecosia\.org|baidu\.com)$/.test(refHost)) return out('other_search', refHost.split('.').slice(-2)[0], 'organic');
     if (/(^|\.)(youtube\.com|youtu\.be)$/.test(refHost)) return out('youtube', 'youtube', 'social');
     if (/(^|\.)(t\.co|twitter\.com|x\.com|pinterest\.[a-z.]+|linkedin\.com|reddit\.com|snapchat\.com|threads\.net|lnkd\.in)$/.test(refHost)) return out('social_other', refHost, 'social');
-    if (/mail\./.test(refHost)) return out('email', refHost, 'email');
     return out('referral', refHost, 'referral');
   }
   return out('direct', 'direct', '');
@@ -200,9 +201,11 @@ export function regionLabel(key) {
 
 /** First IP in x-forwarded-for, masked: 49.37.x.x / 2401:4900:1c3a::x. */
 export function maskIp(ip) {
-  const s = String(ip || '').split(',')[0].trim();
+  /* An IPv4 client seen through a dual-stack proxy: ::ffff:49.37.1.2. */
+  const s = String(ip || '').split(',')[0].trim().replace(/^::ffff:(?=\d{1,3}(\.\d{1,3}){3}$)/i, '');
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(s)) return s.split('.').slice(0, 2).join('.') + '.x.x';
-  if (s.includes(':')) return s.split(':').filter(Boolean).slice(0, 3).join(':') + '::x';
+  /* Groups before any "::" only — after it come the host bits. */
+  if (s.includes(':')) return s.split('::')[0].split(':').filter(Boolean).slice(0, 3).join(':') + '::x';
   return '';
 }
 

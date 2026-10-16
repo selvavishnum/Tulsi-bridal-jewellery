@@ -256,6 +256,9 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
       if (path) s.currentPath = path;
       s.events = (s.events || 0) + 1;
       const product = e.productId ? products.get(e.productId) : null;
+      /* A purchase row is kept only when it was credited just now (below):
+         a guessed, someone else's or re-sent order number is not a sale. */
+      let keep = STORED_EVENTS.has(e.type) && e.type !== 'purchase';
       switch (e.type) {
         case 'page_view': {
           s.pageviews = (s.pageviews || 0) + 1;
@@ -333,11 +336,12 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
             },
           });
           purchasedNow = true;
+          keep = true;
           break;
         }
         default: break;
       }
-      if (STORED_EVENTS.has(e.type)) {
+      if (keep) {
         stored.push({
           type: e.type, at: nowIso, dateKey, vid, sid, userId: s.userId || null,
           path, productId: product?.id || null, productName: product?.name || null,

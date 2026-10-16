@@ -204,6 +204,8 @@ export function start({ cart } = {}) {
 
 /** 'on' once we know this is a shopper; 'off' for staff/sellers/automation. */
 export function setMode(next) {
+  /* Automation stays off whatever the page decides once the session loads. */
+  if (next === 'on' && isAutomated()) next = 'off';
   if (next === mode) return;
   mode = next;
   if (mode === 'off') {
