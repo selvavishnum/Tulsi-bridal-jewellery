@@ -13,5 +13,27 @@
     { "collectionGroup": "vendorOrders",    "queryScope": "COLLECTION", "fields": [{ "fieldPath": "vendorId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
     { "collectionGroup": "vendorLedger",    "queryScope": "COLLECTION", "fields": [{ "fieldPath": "vendorId", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    { "collectionGroup": "analytics_events",    "fieldPath": "expireAt",          "ttl": true, "indexes": [] },
+    { "collectionGroup": "analytics_seen",      "fieldPath": "expireAt",          "ttl": true, "indexes": [] },
+    { "collectionGroup": "analytics_sessions",  "fieldPath": "expireAt",          "ttl": true, "indexes": [] },
+    { "collectionGroup": "analytics_visitors",  "fieldPath": "expireAt",          "ttl": true, "indexes": [] },
+    { "collectionGroup": "analytics_daily",     "fieldPath": "products",          "indexes": [] },
+    { "collectionGroup": "analytics_daily",     "fieldPath": "pages",             "indexes": [] },
+    { "collectionGroup": "analytics_daily",     "fieldPath": "channels",          "indexes": [] },
+    { "collectionGroup": "analytics_daily",     "fieldPath": "devices",           "indexes": [] },
+    { "collectionGroup": "analytics_daily",     "fieldPath": "os",                "indexes": [] },
+    { "collectionGroup": "analytics_daily",     "fieldPath": "browsers",          "indexes": [] },
+    { "collectionGroup": "analytics_daily",     "fieldPath": "regions",           "indexes": [] },
+    { "collectionGroup": "analytics_daily",     "fieldPath": "hours",             "indexes": [] },
+    { "collectionGroup": "analytics_daily",     "fieldPath": "funnel",            "indexes": [] },
+    { "collectionGroup": "analytics_daily",     "fieldPath": "tryonModes",        "indexes": [] },
+    { "collectionGroup": "analytics_daily",     "fieldPath": "tones",             "indexes": [] },
+    { "collectionGroup": "analytics_daily",     "fieldPath": "ordersByChannel",   "indexes": [] },
+    { "collectionGroup": "analytics_daily",     "fieldPath": "revenueByChannel",  "indexes": [] },
+    { "collectionGroup": "analytics_sessions",  "fieldPath": "batchIds",          "indexes": [] },
+    { "collectionGroup": "analytics_sessions",  "fieldPath": "orderNumbers",      "indexes": [] },
+    { "collectionGroup": "analytics_visitors",  "fieldPath": "firstTouch",        "indexes": [] },
+    { "collectionGroup": "analytics_visitors",  "fieldPath": "lastTouch",         "indexes": [] }
+  ]
 }

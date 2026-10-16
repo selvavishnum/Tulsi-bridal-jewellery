@@ -32,7 +32,8 @@ export const BROWSERS = Object.freeze(['instagram', 'facebook', 'whatsapp', 'sam
 /* ── Bots ── Server-side backstop: the client tracker never fires for
    navigator.webdriver, but a direct POST or a crawler that runs JS would
    still reach the endpoint. */
-const BOT_UA = /bot\b|bot\/|crawler|spider|slurp|googlebot|bingbot|yandex|baiduspider|duckduckbot|facebookexternalhit|meta-externalagent|twitterbot|linkedinbot|applebot|petalbot|semrush|ahrefs|mj12bot|dotbot|gptbot|claudebot|anthropic-ai|perplexitybot|ccbot|bytespider|headlesschrome|phantomjs|puppeteer|playwright|selenium|lighthouse|pagespeed|pingdom|uptimerobot|statuscake|curl\/|wget\/|python-requests|python-urllib|go-http-client|okhttp|axios\/|node-fetch|httpclient|java\//i;
+/* "(?<!cu)": Cubot phones put "CUBOT" in their user agent. */
+const BOT_UA = /(?<!cu)bot\b|bot\/|crawler|spider|slurp|googlebot|bingbot|yandex|baiduspider|duckduckbot|facebookexternalhit|meta-externalagent|twitterbot|linkedinbot|applebot|petalbot|semrush|ahrefs|mj12bot|dotbot|gptbot|claudebot|anthropic-ai|perplexitybot|ccbot|bytespider|headlesschrome|phantomjs|puppeteer|playwright|selenium|lighthouse|pagespeed|pingdom|uptimerobot|statuscake|curl\/|wget\/|python-requests|python-urllib|go-http-client|okhttp|axios\/|node-fetch|httpclient|java\//i;
 
 /**
  * True for crawlers, link-preview fetchers, uptime monitors, headless
@@ -107,13 +108,30 @@ export function referrerHost(referrer) {
 
 const PAYMENT_HOSTS = /(^|\.)(razorpay\.com|rzp\.io|payu\.in|paytm\.com|phonepe\.com|cashfree\.com|ccavenue\.com)$/;
 
+/* A whole word at the start ("ig", "ig_story", "whatsapp.status"), never a
+   prefix of another word ("walmart" is not WhatsApp). */
+const word = (alts) => new RegExp(`^(${alts})([_\\-.+ ]|$)`);
 const SOURCE_ALIASES = [
-  [/^(ig|insta|instagram)/, 'instagram'],
-  [/^(fb|facebook|meta)/, 'facebook'],
-  [/^(wa|whatsapp)/, 'whatsapp'],
-  [/^(yt|youtube)/, 'youtube'],
-  [/^(email|newsletter|mail)/, 'email'],
+  [word('ig|insta|instagram'), 'instagram'],
+  [word('fb|facebook|meta|messenger'), 'facebook'],
+  [word('wa|whatsapp|whatsapp_business'), 'whatsapp'],
+  [word('yt|youtube'), 'youtube'],
+  [word('google|googleads|adwords|gads'), 'google'],
+  [word('email|e-mail|newsletter|mail|mailchimp|klaviyo|brevo|sendinblue'), 'email'],
 ];
+const PAID_MEDIUM = /paid|(^|[_\-+ ])(cpc|ppc|ads?|sem|display)([_\-+ ]|$)/;
+
+/* Android apps send android-app://<package>/ as the referrer. */
+const APP_CHANNELS = Object.freeze({
+  'com.whatsapp': 'whatsapp', 'com.whatsapp.w4b': 'whatsapp',
+  'com.instagram.android': 'instagram', 'com.instagram.barcelona': 'social_other',
+  'com.facebook.katana': 'facebook', 'com.facebook.lite': 'facebook', 'com.facebook.orca': 'facebook', 'com.facebook.mlite': 'facebook',
+  'com.google.android.gm': 'email', 'com.microsoft.office.outlook': 'email', 'com.yahoo.mobile.client.android.mail': 'email',
+  'com.google.android.googlequicksearchbox': 'google_organic', 'com.google.android.apps.searchlite': 'google_organic',
+  'com.google.android.youtube': 'youtube',
+  'org.telegram.messenger': 'social_other', 'com.pinterest': 'social_other', 'com.twitter.android': 'social_other',
+  'com.linkedin.android': 'social_other', 'com.snapchat.android': 'social_other', 'com.sharechat.app': 'social_other',
+});
 
 /**
  * Where this visit came from.
@@ -134,7 +152,10 @@ export function classifySource({ utm = {}, referrer = '', ua = '', siteHost = ''
   if (u.source) {
     const alias = SOURCE_ALIASES.find(([re]) => re.test(u.source));
     const name = alias ? alias[1] : u.source;
-    if (name === 'google') return out(/cpc|ppc|paid|ads?/.test(u.medium) || clickIds.gclid ? 'google_ads' : 'google_organic', 'google', u.medium);
+    if (name === 'google') {
+      const paid = PAID_MEDIUM.test(u.medium) || /^(googleads|adwords|gads)|[_\-.+ ](ads?|cpc|ppc)([_\-.+ ]|$)/.test(u.source) || clickIds.gclid;
+      return out(paid ? 'google_ads' : 'google_organic', 'google', u.medium);
+    }
     if (alias) return out(alias[1], alias[1], u.medium);
     if (/email/.test(u.medium)) return out('email', name, u.medium);
     if (/social/.test(u.medium)) return out('social_other', name, u.medium);
@@ -150,13 +171,19 @@ export function classifySource({ utm = {}, referrer = '', ua = '', siteHost = ''
   if (browser === 'whatsapp' || /(^|\.)(whatsapp\.com|wa\.me)$/.test(host)) return out('whatsapp', 'whatsapp', 'social');
   if (browser === 'facebook' || clickIds.fbclid || /(^|\.)(facebook\.com|fb\.com|fb\.me)$/.test(host)) return out('facebook', 'facebook', 'social');
 
-  /* 4. Referrer host. */
+  /* 4. Referrer host (or the Android app that opened the link). */
+  if (refHost && /^android-app:/i.test(referrer)) {
+    const ch = APP_CHANNELS[refHost];
+    if (ch) return out(ch, ch === 'google_organic' ? 'google' : ch, ch === 'email' ? 'email' : ch === 'google_organic' ? 'organic' : 'social');
+    return out('referral', refHost, 'app');
+  }
   if (refHost) {
+    /* Webmail first: mail.google.com / mail.yahoo.com are not search. */
+    if (/mail\./.test(refHost)) return out('email', refHost, 'email');
     if (/(^|\.)google\.[a-z.]+$/.test(refHost)) return out('google_organic', 'google', 'organic');
     if (/(^|\.)(bing\.com|yahoo\.com|duckduckgo\.com|yandex\.[a-z]+|ecosia\.org|baidu\.com)$/.test(refHost)) return out('other_search', refHost.split('.').slice(-2)[0], 'organic');
     if (/(^|\.)(youtube\.com|youtu\.be)$/.test(refHost)) return out('youtube', 'youtube', 'social');
     if (/(^|\.)(t\.co|twitter\.com|x\.com|pinterest\.[a-z.]+|linkedin\.com|reddit\.com|snapchat\.com|threads\.net|lnkd\.in)$/.test(refHost)) return out('social_other', refHost, 'social');
-    if (/mail\./.test(refHost)) return out('email', refHost, 'email');
     return out('referral', refHost, 'referral');
   }
   return out('direct', 'direct', '');
@@ -200,9 +227,11 @@ export function regionLabel(key) {
 
 /** First IP in x-forwarded-for, masked: 49.37.x.x / 2401:4900:1c3a::x. */
 export function maskIp(ip) {
-  const s = String(ip || '').split(',')[0].trim();
+  /* An IPv4 client seen through a dual-stack proxy: ::ffff:49.37.1.2. */
+  const s = String(ip || '').split(',')[0].trim().replace(/^::ffff:(?=\d{1,3}(\.\d{1,3}){3}$)/i, '');
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(s)) return s.split('.').slice(0, 2).join('.') + '.x.x';
-  if (s.includes(':')) return s.split(':').filter(Boolean).slice(0, 3).join(':') + '::x';
+  /* Groups before any "::" only — after it come the host bits. */
+  if (s.includes(':')) return s.split('::')[0].split(':').filter(Boolean).slice(0, 3).join(':') + '::x';
   return '';
 }
 

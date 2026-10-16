@@ -192,6 +192,9 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
       && !(taggedArrival && (acq.channel !== prev.channel || acq.campaign !== prev.campaign));
     const sid = continues ? sidCookie : newSessionId();
     const sRef = sessionsCol.doc(sid);
+    /* The cart travels with the shopper: when this browser starts a new
+       visit, its previous visit stops counting as an abandoned cart. */
+    if (!continues && prev && prev.vid === vid && prev.cartDay) tx.update(sessionsCol.doc(sidCookie), { cartDay: null });
     const s = continues ? { ...prev } : {
       sid, vid, dateKey,
       userId: registered ? user.id : (visitor?.userId || null),
@@ -256,6 +259,9 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
       if (path) s.currentPath = path;
       s.events = (s.events || 0) + 1;
       const product = e.productId ? products.get(e.productId) : null;
+      /* A purchase row is kept only when it was credited just now (below):
+         a guessed, someone else's or re-sent order number is not a sale. */
+      let keep = STORED_EVENTS.has(e.type) && e.type !== 'purchase';
       switch (e.type) {
         case 'page_view': {
           s.pageviews = (s.pageviews || 0) + 1;
@@ -333,11 +339,12 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
             },
           });
           purchasedNow = true;
+          keep = true;
           break;
         }
         default: break;
       }
-      if (STORED_EVENTS.has(e.type)) {
+      if (keep) {
         stored.push({
           type: e.type, at: nowIso, dateKey, vid, sid, userId: s.userId || null,
           path, productId: product?.id || null, productName: product?.name || null,
