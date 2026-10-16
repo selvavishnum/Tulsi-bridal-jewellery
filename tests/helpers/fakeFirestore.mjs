@@ -1,6 +1,30 @@
-/* In-memory stand-in for the slice of the Firestore Admin API the ledger
-   code uses: doc refs, equality queries, and runTransaction with writes
-   buffered until commit (as Firestore does). Not a general emulator. */
+/* In-memory stand-in for the slice of the Firestore Admin API the server
+   code uses: doc refs, equality/range queries with orderBy/limit/count(),
+   set(merge) deep merges, increments, batches and runTransaction with
+   writes buffered until commit (as Firestore does). Not a general emulator. */
+/* FieldValue.increment stand-in for tests that need real counters: mock
+   FieldValue.increment as (n) => ({ [INC]: n }) and the fake adds it. */
+export const INC = '__fakeInc';
+const isPlain = (v) => v !== null && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date);
+const isInc = (v) => isPlain(v) && Object.keys(v).length === 1 && INC in v;
+
+/* Firestore semantics: set() replaces; set(merge) deep-merges maps; an
+   increment adds to the current number (or starts from 0). */
+function resolveIncrements(next, cur) {
+  if (isInc(next)) return (typeof cur === 'number' ? cur : 0) + next[INC];
+  if (!isPlain(next)) return next;
+  const out = {};
+  for (const [k, v] of Object.entries(next)) out[k] = resolveIncrements(v, isPlain(cur) ? cur[k] : undefined);
+  return out;
+}
+function deepMerge(cur, next) {
+  if (isInc(next)) return (typeof cur === 'number' ? cur : 0) + next[INC];
+  if (!isPlain(next) || !isPlain(cur)) return resolveIncrements(next, cur);
+  const out = { ...cur };
+  for (const [k, v] of Object.entries(next)) out[k] = deepMerge(cur[k], v);
+  return out;
+}
+
 export function fakeFirestore(seed = {}) {
   const store = new Map();
   for (const [col, docs] of Object.entries(seed)) store.set(col, new Map(Object.entries(docs).map(([id, d]) => [id, { ...d }])));
@@ -16,10 +40,15 @@ export function fakeFirestore(seed = {}) {
     return {
       kind: 'doc', col, id,
       get: async () => snapOf(col, id),
-      set: async (d, opts) => { colMap(col).set(id, structuredClone(opts?.merge ? { ...(colMap(col).get(id) || {}), ...d } : d)); },
+      set: async (d, opts) => { writeDoc(col, id, d, opts); },
       update: async (d) => applyUpdate(col, id, d),
       delete: async () => { colMap(col).delete(id); },
     };
+  }
+
+  function writeDoc(col, id, d, opts) {
+    const cur = colMap(col).get(id);
+    colMap(col).set(id, structuredClone(opts?.merge ? deepMerge(cur || {}, d) : resolveIncrements(d, undefined)));
   }
 
   function applyUpdate(col, id, d) {
@@ -28,22 +57,23 @@ export function fakeFirestore(seed = {}) {
     for (const [k, v] of Object.entries(d)) {
       if (k.includes('.')) {
         const [a, b] = k.split('.');
-        cur[a] = { ...(cur[a] || {}), [b]: v };
-      } else cur[k] = v;
+        cur[a] = { ...(cur[a] || {}), [b]: resolveIncrements(v, cur[a]?.[b]) };
+      } else cur[k] = resolveIncrements(v, cur[k]);
     }
   }
 
-  function query(col, filters = [], order = null) {
+  function query(col, filters = [], order = null, max = Infinity) {
     return {
       kind: 'query',
       where: (f, op, v) => {
         if (!['==', 'array-contains', '>', '>=', '<', '<='].includes(op)) throw new Error(`fake: unsupported op ${op}`);
-        return query(col, [...filters, [f, op, v]], order);
+        return query(col, [...filters, [f, op, v]], order, max);
       },
-      orderBy: (field, dir = 'asc') => query(col, filters, [field, dir]),
-      select: () => query(col, filters, order),
-      limit: () => query(col, filters, order),
-      get: async () => runQuery(col, filters, order),
+      orderBy: (field, dir = 'asc') => query(col, filters, [field, dir], max),
+      select: () => query(col, filters, order, max),
+      limit: (n) => query(col, filters, order, Number.isFinite(n) ? n : max),
+      count: () => ({ get: async () => { const { size } = runQuery(col, filters, order, max); return { data: () => ({ count: size }) }; } }),
+      get: async () => runQuery(col, filters, order, max),
     };
   }
 
@@ -56,13 +86,13 @@ export function fakeFirestore(seed = {}) {
     return d[f] <= v;
   };
 
-  function runQuery(col, filters, order) {
+  function runQuery(col, filters, order, max = Infinity) {
     let entries = [...colMap(col).entries()].filter(([, d]) => filters.every((flt) => matches(d, flt)));
     if (order) {
       const [field, dir] = order;
       entries = entries.sort(([, a], [, b]) => (String(a[field] ?? '') < String(b[field] ?? '') ? -1 : 1) * (dir === 'desc' ? -1 : 1));
     }
-    const docs = entries.map(([id]) => snapOf(col, id));
+    const docs = entries.slice(0, max).map(([id]) => snapOf(col, id));
     return { docs, empty: docs.length === 0, size: docs.length };
   }
 
@@ -76,7 +106,7 @@ export function fakeFirestore(seed = {}) {
     batch() {
       const writes = [];
       return {
-        set: (ref, d) => { writes.push(() => colMap(ref.col).set(ref.id, structuredClone(d))); },
+        set: (ref, d, opts) => { writes.push(() => writeDoc(ref.col, ref.id, d, opts)); },
         update: (ref, d) => { writes.push(() => applyUpdate(ref.col, ref.id, d)); },
         delete: (ref) => { writes.push(() => colMap(ref.col).delete(ref.id)); },
         commit: async () => { for (const w of writes) w(); },
@@ -86,7 +116,7 @@ export function fakeFirestore(seed = {}) {
       const writes = [];
       const tx = {
         get: async (target) => (target.kind === 'doc' ? target.get() : target.get()),
-        set: (ref, d) => { writes.push(() => colMap(ref.col).set(ref.id, structuredClone(d))); },
+        set: (ref, d, opts) => { writes.push(() => writeDoc(ref.col, ref.id, d, opts)); },
         update: (ref, d) => { writes.push(() => applyUpdate(ref.col, ref.id, d)); },
         delete: (ref) => { writes.push(() => colMap(ref.col).delete(ref.id)); },
       };

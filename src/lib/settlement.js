@@ -204,7 +204,7 @@ export function toVendorOrderView(order, vendorId) {
   };
 }
 
-const CUSTOMER_HIDDEN_ORDER_FIELDS = ['vendorIds', 'vendorFees', 'shippingCostActual', 'shippingCostSource', 'vendorSettlementPostedAt'];
+const CUSTOMER_HIDDEN_ORDER_FIELDS = ['vendorIds', 'vendorFees', 'shippingCostActual', 'shippingCostSource', 'vendorSettlementPostedAt', 'analyticsVid', 'attribution'];
 const CUSTOMER_HIDDEN_ITEM_FIELDS = ['supplyCost', 'vendorId', 'vendorShipping'];
 
 /* Margin (supplyCost) and vendor shipping are internal — never let them reach a shopper. */

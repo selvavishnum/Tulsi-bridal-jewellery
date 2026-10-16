@@ -1,7 +1,8 @@
 'use client';
 
-import { createContext, useContext, useReducer, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useReducer, useEffect, useState, useCallback, useRef } from 'react';
 import { DEFAULT_CHARGES, computeCharges } from '@/lib/storeCharges';
+import { track } from '@/lib/analytics/tracker';
 
 /* How often an open page re-reads the shipping/COD settings, so an admin
    change reaches checkouts already in progress (the server recalculates
@@ -55,14 +56,35 @@ function cartReducer(state, action) {
   }
 }
 
+/* Cart actions → visitor-analytics events (add to cart / remove). */
+function trackCartAction(action, items) {
+  const idOf = (i) => String(i?._id || i?.id || '');
+  if (action.type === 'ADD_ITEM') {
+    track('add_to_cart', { productId: idOf(action.payload), qty: 1 });
+  } else if (action.type === 'REMOVE_ITEM') {
+    track('remove_from_cart', { productId: String(action.payload || '') });
+  } else if (action.type === 'UPDATE_QUANTITY') {
+    const cur = items.find((i) => idOf(i) === action.payload?.id);
+    const diff = Math.round(Number(action.payload?.quantity) || 0) - (cur?.quantity || 0);
+    if (diff > 0) track('add_to_cart', { productId: String(action.payload.id), qty: Math.min(99, diff) });
+    else if (diff < 0) track('remove_from_cart', { productId: String(action.payload.id), qty: Math.min(99, -diff) });
+  }
+}
+
 export function CartProvider({ children }) {
-  const [state, dispatch] = useReducer(cartReducer, initialState);
+  const [state, rawDispatch] = useReducer(cartReducer, initialState);
+  const itemsRef = useRef(state.items);
+  useEffect(() => { itemsRef.current = state.items; }, [state.items]);
+  const dispatch = useCallback((action) => {
+    try { trackCartAction(action, itemsRef.current); } catch { /* analytics never blocks the cart */ }
+    rawDispatch(action);
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem('tulsi-cart');
     if (saved) {
       try {
-        dispatch({ type: 'HYDRATE', payload: JSON.parse(saved) });
+        rawDispatch({ type: 'HYDRATE', payload: JSON.parse(saved) });
       } catch {
         /* ignore */
       }

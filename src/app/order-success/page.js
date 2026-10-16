@@ -1,10 +1,11 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { FiCheckCircle, FiPackage, FiMapPin, FiMail, FiPhone, FiShoppingBag, FiArrowRight } from 'react-icons/fi';
+import { track } from '@/lib/analytics/tracker';
 
 function fmt(amount) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount || 0);
@@ -17,6 +18,15 @@ function OrderSuccessContent() {
 
   const [order, setOrder]     = useState(null);
   const [loading, setLoading] = useState(true);
+
+  /* Visitor analytics: the server only counts it if this browser (or
+     customer) placed the order and it is paid or cash on delivery. */
+  const purchaseTracked = useRef(false);
+  useEffect(() => {
+    if (purchaseTracked.current || !/^TBJ\d{10,24}$/.test(orderNumber || '')) return;
+    purchaseTracked.current = true;
+    track('purchase', { orderNumber });
+  }, [orderNumber]);
 
   useEffect(() => {
     if (!orderNumber || !email) { setLoading(false); return; }

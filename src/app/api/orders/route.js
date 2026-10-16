@@ -14,6 +14,7 @@ import { computeCharges } from '@/lib/storeCharges';
 import { getStoreCharges } from '@/lib/storeChargesServer';
 import crypto from 'crypto';
 import { vendorCanSell } from '@/lib/vendorStatus';
+import { analyticsVidFrom } from '@/lib/analytics/ingest';
 
 /* Shipping and COD fees come from the admin's Shipping & Payment Charges
    (settings/store_settings), read fresh for every order — see
@@ -331,6 +332,9 @@ export async function POST(request) {
       orderNumber,
       userId: session?.user?.id || null,
       guestEmail: resolvedEmail,
+      /* Visitor analytics: which browser placed it, so the purchase is
+         credited to the visit (and source) that led to it. */
+      analyticsVid: analyticsVidFrom(request),
       items: orderItems,
       vendorIds: [...new Set(orderItems.map((i) => i.vendorId))],
       vendorFees,

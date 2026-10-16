@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import { FiX, FiDownload, FiShoppingCart, FiRotateCcw, FiUser, FiCamera } from 'react-icons/fi';
 import { SKIN_TONES, ADJUST, DEFAULT_ADJUST, clampAdjust } from '@/lib/tryOn';
 import { drawCredit } from '@/lib/tryOnClient';
+import { track } from '@/lib/analytics/tracker';
 import AIModelView from './AIModelView';
 import LiveCameraView from './LiveCameraView';
 
@@ -69,15 +70,26 @@ export default function TryOnModal({ productId = null, productImage, cutoutReady
 
   const model = useMemo(() => models?.find((m) => m.id === toneId) || null, [models, toneId]);
 
+  /* Visitor analytics: one try-on open per modal, then mode / tone picks. */
+  const trackedOpen = useRef(false);
+  const pid = productId ? String(productId) : undefined;
+  useEffect(() => {
+    if (!mode || trackedOpen.current) return;
+    trackedOpen.current = true;
+    track('tryon_open', { productId: pid, mode });
+  }, [mode, pid]);
+
   function switchMode(next) {
     if (next === mode) return;
     setReady(false);
     setAdjust(DEFAULT_ADJUST);
     setMode(next);
+    track('tryon_mode', { productId: pid, mode: next });
   }
   function pickTone(id) {
     setToneId(id);
     rememberTone(id);
+    track('tryon_tone', { productId: pid, tone: id });
   }
   const setAdj = (k) => (e) => setAdjust((a) => clampAdjust({ ...a, [k]: Number(e.target.value) }));
 

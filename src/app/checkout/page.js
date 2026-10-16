@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { loadRazorpayScript } from '@/lib/loadRazorpay';
 import { computeCharges } from '@/lib/storeCharges';
+import { track } from '@/lib/analytics/tracker';
 
 /* Mirrors the enforced limit in src/app/api/orders/route.js — shown here only
    for the customer's benefit before they submit. The server is authoritative. */
@@ -63,6 +64,15 @@ export default function CheckoutPage() {
       router.replace('/login?callbackUrl=/checkout');
     }
   }, [status, router]);
+
+  /* Visitor analytics: reaching checkout with a cart — counted even when
+     the sign-in step stops a guest here, so that drop-off is visible. */
+  const checkoutTracked = useRef(false);
+  useEffect(() => {
+    if (checkoutTracked.current || !items.length) return;
+    checkoutTracked.current = true;
+    track('checkout_start');
+  }, [items.length]);
 
   /* Start loading Razorpay as soon as the page mounts, so it's already
      ready by the time the customer reaches "Place Order". */
