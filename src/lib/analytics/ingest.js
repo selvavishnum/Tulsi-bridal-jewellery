@@ -192,6 +192,9 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
       && !(taggedArrival && (acq.channel !== prev.channel || acq.campaign !== prev.campaign));
     const sid = continues ? sidCookie : newSessionId();
     const sRef = sessionsCol.doc(sid);
+    /* The cart travels with the shopper: when this browser starts a new
+       visit, its previous visit stops counting as an abandoned cart. */
+    if (!continues && prev && prev.vid === vid && prev.cartDay) tx.update(sessionsCol.doc(sidCookie), { cartDay: null });
     const s = continues ? { ...prev } : {
       sid, vid, dateKey,
       userId: registered ? user.id : (visitor?.userId || null),

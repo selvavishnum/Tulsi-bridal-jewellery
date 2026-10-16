@@ -139,7 +139,13 @@ export async function liveReport(db, now = new Date()) {
   if (live.length >= LIVE_LIMIT) activeVisitors = Math.max(activeVisitors, (await countOf(liveQ)).n);
 
   /* Carts: still shopping (seen in the last 30 min) vs abandoned today. */
-  const carts = cartSnap.docs.map((d) => d.data()).filter((s) => n0(s.cartItems) > 0 && !s.purchased);
+  /* One cart per browser: its most recent visit today. */
+  const latestByVid = new Map();
+  for (const s of cartSnap.docs.map((d) => d.data())) {
+    const cur = latestByVid.get(s.vid);
+    if (!cur || String(s.lastSeenAt) > String(cur.lastSeenAt)) latestByVid.set(s.vid, s);
+  }
+  const carts = [...latestByVid.values()].filter((s) => n0(s.cartItems) > 0 && !s.purchased);
   const abandoned = carts.filter((s) => s.lastSeenAt < idleCutoff);
   const open = carts.filter((s) => s.lastSeenAt >= idleCutoff);
 

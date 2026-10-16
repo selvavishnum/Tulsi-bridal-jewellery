@@ -363,13 +363,19 @@ test('parseBatch: unknown fields are stripped at every level', () => {
   assert.deepEqual(r.batch.cart, { items: [{ id: 'p1', name: 'Jhumka', qty: 1, price: 10 }] });
 });
 
-test('parseBatch: cart item names lose < and >; a malformed cart rejects the batch', () => {
+test('parseBatch: cart item names lose < and >; a malformed item is dropped, the batch is kept', () => {
   const r = parseBatch({ tab: 'abcd12', n: 1, cart: { items: [{ id: 'p1', name: '<img src=x onerror=alert(1)>Kundan Set', qty: 2, price: 1500 }, { id: 'p2', qty: 1, price: 0 }] }, events: [ev('page_view', 0)] });
   assert.equal(r.batch.cart.items[0].name, 'img src=x onerror=alert(1)Kundan Set');
   assert.equal(r.batch.cart.items[1].name, '', 'missing name → empty string');
-  assert.ok(parseBatch({ tab: 'abcd12', n: 1, cart: { items: [{ id: 'a/b', qty: 1, price: 1 }] }, events: [ev('page_view', 0)] }).error);
-  assert.ok(parseBatch({ tab: 'abcd12', n: 1, cart: { items: [{ id: 'p1', qty: 100, price: 1 }] }, events: [ev('page_view', 0)] }).error);
-  assert.ok(parseBatch({ tab: 'abcd12', n: 1, cart: { items: [{ id: 'p1', qty: 1, price: -1 }] }, events: [ev('page_view', 0)] }).error);
+  const mixed = parseBatch({
+    tab: 'abcd12', n: 1,
+    cart: { items: [{ id: 'a/b', qty: 1, price: 1 }, { id: 'p1', qty: 100, price: 1 }, { id: 'p1', qty: 1, price: -1 }, { id: 'p3', qty: 1, price: 2_00_00_001 }, { id: 'ok1', qty: 1, price: 999 }] },
+    events: [ev('page_view', 0)],
+  });
+  assert.equal(mixed.error, undefined, 'odd cart items never cost the events');
+  assert.deepEqual(mixed.batch.cart.items.map((i) => i.id), ['ok1']);
+  assert.equal(mixed.batch.events.length, 1);
+  assert.ok(parseBatch({ tab: 'abcd12', n: 1, cart: { items: Array.from({ length: 31 }, () => ({ id: 'p1', qty: 1, price: 1 })) }, events: [ev('page_view', 0)] }).error, 'more than 30 items is still a bad batch');
 });
 
 test('parseBatch: orderNumber must look like a real order number', () => {
@@ -393,4 +399,41 @@ test('events.js constants', () => {
   for (const t of ['page_view', 'heartbeat', 'product_view', 'product_engagement', 'tryon_open', 'tryon_mode', 'tryon_tone', 'add_to_cart', 'remove_from_cart', 'checkout_start', 'purchase']) {
     assert.ok(EVENT_TYPES.includes(t), t);
   }
+});
+
+test('classifySource: Android app referrers, whole-word UTM aliases, Google Ads sources', () => {
+  const ch = (x) => classifySource({ siteHost: 'tulsijewels.in', ...x }).channel;
+  assert.equal(ch({ referrer: 'android-app://com.whatsapp/' }), 'whatsapp');
+  assert.equal(ch({ referrer: 'android-app://com.whatsapp.w4b/' }), 'whatsapp');
+  assert.equal(ch({ referrer: 'android-app://com.instagram.android/' }), 'instagram');
+  assert.equal(ch({ referrer: 'android-app://com.google.android.gm/' }), 'email', 'Gmail app is email, not Google search');
+  assert.equal(ch({ referrer: 'android-app://com.google.android.googlequicksearchbox/' }), 'google_organic');
+  const unknownApp = classifySource({ siteHost: 'tulsijewels.in', referrer: 'android-app://com.example.reader/' });
+  assert.deepEqual([unknownApp.channel, unknownApp.source, unknownApp.medium], ['referral', 'com.example.reader', 'app']);
+
+  assert.equal(ch({ utm: { source: 'walmart' } }), 'referral', '"wa" is a word, not a prefix');
+  assert.equal(ch({ utm: { source: 'instagrammer' } }), 'referral');
+  assert.equal(ch({ utm: { source: 'wa' } }), 'whatsapp');
+  assert.equal(ch({ utm: { source: 'WhatsApp Status' } }), 'whatsapp');
+  assert.equal(ch({ utm: { source: 'ig_story' } }), 'instagram');
+  assert.equal(ch({ utm: { source: 'mailchimp' } }), 'email');
+
+  assert.equal(ch({ utm: { source: 'google', medium: 'broadcast' } }), 'google_organic', '"broadcast" contains "ad" but is not paid');
+  assert.equal(ch({ utm: { source: 'google', medium: 'cpc' } }), 'google_ads');
+  assert.equal(ch({ utm: { source: 'google', medium: 'paid_search' } }), 'google_ads');
+  assert.equal(ch({ utm: { source: 'google_ads' } }), 'google_ads');
+  assert.equal(ch({ utm: { source: 'adwords' } }), 'google_ads');
+  assert.equal(ch({ utm: { source: 'google' } }), 'google_organic');
+});
+
+test('isBotLike: Cubot phones are people; bots named "…bot" are still bots', () => {
+  const lang = 'en-IN,en;q=0.9';
+  assert.equal(isBotLike({ ua: 'Mozilla/5.0 (Linux; Android 10; CUBOT X30) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36', acceptLanguage: lang }), false);
+  assert.equal(isBotLike({ ua: 'Mozilla/5.0 (Linux; Android 11; CUBOT_NOTE_20) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0 Mobile Safari/537.36', acceptLanguage: lang }), false);
+  for (const ua of [
+    'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+    'Mozilla/5.0 (compatible; AhrefsBot/7.0; +http://ahrefs.com/robot/)',
+    'Mozilla/5.0 (Linux; Android 7.0;) AppleWebKit/537.36 (KHTML, like Gecko) Mobile Safari/537.36 (compatible; PetalBot;+https://webmaster.petalsearch.com/site/petalbot)',
+    'Mozilla/5.0 (compatible; SemrushBot/7~bl; +http://www.semrush.com/bot.html)',
+  ]) assert.equal(isBotLike({ ua, acceptLanguage: lang }), true, ua);
 });

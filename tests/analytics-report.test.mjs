@@ -497,3 +497,24 @@ test('exportCsv: capped at the export limit, with the truncated flag', async () 
   const exact = await exportCsv(db, { range: 'today', now: NOW });
   assert.deepEqual([exact.rows, exact.truncated], [cap, false]);
 });
+
+test('liveReport: a cart follows the shopper — an earlier visit of the same browser is not also an abandoned cart', async () => {
+  const cart = { items: [{ id: 'p1', name: 'Temple Jhumka', qty: 1, price: 1500 }] };
+  /* Visit 1 at 09:30 IST with a cart, then gone for 2 hours. */
+  const first = await send([pv('/product/p1'), { type: 'add_to_cart', productId: 'p1' }], { vid: VID.A, now: at(-4 * HOUR), cart });
+  /* Visit 2 (new session, same browser) at 13:28 IST, still has the cart. */
+  const second = await send([pv('/cart')], { vid: first.vid, sid: first.sid, now: at(-2 * MIN), cart });
+  assert.notEqual(second.sid, first.sid, 'idle > 30 min starts a new visit');
+  assert.equal(db.store.get('analytics_sessions').get(first.sid).cartDay, null, 'old visit hands its cart over');
+
+  const live = await liveReport(db, NOW);
+  assert.equal(live.carts.open, 1, 'the shopper is still shopping');
+  assert.equal(live.carts.abandoned, 0, 'and is not counted as abandoned as well');
+
+  /* Belt and braces: two sessions of one browser both marked with today's
+     cart (e.g. written before this rule) still count once — the latest. */
+  db.store.get('analytics_sessions').get(first.sid).cartDay = TODAY;
+  const again = await liveReport(db, NOW);
+  assert.equal(again.carts.open + again.carts.abandoned, 1);
+  assert.equal(again.carts.open, 1);
+});
