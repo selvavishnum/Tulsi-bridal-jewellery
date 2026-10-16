@@ -301,7 +301,8 @@ export default function ProductDetail({ initialProduct = null }) {
   )}`;
 
   function addToCart() {
-    for (let i = 0; i < qty; i++) dispatch({ type: 'ADD_ITEM', payload: product });
+    /* One action carrying the quantity (one "add to cart" in analytics). */
+    dispatch({ type: 'ADD_ITEM', payload: product, qty });
     toast.success(`Added to cart!`);
   }
 
@@ -311,8 +312,7 @@ export default function ProductDetail({ initialProduct = null }) {
       return;
     }
     // Add to cart then go straight to checkout
-    dispatch({ type: 'ADD_ITEM', payload: { ...product, quantity: qty } });
-    for (let i = 1; i < qty; i++) dispatch({ type: 'ADD_ITEM', payload: product });
+    dispatch({ type: 'ADD_ITEM', payload: product, qty });
     router.push('/checkout');
   }
 

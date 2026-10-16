@@ -13,21 +13,25 @@ const CartContext = createContext(null);
 
 const initialState = { items: [], coupon: null, discount: 0 };
 
+/* ADD_ITEM may carry `qty` (the product page's quantity picker); default 1. */
+const addQty = (action) => Math.max(1, Math.min(99, Math.round(Number(action.qty) || 1)));
+
 function cartReducer(state, action) {
   switch (action.type) {
     case 'ADD_ITEM': {
       const pid = action.payload._id || action.payload.id;
+      const add = addQty(action);
       const existing = state.items.find((i) => (i._id || i.id) === pid);
       if (existing) {
         return {
           ...state,
           items: state.items.map((i) =>
-            (i._id || i.id) === pid ? { ...i, quantity: i.quantity + 1 } : i
+            (i._id || i.id) === pid ? { ...i, quantity: i.quantity + add } : i
           ),
         };
       }
       // Normalize: always set _id so downstream code (cart page, checkout) works reliably
-      return { ...state, items: [...state.items, { ...action.payload, _id: pid, quantity: 1 }] };
+      return { ...state, items: [...state.items, { ...action.payload, _id: pid, quantity: add }] };
     }
     case 'REMOVE_ITEM':
       return { ...state, items: state.items.filter((i) => (i._id || i.id) !== action.payload) };
@@ -60,7 +64,7 @@ function cartReducer(state, action) {
 function trackCartAction(action, items) {
   const idOf = (i) => String(i?._id || i?.id || '');
   if (action.type === 'ADD_ITEM') {
-    track('add_to_cart', { productId: idOf(action.payload), qty: 1 });
+    track('add_to_cart', { productId: idOf(action.payload), qty: addQty(action) });
   } else if (action.type === 'REMOVE_ITEM') {
     track('remove_from_cart', { productId: String(action.payload || '') });
   } else if (action.type === 'UPDATE_QUANTITY') {

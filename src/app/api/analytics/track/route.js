@@ -36,7 +36,11 @@ const SECURE = process.env.NODE_ENV === 'production';
    right trade (a real visitor sends ~5 batches a minute). */
 const RATE = { limit: 120, windowMs: 60_000 };
 const buckets = new Map();
-function allowIp(ip, now = Date.now()) {
+/* IPv6 by its /64 (one home or phone gets a whole /64 and can rotate
+   inside it); IPv4 as is (Indian mobile carriers share addresses widely). */
+const limitKey = (ip) => (ip.includes(':') ? ip.split(':').slice(0, 4).join(':') : ip);
+function allowIp(ipRaw, now = Date.now()) {
+  const ip = limitKey(String(ipRaw || 'unknown'));
   const b = buckets.get(ip);
   if (!b || now - b.start >= RATE.windowMs) {
     if (buckets.size > 10_000) buckets.clear();
@@ -48,6 +52,9 @@ function allowIp(ip, now = Date.now()) {
 }
 
 const noContent = () => new NextResponse(null, { status: 204 });
+/* gRPC codes worth a resend: DEADLINE_EXCEEDED, ABORTED, UNAVAILABLE.
+   (Not RESOURCE_EXHAUSTED: a used-up quota doesn't come back in seconds.) */
+const TRANSIENT = new Set([4, 10, 14]);
 const stripHost = (h) => String(h || '').toLowerCase().replace(/:\d+$/, '').replace(/^www\./, '');
 
 /** Another website's page can't make visitors' browsers post here. */
@@ -120,6 +127,9 @@ export async function POST(request) {
     return res;
   } catch (err) {
     console.error('[analytics/track] ingest failed:', err.message);
+    /* Contention, timeout or a Firestore blip: ask the tracker to resend the
+       same batch (de-duplicated by its id). Anything else is dropped. */
+    if (TRANSIENT.has(err?.code)) return NextResponse.json({ success: false }, { status: 503, headers: { 'retry-after': '10' } });
     return noContent();
   }
 }

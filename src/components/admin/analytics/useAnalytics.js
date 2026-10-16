@@ -18,6 +18,10 @@ const RANGE_KEYS = RANGE_OPTIONS.map((r) => r.key);
 const STORAGE_KEY = 'tj-analytics-range';
 const LIVE_MS = 15_000;
 const FULL_MS = 60_000;
+/* Yesterday / 7 days / 30 days barely move minute to minute (the server
+   caches them for minutes too); only the live block needs to be fresh. */
+const SLOW_FULL_MS = 5 * 60_000;
+const fullEvery = (r) => (r === 'today' ? FULL_MS : SLOW_FULL_MS);
 
 /* ── Remembered range ──
    An external store: the server render and hydration see 'today', the
@@ -80,6 +84,8 @@ export function useAnalytics() {
   /* Touched only from callbacks, never during render. */
   const lastFullAt = useRef(0);
   const authBlocked = useRef(false);
+  const rangeRef = useRef(range);
+  useEffect(() => { rangeRef.current = range; }, [range]);
 
   const wanted = `${range}:${tick}`;
   const loading = finished !== wanted;
@@ -108,7 +114,8 @@ export function useAnalytics() {
     return () => ctrl.abort();
   }, [range, tick]);
 
-  /* Background timers: live every 15 s, full every 60 s, visible tab only. */
+  /* Background timers, visible tab only: live every 15 s; the full report
+     every 60 s for Today, every 5 minutes for the other ranges. */
   useEffect(() => {
     let liveCtrl = null;
     const pollLive = () => {
@@ -124,10 +131,11 @@ export function useAnalytics() {
         })
         .catch(() => { /* next poll retries; full loads surface errors */ });
     };
-    const refreshIfVisible = () => { if (isVisible() && !authBlocked.current) setTick((t) => t + 1); };
+    const due = () => !lastFullAt.current || Date.now() - lastFullAt.current >= fullEvery(rangeRef.current) - 1_000;
+    const refreshIfVisible = () => { if (isVisible() && !authBlocked.current && due()) setTick((t) => t + 1); };
     const onVisibility = () => {
       if (!isVisible()) return;
-      if (lastFullAt.current && Date.now() - lastFullAt.current > FULL_MS) refreshIfVisible();
+      if (due()) refreshIfVisible();
       else pollLive();
     };
     const liveTimer = setInterval(pollLive, LIVE_MS);

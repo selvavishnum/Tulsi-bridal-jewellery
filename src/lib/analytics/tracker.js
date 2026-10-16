@@ -37,6 +37,9 @@ let seq = 0;
 let batchNo = 0;
 let queue = [];
 let inflight = null; // { body, attempts }
+/* True once a response has come back: from then on the browser holds the
+   tj_vid / tj_sid cookies, so any request — even a beacon — is this visit. */
+let acked = false;
 let retryBatch = null;
 let flushTimer = null;
 let flushDue = 0;
@@ -65,7 +68,8 @@ export function isAutomated() {
   return /HeadlessChrome|PhantomJS|Lighthouse|Chrome-Lighthouse/i.test(navigator.userAgent || '');
 }
 
-const staffPath = (p) => /^\/(admin|vendor)(\/|$)/.test(p || '');
+/* Staff and seller areas, including the staff sign-in page. */
+const staffPath = (p) => /^\/(admin|vendor|admin-portal)(\/|$)/.test(p || '');
 
 /* ── Active time ── */
 const idle = () => now() - lastInteraction >= IDLE_AFTER_MS;
@@ -82,7 +86,9 @@ function beat() {
   if (mode === 'off') return;
   const active = takeActiveSeconds();
   /* An idle open tab is not a live visitor. */
-  if (active > 0) push({ type: 'heartbeat', active });
+  /* The page rides along, so a tab resumed after a long pause still shows
+     where the shopper is. */
+  if (active > 0) push({ type: 'heartbeat', active, path: window.location.pathname.slice(0, 300) });
 }
 
 /* ── Queue & send ── */
@@ -121,10 +127,10 @@ function cartSnapshot() {
   }
 }
 
-function nextBody() {
+function nextBody(final = false) {
   if (!queue.length) return null;
   const events = queue.splice(0, MAX_BATCH);
-  return JSON.stringify({ tab, n: batchNo++, cart: cartSnapshot(), events });
+  return JSON.stringify({ tab, n: batchNo++, ...(final && { final: true }), cart: cartSnapshot(), events });
 }
 
 async function flush() {
@@ -141,6 +147,7 @@ async function flush() {
       credentials: 'same-origin',
       headers: { 'content-type': 'text/plain;charset=UTF-8' },
     });
+    if (res.ok) acked = true;
     /* 429 / 5xx: try the same batch again later (same id → no double count). */
     if ((res.status === 429 || res.status >= 500) && inflight.attempts < MAX_ATTEMPTS) retryBatch = inflight;
   } catch {
@@ -151,14 +158,21 @@ async function flush() {
   if (queue.length || retryBatch) schedule(retryBatch ? FLUSH_MS * 2 : SOON_MS);
 }
 
-/** Page is going away (or to the background): send everything now. */
+/** Page is going away (or to the background): send everything now.
+ *  Also while the sign-in check is still loading — the server drops staff
+ *  and sellers itself, and these are exactly the quick-bounce visits. */
 function flushOnHide() {
-  if (mode !== 'on') return;
+  if (mode === 'off') return;
   beat();
+  /* The visit's first request is still on its way and carries the cookies
+     back: a beacon now would arrive without them and count a second
+     visitor. The first request (keepalive) still lands; what's queued goes
+     with the next flush if the shopper comes back. */
+  if (inflight && !acked) return;
   const bodies = [];
   if (retryBatch) { bodies.push(retryBatch.body); retryBatch = null; }
   let b;
-  while ((b = nextBody())) bodies.push(b);
+  while ((b = nextBody(true))) bodies.push(b);
   for (const body of bodies) {
     let sent = false;
     try {
@@ -196,7 +210,11 @@ export function start({ cart } = {}) {
   }
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flushOnHide();
-    else { visibleSince = now(); lastInteraction = now(); }
+    else {
+      visibleSince = now();
+      lastInteraction = now();
+      if (queue.length) schedule(SOON_MS);
+    }
   });
   window.addEventListener('pagehide', flushOnHide);
   beatTimer = setInterval(beat, HEARTBEAT_MS);
@@ -250,7 +268,7 @@ export function trackPageView(path) {
 
 /** Test hook: back to a fresh state. */
 export function _reset() {
-  mode = 'pending'; started = false; tab = ''; seq = 0; batchNo = 0; queue = []; inflight = null; retryBatch = null;
+  mode = 'pending'; started = false; tab = ''; seq = 0; batchNo = 0; queue = []; inflight = null; retryBatch = null; acked = false;
   if (flushTimer) clearTimeout(flushTimer);
   if (beatTimer) clearInterval(beatTimer);
   flushTimer = null; beatTimer = null; getCart = () => null; firstPageView = true; activeMs = 0; visibleSince = 0; lastInteraction = 0;

@@ -14,8 +14,11 @@ import { SECURE_COOKIES } from '@/lib/authCookies';
 const RATE_LIMITED = 'RateLimited';
 
 /* Compared against when there's no account, so an unknown email takes as
-   long as a wrong password (no timing oracle for which emails exist). */
-const DUMMY_HASH = bcrypt.hashSync('timing-equaliser', 10);
+   long as a wrong password (no timing oracle for which emails exist).
+   Precomputed bcrypt (cost 10) of a throwaway string: hashing it at module
+   load cost ~0.1 s of CPU on every cold start of every route importing
+   authOptions — including the busy analytics beacon. */
+const DUMMY_HASH = '$2a$10$0eZHuO9NhAHjJB7adbtVcOr2Y74HMir/ot6K33689zt1QRmY7mqMK';
 
 /* How often a signed-in admin/vendor session re-checks that the person is
    still allowed in. Sessions last 30 days; without this, deactivating a
