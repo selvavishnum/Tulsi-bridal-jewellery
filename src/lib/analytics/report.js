@@ -162,7 +162,9 @@ export async function liveReport(db, now = new Date()) {
     currentPath: s.currentPath || '',
     pageviews: n0(s.pageviews),
     activeSeconds: n0(s.activeSeconds),
-    durationSeconds: secondsBetween(s.startedAt, s.lastSeenAt),
+    /* Wall-clock since the first page, but never less than measured active
+       time (a visit's first batch can carry a heartbeat already). */
+    durationSeconds: Math.max(secondsBetween(s.startedAt, s.lastSeenAt), n0(s.activeSeconds)),
     startedAt: s.startedAt, lastSeenAt: s.lastSeenAt,
     cartItems: n0(s.cartItems), cartValue: money(s.cartValue),
     stage: stageOf(s),
