@@ -28,7 +28,11 @@ export async function POST(request) {
     if (secretish.length) {
       return NextResponse.json({ success: false, message: `Don't store credentials in site settings (${secretish.join(', ')}). Use environment variables.` }, { status: 400 });
     }
-    await db.collection('settings').doc('site').set({ ...body, updatedAt: new Date().toISOString() }, { merge: true });
+    /* The homepage category showcase has its own endpoint (instant toggles,
+       per-field changes): a full-page Save, sent with whatever this page
+       loaded earlier, must never overwrite it. */
+    const { categoryShowcase: _showcase, ...rest } = body || {};
+    await db.collection('settings').doc('site').set({ ...rest, updatedAt: new Date().toISOString() }, { merge: true });
     return NextResponse.json({ success: true, message: 'Settings saved' });
   } catch (e) { return NextResponse.json({ success: false, message: e.message }, { status: 500 }); }
 }

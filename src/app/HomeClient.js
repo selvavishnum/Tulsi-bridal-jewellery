@@ -10,6 +10,8 @@ import {
 import { useCart } from '@/context/CartContext';
 import { cacheGet, cacheSet } from '@/lib/clientCache';
 import ProductCard from '@/components/shop/ProductCard';
+import CategoryShowcase from '@/components/home/CategoryShowcase';
+import { normalizeShowcase } from '@/lib/categoryShowcase';
 
 function getCookie(name) {
   if (typeof document === 'undefined') return '';
@@ -48,15 +50,6 @@ const DEFAULT_SLIDES = [
     bg: 'from-velvet-900 via-wine-900 to-wine-800',
     imageUrl: '',
   },
-];
-
-const CATEGORIES = [
-  { key: 'necklace',    label: 'Necklaces',   href: '/catalog?category=necklace',    emoji: '📿', color: 'from-rose-50 to-pink-50' },
-  { key: 'earrings',   label: 'Earrings',    href: '/catalog?category=earrings',    emoji: '✨', color: 'from-amber-50 to-yellow-50' },
-  { key: 'bangles',    label: 'Bangles',     href: '/catalog?category=bangles',     emoji: '🟡', color: 'from-orange-50 to-amber-50' },
-  { key: 'maang-tikka', label: 'Maang Tikka', href: '/catalog?category=maang-tikka', emoji: '👑', color: 'from-purple-50 to-violet-50' },
-  { key: 'set',        label: 'Bridal Sets', href: '/catalog?category=set',         emoji: '💍', color: 'from-red-50 to-rose-50' },
-  { key: 'rentals',    label: 'Rentals',     href: '/rentals',                      emoji: '🗓️', color: 'from-gold-50 to-amber-50' },
 ];
 
 const BROWSE_CATS = [
@@ -299,7 +292,7 @@ export default function HomeClient() {
   const [heroSlides, setHeroSlides] = useState([]);
   const [testimonials, setTestimonials] = useState(DEFAULT_TESTIMONIALS);
   const [instagramFeed, setInstagramFeed] = useState([]);
-  const [categoryImages, setCategoryImages] = useState({});
+  const [settingsReady, setSettingsReady] = useState(false);
 
   // Infinite scroll state
   const [browseProducts, setBrowseProducts] = useState([]);
@@ -320,16 +313,20 @@ export default function HomeClient() {
       if (Array.isArray(d.heroSlides)) setHeroSlides(d.heroSlides);
       if (Array.isArray(d.testimonials) && d.testimonials.length > 0) setTestimonials(d.testimonials);
       if (Array.isArray(d.instagramFeed)) setInstagramFeed(d.instagramFeed);
-      if (d.categoryImages && typeof d.categoryImages === 'object') setCategoryImages(d.categoryImages);
+      setSettingsReady(true);
     }
+    /* Show the cached copy at once, then always refresh it: an admin's
+       change (e.g. hiding a category) shows on the next visit, not an hour
+       later. */
     const cached = cacheGet('settings', 60 * 60 * 1000);
-    if (cached) { applySettings(cached); return; }
+    if (cached) applySettings(cached);
     fetch('/api/admin/settings')
       .then((r) => r.json())
       .then((d) => {
         if (d.success && d.data) { cacheSet('settings', d.data, 60 * 60 * 1000); applySettings(d.data); }
+        else setSettingsReady(true);
       })
-      .catch(() => {});
+      .catch(() => setSettingsReady(true));
   }, []);
 
   // Fetch a page of browse products
@@ -403,86 +400,10 @@ export default function HomeClient() {
       {/* ── HERO SLIDER ── */}
       <HeroSlider slides={heroSlides} />
 
-      {/* ── TOP CATEGORIES ── */}
-      {(() => {
-        const shape = siteSettings.categoryShape || 'square';
-        const size  = siteSettings.categorySize  || 'large';
-
-        /* Square full-image style (Kushal-like) */
-        if (shape === 'square') {
-          const cols  = size === 'small' ? 'grid-cols-3' : 'grid-cols-2';
-          const aspect = size === 'small' ? 'aspect-square' : size === 'medium' ? 'aspect-[3/4]' : 'aspect-[4/5]';
-          const radius = 'rounded-2xl';
-          return (
-            <section className="py-14 bg-white">
-              <div className="section-container">
-                <div className="text-center mb-8">
-                  <div className="luxury-label justify-center mb-3">Shop by Category</div>
-                  <h2 className="font-serif text-2xl md:text-3xl font-bold text-stone-800">Discover Our Collections</h2>
-                </div>
-                <div className={`grid ${cols} gap-3 md:gap-4`}>
-                  {CATEGORIES.map((cat) => {
-                    const photo = categoryImages[cat.key];
-                    return (
-                      <Link key={cat.href} href={cat.href}
-                        className={`group relative ${aspect} overflow-hidden ${radius} bg-gradient-to-br ${cat.color} border border-stone-100 hover:border-gold-300/60 hover:shadow-luxury transition-all duration-400`}>
-                        {photo ? (
-                          <Image src={photo} alt={cat.label} fill sizes="(max-width: 768px) 50vw, 25vw" className="object-cover group-hover:scale-105 transition-transform duration-700 ease-out" />
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <span className={size === 'small' ? 'text-3xl' : size === 'medium' ? 'text-5xl' : 'text-6xl'}>{cat.emoji}</span>
-                          </div>
-                        )}
-                        {/* Gold shimmer overlay on hover */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-gold-600/0 to-transparent group-hover:from-gold-600/10 transition-all duration-400" />
-                        {/* Bottom name overlay */}
-                        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent pt-12 pb-3 px-3">
-                          <span className={`text-white font-bold drop-shadow-md tracking-wide ${size === 'small' ? 'text-xs' : size === 'medium' ? 'text-sm' : 'text-base'}`}>{cat.label}</span>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            </section>
-          );
-        }
-
-        /* Circle style */
-        const cols   = size === 'large' ? 'grid-cols-3' : size === 'medium' ? 'grid-cols-3' : 'grid-cols-3';
-        const imgSz  = size === 'small' ? 'w-20 h-20' : size === 'medium' ? 'w-24 h-24 md:w-28 md:h-28' : 'w-28 h-28 md:w-36 md:h-36';
-        const txtSz  = size === 'small' ? 'text-xs' : size === 'medium' ? 'text-xs' : 'text-sm';
-        return (
-          <section className="py-14 bg-white">
-            <div className="section-container">
-              <div className="text-center mb-8">
-                <div className="luxury-label justify-center mb-3">Shop by Category</div>
-                <h2 className="font-serif text-2xl md:text-3xl font-bold text-stone-800">Discover Our Collections</h2>
-              </div>
-              <div className={`grid ${cols} gap-4 md:gap-6`}>
-                {CATEGORIES.map((cat) => {
-                  const photo = categoryImages[cat.key];
-                  return (
-                    <Link key={cat.href} href={cat.href} className="group flex flex-col items-center gap-3">
-                      <div className="relative">
-                        {/* Gold glow ring on hover */}
-                        <div className={`relative ${imgSz} rounded-full overflow-hidden border-2 border-gold-200 group-hover:border-gold-400 group-hover:shadow-gold flex items-center justify-center bg-gradient-to-br ${cat.color} transition-all duration-400`}>
-                          {photo ? (
-                            <Image src={photo} alt={cat.label} fill sizes="150px" className="object-cover group-hover:scale-108 transition-transform duration-500" />
-                          ) : (
-                            <span className={size === 'small' ? 'text-2xl' : size === 'medium' ? 'text-3xl' : 'text-4xl'}>{cat.emoji}</span>
-                          )}
-                        </div>
-                      </div>
-                      <span className={`${txtSz} font-semibold text-stone-700 group-hover:text-wine-700 transition-colors leading-tight text-center`}>{cat.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-        );
-      })()}
+      {/* ── TOP CATEGORIES (Admin → Settings → Category Showcase) ──
+          Rendered once the settings are known, so a hidden category never
+          flashes up first. */}
+      {settingsReady && <CategoryShowcase showcase={normalizeShowcase(siteSettings)} />}
 
       {/* ── BROWSE ALL PRODUCTS (Infinite Scroll) ── */}
       <section className="py-12 bg-white" id="shop">
