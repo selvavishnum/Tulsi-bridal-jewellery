@@ -1,6 +1,6 @@
 /* Coupon fields staff may set, validated. Usage bookkeeping (usedCount,
    usedBy) is written only by checkout and cancellation, never from a
-   request. Pure module. */
+   request. No '@/…' imports: hasPlacedOrder takes the db as an argument. */
 const CODE = /^[A-Z0-9_-]{3,30}$/;
 
 /** @returns {{ data: object } | { error: string }} — partial when `partial`. */
@@ -42,6 +42,12 @@ export function parseCouponInput(body, { partial = false } = {}) {
     else data.expiresAt = new Date(exp).toISOString();
   }
   if (has('isActive')) data.isActive = b.isActive === true;
+  /* First order only (e.g. the welcome-offer code): checkout refuses it to
+     a customer who already has a placed order — see hasPlacedOrder. */
+  if (has('firstOrderOnly')) {
+    if (typeof b.firstOrderOnly !== 'boolean') return { error: 'First order only must be on or off.' };
+    data.firstOrderOnly = b.firstOrderOnly;
+  } else if (!partial) data.firstOrderOnly = false;
   if (has('description')) data.description = String(b.description).slice(0, 300);
   return { data };
 }
@@ -50,4 +56,39 @@ export function parseCouponInput(body, { partial = false } = {}) {
 export function checkCouponValue(merged) {
   if (merged.type === 'percentage' && (merged.value <= 0 || merged.value > 100)) return 'A percentage must be between 1 and 100.';
   return null;
+}
+
+/* An order counts as placed unless it was cancelled, and only once it is
+   paid online or is cash on delivery — an abandoned Razorpay attempt
+   (payment still pending) is not a first order. */
+export function isPlacedOrder(order) {
+  if (!order || order.status === 'cancelled') return false;
+  return order.payment?.status === 'paid' || order.payment?.method === 'cod';
+}
+
+/* Per lookup. A customer with more than this many orders under one key,
+   none of them placed, is vanishingly rare — the cost is one discount. */
+const PLACED_ORDER_SCAN = 25;
+
+/**
+ * Has this customer placed an order before? By account id, and by email —
+ * the order's guestEmail (every order stores the customer's email there)
+ * and the email on its shipping address. Bounded, single-field equality
+ * queries only (no composite index needed). Takes the Firestore Admin db.
+ * @param {object} db
+ * @param {{ userId?: string|null, email?: string|null }} who
+ * @returns {Promise<boolean>}
+ */
+export async function hasPlacedOrder(db, { userId, email } = {}) {
+  const orders = db.collection('orders');
+  const lookups = [];
+  if (userId) lookups.push(orders.where('userId', '==', String(userId)));
+  const e = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  if (e) {
+    lookups.push(orders.where('guestEmail', '==', e));
+    lookups.push(orders.where('shippingAddress.email', '==', e));
+  }
+  if (!lookups.length) return false;
+  const snaps = await Promise.all(lookups.map((q) => q.select('status', 'payment').limit(PLACED_ORDER_SCAN).get()));
+  return snaps.some((snap) => snap.docs.some((d) => isPlacedOrder(d.data())));
 }

@@ -4,11 +4,11 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { useCart } from '@/context/CartContext';
-import { freeShippingLine } from '@/lib/storeCharges';
 import { useWishlist } from '@/context/WishlistContext';
+import WelcomeBar from '@/components/layout/WelcomeBar';
 import {
   FiShoppingCart, FiHeart, FiUser, FiMenu, FiX, FiSearch,
-  FiChevronDown, FiLogOut, FiSettings, FiPhone, FiBriefcase,
+  FiChevronDown, FiLogOut, FiSettings, FiBriefcase,
 } from 'react-icons/fi';
 
 const catalogCategories = [
@@ -40,14 +40,17 @@ export default function Navbar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [sitePhone, setSitePhone] = useState('+91 76958 68787');
+  /* Public site settings (phone, welcome offer) — null until loaded. */
+  const [siteSettings, setSiteSettings] = useState(null);
   const searchRef = useRef(null);
   const userMenuRef = useRef(null);
 
+  /* Fresh on every page load (the endpoint is no-store): an admin's change
+     to the offer bar or phone shows on the visitor's next visit. */
   useEffect(() => {
-    fetch('/api/admin/settings')
+    fetch('/api/admin/settings', { cache: 'no-store' })
       .then((r) => r.json())
-      .then((d) => { if (d.success && d.data?.phone) setSitePhone(d.data.phone); })
+      .then((d) => { if (d.success && d.data) setSiteSettings(d.data); })
       .catch(() => {});
   }, []);
 
@@ -78,20 +81,8 @@ export default function Navbar() {
 
   return (
     <header className={`sticky top-0 z-50 transition-all duration-500 ${scrolled ? 'bg-white/97 backdrop-blur-md shadow-luxury border-b border-stone-100/80' : 'bg-white/95 backdrop-blur-sm shadow-sm'}`}>
-      {/* Top announcement bar */}
-      <div className="bg-velvet-950 text-white py-2">
-        <div className="section-container flex items-center justify-between">
-          <p className="text-xs tracking-wider text-gold-300/80 hidden sm:block">
-            ✦ Handcrafted Bridal Jewellery — Made with Love ✦
-          </p>
-          <p className="text-xs tracking-wide text-center sm:text-right w-full sm:w-auto text-gold-300/70">
-            {freeShippingLine(charges)} &nbsp;·&nbsp;
-            <a href={`tel:${sitePhone.replace(/\s/g, '')}`} className="inline-flex items-center gap-1 font-medium hover:text-gold-300 transition-colors text-gold-300/90">
-              <FiPhone className="text-[10px]" /> {sitePhone}
-            </a>
-          </p>
-        </div>
-      </div>
+      {/* Top announcement bar — welcome offer, or tagline + delivery + phone */}
+      <WelcomeBar settings={siteSettings} charges={charges} />
 
       {/* Main nav */}
       <nav className="section-container">

@@ -4,6 +4,7 @@ import { FiSettings, FiSave, FiPlus, FiTrash2, FiImage } from 'react-icons/fi';
 import Image from 'next/image';
 import toast from 'react-hot-toast';
 import CategoryShowcaseManager from '@/components/admin/showcase/CategoryShowcaseManager';
+import AnnouncementSettingsPanel from '@/components/admin/AnnouncementSettingsPanel';
 
 /* ─────────────────────────── Toggle component ─────────────────────────── */
 function Toggle({ value, onChange, label, description }) {
@@ -646,6 +647,9 @@ export default function SettingsPage() {
   function renderMarketing() {
     return (
       <div className="space-y-5">
+        {/* Welcome offer strip at the top of every storefront page (saved with Save Settings) */}
+        <AnnouncementSettingsPanel value={settings.announcement} onChange={(a) => upd('announcement', a)} phone={settings.phone} />
+
         {/* Hero Slides */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
