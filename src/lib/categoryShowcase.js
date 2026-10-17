@@ -113,7 +113,8 @@ export function normalizeShowcase(settings = {}) {
   const legacyImages = settings?.categoryImages && typeof settings.categoryImages === 'object' ? settings.categoryImages : {};
   const l = stored?.layout && typeof stored.layout === 'object' ? stored.layout : legacyLayout(settings);
   const layout = {
-    layoutVariant: Object.hasOwn(ASPECTS, l.layoutVariant) ? l.layoutVariant : DEFAULT_LAYOUT.layoutVariant,
+    /* typeof first: hasOwn coerces its key, so ['circle'] would pass. */
+    layoutVariant: typeof l.layoutVariant === 'string' && Object.hasOwn(ASPECTS, l.layoutVariant) ? l.layoutVariant : DEFAULT_LAYOUT.layoutVariant,
     displayMode: DISPLAY_MODES.some((m) => m.value === l.displayMode) ? l.displayMode : DEFAULT_LAYOUT.displayMode,
     size: SIZES.includes(l.size) ? l.size : DEFAULT_LAYOUT.size,
   };
