@@ -86,6 +86,8 @@ export function useAnalytics() {
   const authBlocked = useRef(false);
   const rangeRef = useRef(range);
   useEffect(() => { rangeRef.current = range; }, [range]);
+  /* Set by the Refresh button: that one load skips the server's cache. */
+  const freshNext = useRef(false);
 
   const wanted = `${range}:${tick}`;
   const loading = finished !== wanted;
@@ -94,10 +96,14 @@ export function useAnalytics() {
   useEffect(() => {
     const ctrl = new AbortController();
     const key = `${range}:${tick}`;
-    getJson(`/api/admin/analytics?range=${encodeURIComponent(range)}`, ctrl.signal)
+    const fresh = freshNext.current;
+    freshNext.current = false;
+    /* Stamped when the load starts, so a slow answer doesn't push the
+       next refresh back a whole interval. */
+    lastFullAt.current = Date.now();
+    getJson(`/api/admin/analytics?range=${encodeURIComponent(range)}${fresh ? '&fresh=1' : ''}`, ctrl.signal)
       .then((data) => {
         if (ctrl.signal.aborted) return;
-        lastFullAt.current = Date.now();
         authBlocked.current = false;
         setReport(data.report || null);
         if (data.live) setLive((prev) => newer(prev, data.live));
@@ -149,7 +155,7 @@ export function useAnalytics() {
     };
   }, []);
 
-  const refresh = useCallback(() => setTick((t) => t + 1), []);
+  const refresh = useCallback(() => { freshNext.current = true; setTick((t) => t + 1); }, []);
 
   return { range, setRange: writeRange, report, live, error, loading, updatedAt, refresh };
 }

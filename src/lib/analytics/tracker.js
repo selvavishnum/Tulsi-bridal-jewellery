@@ -11,7 +11,9 @@
 
    Identity is the server's HttpOnly tj_vid / tj_sid cookies — this file
    never sees or stores a visitor id. A "tab" is one page load: a random id
-   plus a batch counter, which lets the server drop retried batches.
+   plus a batch counter, which lets the server drop retried batches — and,
+   until the first response has set the cookies, lets it keep every request
+   of this page load on one visitor.
 
    Safe to import anywhere: nothing touches window until start().
    ───────────────────────────────────────────── */
@@ -37,9 +39,9 @@ let seq = 0;
 let batchNo = 0;
 let queue = [];
 let inflight = null; // { body, attempts }
-/* True once a response has come back: from then on the browser holds the
-   tj_vid / tj_sid cookies, so any request — even a beacon — is this visit. */
-let acked = false;
+/* Heartbeat seconds sent since the last final batch: when the tab hides,
+   a final batch must follow so the server books them. */
+let beatsSinceFinal = false;
 let retryBatch = null;
 let flushTimer = null;
 let flushDue = 0;
@@ -53,11 +55,11 @@ let lastInteraction = 0;
 const now = () => Date.now();
 const randomTab = () => {
   try {
-    const a = new Uint8Array(6);
+    const a = new Uint8Array(16);
     crypto.getRandomValues(a);
     return Array.from(a, (b) => (b % 36).toString(36)).join('');
   } catch {
-    return Math.random().toString(36).slice(2, 10).padEnd(6, '0');
+    return (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)).replace(/[^a-z0-9]/g, '').padEnd(16, '0').slice(0, 16);
   }
 };
 
@@ -130,12 +132,16 @@ function cartSnapshot() {
 function nextBody(final = false) {
   if (!queue.length) return null;
   const events = queue.splice(0, MAX_BATCH);
+  if (final) beatsSinceFinal = false;
+  else if (events.some((e) => e.type === 'heartbeat' && e.active > 0)) beatsSinceFinal = true;
   return JSON.stringify({ tab, n: batchNo++, ...(final && { final: true }), cart: cartSnapshot(), events });
 }
 
 async function flush() {
   if (mode !== 'on' || inflight) return;
-  const body = retryBatch?.body || nextBody();
+  /* Sent from a hidden tab (e.g. the answer to an earlier request came back
+     after the shopper switched away): the visit may be over — final. */
+  const body = retryBatch?.body || nextBody(document.visibilityState === 'hidden');
   if (!body) return;
   inflight = { body, attempts: (retryBatch?.attempts || 0) + 1 };
   retryBatch = null;
@@ -147,7 +153,6 @@ async function flush() {
       credentials: 'same-origin',
       headers: { 'content-type': 'text/plain;charset=UTF-8' },
     });
-    if (res.ok) acked = true;
     /* 429 / 5xx: try the same batch again later (same id → no double count). */
     if ((res.status === 429 || res.status >= 500) && inflight.attempts < MAX_ATTEMPTS) retryBatch = inflight;
   } catch {
@@ -160,15 +165,17 @@ async function flush() {
 
 /** Page is going away (or to the background): send everything now.
  *  Also while the sign-in check is still loading — the server drops staff
- *  and sellers itself, and these are exactly the quick-bounce visits. */
+ *  and sellers itself, and these are exactly the quick-bounce visits. A
+ *  beacon sent before the first response has set the cookies is fine: the
+ *  server keeps every request of this page load (same tab id) on one visitor. */
 function flushOnHide() {
   if (mode === 'off') return;
   beat();
-  /* The visit's first request is still on its way and carries the cookies
-     back: a beacon now would arrive without them and count a second
-     visitor. The first request (keepalive) still lands; what's queued goes
-     with the next flush if the shopper comes back. */
-  if (inflight && !acked) return;
+  /* Nothing new to say, but heartbeat seconds were sent since the last
+     final batch: say "final" so the server books them for the day. */
+  if (!queue.length && beatsSinceFinal) {
+    queue.push({ type: 'heartbeat', active: 0, path: window.location.pathname.slice(0, 300), seq: seq++ });
+  }
   const bodies = [];
   if (retryBatch) { bodies.push(retryBatch.body); retryBatch = null; }
   let b;
@@ -268,7 +275,7 @@ export function trackPageView(path) {
 
 /** Test hook: back to a fresh state. */
 export function _reset() {
-  mode = 'pending'; started = false; tab = ''; seq = 0; batchNo = 0; queue = []; inflight = null; retryBatch = null; acked = false;
+  mode = 'pending'; started = false; tab = ''; seq = 0; batchNo = 0; queue = []; inflight = null; retryBatch = null; beatsSinceFinal = false;
   if (flushTimer) clearTimeout(flushTimer);
   if (beatTimer) clearInterval(beatTimer);
   flushTimer = null; beatTimer = null; getCart = () => null; firstPageView = true; activeMs = 0; visibleSince = 0; lastInteraction = 0;

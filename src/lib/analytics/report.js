@@ -134,7 +134,9 @@ async function namesFor(db, userIds, nowMs = Date.now()) {
     if (nameCache.size > 2000) nameCache.clear();
     misses.forEach((id, i) => {
       const snap = snaps[i];
-      const name = snap?.exists ? String(snap.data().name || '').slice(0, 60) : null;
+      /* A failed read is not remembered: the next poll asks again. */
+      if (!snap) return;
+      const name = snap.exists ? String(snap.data().name || '').slice(0, 60) : null;
       nameCache.set(id, { at: nowMs, name });
       if (name !== null) out.set(id, name);
     });

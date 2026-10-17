@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { getDB } from '@/lib/firebase';
 import { requireRole, CAN } from '@/lib/requireRole';
 import { liveReport, cartsReport, rangeReport, RANGES } from '@/lib/analytics/report';
+import { istDateKey } from '@/lib/siteVisits';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,9 +24,10 @@ const TTL_MS = {
   '7d': 5 * 60_000,
   '30d': 5 * 60_000,
 };
-function cached(key, ttl, fn) {
+function cached(key, ttl, fn, { fresh = false } = {}) {
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < ttl) return hit.promise;
+  if (!fresh && hit && Date.now() - hit.at < ttl) return hit.promise;
+  if (cache.size > 50) cache.clear();
   const promise = fn();
   cache.set(key, { at: Date.now(), promise });
   /* A failure is not cached. */
@@ -48,6 +50,8 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const range = Object.hasOwn(RANGES, searchParams.get('range')) ? searchParams.get('range') : 'today';
     const part = searchParams.get('part') === 'live' ? 'live' : 'all';
+    /* The Refresh button: recompute the range now. */
+    const fresh = searchParams.get('fresh') === '1';
     const db = getDB();
 
     if (part === 'live') {
@@ -55,7 +59,8 @@ export async function GET(request) {
     }
     const [live, report] = await Promise.all([
       livePart(db),
-      cached(`range:${range}`, TTL_MS[range], () => rangeReport(db, { range })),
+      /* Keyed by the IST date: "Yesterday" and the 7 / 30 day windows move at midnight. */
+      cached(`range:${range}:${istDateKey(new Date())}`, TTL_MS[range], () => rangeReport(db, { range }), { fresh }),
     ]);
     return NextResponse.json({ success: true, data: { live, report } }, { headers: { 'cache-control': 'no-store' } });
   } catch (e) {

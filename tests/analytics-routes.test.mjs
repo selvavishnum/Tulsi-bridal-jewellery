@@ -339,7 +339,8 @@ test('export: 401 signed out, 403 for staff without reports', async () => {
 
 test('export: the owner downloads sessions and events as CSV attachments', async () => {
   await track(batch([PV('/'), { type: 'product_view', productId: 'p1' }, { type: 'add_to_cart', productId: 'p1', qty: 1 }]));
-  await track(batch([PV('/cart')]));
+  /* A second browser (its own page load / tab id). */
+  await track(batch([PV('/cart')], 0, { tab: 'tab0002' }));
   signInAs('owner@tulsi.test');
   const today = istDateKey(new Date());
 
@@ -418,10 +419,29 @@ test('site-visits: a brand-new store with no data at all is all zeros', async ()
 
 test('site-visits reads what the track endpoint writes', async () => {
   await track(batch([PV('/'), PV('/shop')]));
-  await track(batch([PV('/')]));
+  await track(batch([PV('/')], 0, { tab: 'tab0002' })); // a second browser
   signInAs('owner@tulsi.test');
   const { data } = await (await siteVisitsRoute.GET()).json();
   assert.deepEqual(data.today, { pageViews: 3, uniqueVisitors: 2 });
   assert.deepEqual(data.last7Days, { pageViews: 3, uniqueVisitors: 2 });
   assert.deepEqual(data.allTime, { pageViews: 3, uniqueVisitors: 2 });
+});
+
+test('cookie-less requests from one page load are one visitor: a retried first batch is not a second visitor', async () => {
+  /* The first response (with Set-Cookie) never reached the browser; the
+     tracker resends the same (tab, n) without cookies. */
+  const ip = '49.37.10.20';
+  const first = await track(batch([PV('/'), PV('/shop')], 0, { tab: 'pageloadaaaa0001' }), { ip });
+  const retry = await track(batch([PV('/'), PV('/shop')], 0, { tab: 'pageloadaaaa0001' }), { ip });
+  const beacon = await track(batch([{ type: 'heartbeat', active: 12, path: '/shop' }], 1, { tab: 'pageloadaaaa0001', final: true }), { ip });
+  assert.equal(cookiesOf(first).tj_vid, cookiesOf(retry).tj_vid, 'same page load → same visitor id');
+  assert.equal(cookiesOf(beacon).tj_vid, cookiesOf(first).tj_vid);
+  assert.equal(docs('analytics_visitors').length, 1);
+  assert.equal(docs('analytics_sessions').length, 1, 'the beacon continues the first visit');
+  const day = docs('analytics_daily').reduce((a, d) => ({ visitors: a.visitors + (d.visitors || 0), pageviews: a.pageviews + (d.pageviews || 0), sessions: a.sessions + (d.sessions || 0) }), { visitors: 0, pageviews: 0, sessions: 0 });
+  assert.deepEqual(day, { visitors: 1, pageviews: 2, sessions: 1 }, 'the retry is de-duplicated');
+  /* Another page load (another tab id) on the same phone is another browser
+     until cookies exist — but with cookies it is the same visitor. */
+  await track(batch([PV('/about')], 0, { tab: 'pageloadbbbb0002' }), { ip, cookie: cookieHeader(first) });
+  assert.equal(docs('analytics_visitors').length, 1);
 });

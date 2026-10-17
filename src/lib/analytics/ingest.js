@@ -44,6 +44,21 @@ export const SID_RE = /^tj_sid_[A-Za-z0-9_-]{20,40}$/;
 export const newVisitorId = () => `tj_vid_${crypto.randomBytes(16).toString('base64url')}`;
 export const newSessionId = () => `tj_sid_${crypto.randomBytes(16).toString('base64url')}`;
 
+/* A browser's first requests carry no cookie until the first response sets
+   one — and a beacon sent while that response is still on its way, or a
+   retry of a lost first batch, would otherwise each become a new visitor.
+   So a cookie-less request gets an id derived from its page load (the
+   tracker's random tab id) plus UA and masked IP: every request from one
+   page load lands on the same visitor, the transactions serialise on its
+   doc, and the later ones continue (or de-duplicate into) the first visit.
+   The tab id is random per page load and never leaves that page, so this
+   links nothing across page loads. */
+const ID_SECRET = process.env.ANALYTICS_ID_SECRET || process.env.NEXTAUTH_SECRET || 'tulsi-analytics';
+export function derivedVisitorId(tab, ctx = {}) {
+  const mac = crypto.createHmac('sha256', ID_SECRET).update(`v1:${tab}:${ctx.ua || ''}:${ctx.ipMasked || ''}`).digest('base64url');
+  return `tj_vid_${mac.slice(0, 22)}`;
+}
+
 /** A cookie's value from a NextRequest or a plain Request. */
 export function cookieFrom(request, name) {
   const v = request?.cookies?.get?.(name)?.value;
@@ -62,14 +77,19 @@ export function analyticsVidFrom(request) {
 /* Raw events worth keeping for the CSV export (heartbeats are not). */
 const STORED_EVENTS = new Set(['page_view', 'product_view', 'tryon_open', 'tryon_mode', 'tryon_tone', 'add_to_cart', 'remove_from_cart', 'checkout_start', 'purchase']);
 
-/* ── Small per-instance caches (best effort; serverless instances are short-lived) ── */
+/* ── Small per-instance caches (best effort; serverless instances are short-lived) ──
+   Real products and unknown ids are cached apart, so a flood of random ids
+   can't push the real catalogue out. */
 const productCache = new Map();
+const missCache = new Map();
 const PRODUCT_TTL_MS = 10 * 60 * 1000;
-export function _resetCaches() { productCache.clear(); }
+const CACHE_MAX = 5000;
+export function _resetCaches() { productCache.clear(); missCache.clear(); }
 
 function toProductInfo(id, snap) {
   const p = snap?.exists ? snap.data() : null;
   if (!p) return null;
+  const stock = Number(p.stock);
   return {
     id,
     name: String(p.name || '').slice(0, 120),
@@ -77,6 +97,9 @@ function toProductInfo(id, snap) {
     image: Array.isArray(p.images) && typeof p.images[0] === 'string' ? p.images[0] : null,
     price: Number(p.discountPrice) || Number(p.price) || 0,
     category: typeof p.category === 'string' && /^[a-z0-9-]{1,40}$/.test(p.category) ? p.category : null,
+    stock: Number.isFinite(stock) ? stock : null,
+    /* On sale in the shop (same test as the public product list). */
+    sellable: p.isActive !== false && p.showMe !== false,
   };
 }
 
@@ -89,16 +112,24 @@ async function productInfos(db, ids, nowMs) {
   for (const id of ids) {
     if (!isProductId(id)) continue;
     const hit = productCache.get(id);
-    if (hit && nowMs - hit.at < PRODUCT_TTL_MS) { if (hit.data) out.set(id, hit.data); } else misses.push(id);
+    if (hit && nowMs - hit.at < PRODUCT_TTL_MS) { out.set(id, hit.data); continue; }
+    const miss = missCache.get(id);
+    if (miss && nowMs - miss < PRODUCT_TTL_MS) continue;
+    misses.push(id);
   }
   if (misses.length) {
     const refs = misses.map((id) => db.collection('products').doc(id));
     const snaps = typeof db.getAll === 'function' ? await db.getAll(...refs) : await Promise.all(refs.map((r) => r.get()));
-    if (productCache.size > 5000) productCache.clear();
     snaps.forEach((snap, i) => {
       const data = toProductInfo(misses[i], snap);
-      productCache.set(misses[i], { at: nowMs, data });
-      if (data) out.set(misses[i], data);
+      if (data) {
+        if (productCache.size >= CACHE_MAX) productCache.clear();
+        productCache.set(misses[i], { at: nowMs, data });
+        out.set(misses[i], data);
+      } else {
+        if (missCache.size >= CACHE_MAX) missCache.clear();
+        missCache.set(misses[i], nowMs);
+      }
     });
   }
   return out;
@@ -127,17 +158,29 @@ const FUNNEL_FLAGS = Object.freeze([
 
 /* Per-batch limits. A real tracker batch carries a page or two and a few
    actions; a crafted 30-event batch must not count (or cost) 30 times. */
-const MAX_PRODUCT_LOOKUPS = 40;
+const MAX_EVENT_PRODUCTS = 10;
+/* Cart lines priced per batch (bridal carts hold a handful of pieces). */
+const MAX_CART_LINES = 12;
 const MAX_CLAIMS_PER_BATCH = 2;
 const MAX_PAGEVIEWS_PER_BATCH = 10;
+/* Shopping actions counted per batch, across all products. */
+const MAX_PER_BATCH = Object.freeze({ product_view: 5, tryon_open: 5, add_to_cart: 6 });
 const MAX_ADDS_PER_PRODUCT_PER_BATCH = 3;
 const MAX_STORED_PER_BATCH = 10;
 /* Products a session has opened try-on for (one try-on per product per visit). */
 const MAX_TRIED_PRODUCTS = 30;
 /* Heartbeat seconds wait on the session and reach the shared daily counters
-   together with other counts, every ~2 minutes, or when the tab hides — so
+   together with other counts, every minute, or when the tab hides — so
    someone quietly reading doesn't write the shard docs every 30 seconds. */
-const ACTIVE_FLUSH_SECONDS = 120;
+const ACTIVE_FLUSH_SECONDS = 60;
+
+/** Cart snapshot rows → [{ id, qty }] merged by product id (quantities
+ *  summed, at most 99), sorted, at most MAX_CART_LINES lines. */
+function mergeCartLines(items) {
+  const byId = new Map();
+  for (const i of items) byId.set(i.id, Math.min(99, (byId.get(i.id) || 0) + i.qty));
+  return [...byId.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).slice(0, MAX_CART_LINES).map(([id, qty]) => ({ id, qty }));
+}
 
 /* One transaction attempt, plus one quick retry on contention or a blip.
    (The SDK default is 5 attempts with long back-offs — far too slow for a
@@ -170,7 +213,7 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
   const nowMs = now.getTime();
   const nowIso = now.toISOString();
   const dateKey = istDateKey(now);
-  const vid = VID_RE.test(vidIn || '') ? vidIn : newVisitorId();
+  const vid = VID_RE.test(vidIn || '') ? vidIn : derivedVisitorId(batch.tab, ctx);
   const sidCookie = SID_RE.test(sidIn || '') ? sidIn : null;
   const ua = parseUserAgent(ctx.ua);
   const registered = !!user?.id;
@@ -178,12 +221,9 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
   const rawCart = batch.cart ? batch.cart.items : null;
 
   /* Reads that don't need the transaction, in parallel: the products named
-     by events and the cart (bounded keys, CRM detail, server-side prices),
-     and at most two orders claimed by purchase events. */
-  const productIds = [...new Set([
-    ...events.map((e) => e.productId).filter(Boolean).slice(0, 10),
-    ...(rawCart || []).map((i) => i.id),
-  ])].slice(0, MAX_PRODUCT_LOOKUPS);
+     by events (bounded keys, CRM detail) — ten distinct, so repeats don't
+     use up the budget — and at most two orders claimed by purchase events. */
+  const productIds = [...new Set(events.map((e) => e.productId).filter(Boolean))].slice(0, MAX_EVENT_PRODUCTS);
   const claimNumbers = [...new Set(events.filter((e) => e.type === 'purchase' && e.orderNumber).map((e) => e.orderNumber))].slice(0, MAX_CLAIMS_PER_BATCH);
   const [products, claimSnaps] = await Promise.all([
     productInfos(db, productIds, nowMs),
@@ -204,14 +244,11 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
     if (mine && recent && live && placed) purchaseClaims.push({ orderNumber: claimNumbers[i], ref: doc.ref, total: Number(o.total) || 0 });
   });
 
-  /* The cart as the server prices it: real products only, at their real
-     price — a crafted snapshot can't plant a ₹-crore "abandoned cart". */
-  const cart = rawCart ? {
-    items: rawCart.filter((i) => products.has(i.id)).map((i) => {
-      const p = products.get(i.id);
-      return { id: i.id, name: p.name, qty: i.qty, price: p.price };
-    }),
-  } : null;
+  /* The cart snapshot as lines merged by product (a repeated id is one
+     line), at most MAX_CART_LINES, in a stable order — and its signature,
+     so an unchanged cart isn't re-priced on every batch. */
+  const cartLines = rawCart ? mergeCartLines(rawCart) : null;
+  const cartSig = cartLines ? cartLines.map((l) => `${l.id}:${l.qty}`).join(',') : null;
 
   const visitorsCol = db.collection('analytics_visitors');
   const sessionsCol = db.collection('analytics_sessions');
@@ -264,10 +301,30 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
     const sid = continues ? prevSid : newSessionId();
     const sRef = sessionsCol.doc(sid);
 
-    /* ── De-duplicate retried batches: (tab, n) seen on this session ── */
+    /* ── De-duplicate retried batches: (tab, n) already counted on this
+       browser's last visit — even if a retry lands after midnight or after
+       the visit went idle. ── */
     const batchId = `${batch.tab}:${batch.n}`;
-    if (continues && (prev.batchIds || []).includes(batchId)) {
-      return { sid, accepted: 0, newSession: false, newVisitor: false, stitched: false, duplicate: true };
+    if (ownPrev && (prev.batchIds || []).includes(batchId)) {
+      return { sid: prevSid, accepted: 0, newSession: false, newVisitor: false, stitched: false, duplicate: true };
+    }
+
+    /* ── The cart as the server prices it: products on sale, at their real
+       price, no more pieces than are in stock — a crafted snapshot can't
+       plant a crore-rupee "abandoned cart". Re-priced only when the cart
+       changed since this visit's last batch. (A plain read, before any
+       transaction write.) ── */
+    let cart = null;
+    if (cartLines && !(continues && prev.cartSig === cartSig)) {
+      const info = await productInfos(db, cartLines.map((l) => l.id), nowMs);
+      cart = {
+        items: cartLines.filter((l) => info.get(l.id)?.sellable).map((l) => {
+          const p = info.get(l.id);
+          /* No more pieces than are in stock (when stock is recorded). */
+          const qty = p.stock === null ? l.qty : Math.min(l.qty, Math.max(1, p.stock));
+          return { id: l.id, name: p.name, qty, price: p.price };
+        }),
+      };
     }
 
     /* The previous visit is over: its cart travels with the shopper (so it
@@ -305,7 +362,7 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
     s.batchIds = [...(s.batchIds || []), batchId].slice(-RECENT_BATCHES);
     /* What this browser's cart held before this batch (this visit, or the
        one it follows). */
-    const hadCart = (continues ? Number(prev.cartItems) : ownPrev ? Number(prev.cartItems) : 0) > 0;
+    const hadCart = (ownPrev ? Number(prev.cartItems) : 0) > 0;
 
     const hour = String(new Date(nowMs + IST_OFFSET_MS).getUTCHours()).padStart(2, '0');
     if (!continues) {
@@ -344,6 +401,8 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
     const once = new Set();
     const firstInBatch = (key) => (once.has(key) ? false : (once.add(key), true));
     const addsPerProduct = new Map();
+    const counted = { product_view: 0, tryon_open: 0, add_to_cart: 0 };
+    const roomFor = (type) => counted[type] < MAX_PER_BATCH[type];
     let pageviewsNow = 0;
     let purchasedNow = false;
     for (const e of events) {
@@ -380,7 +439,8 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
           break;
         }
         case 'product_view': {
-          if (!product || !firstInBatch(`v:${product.id}`)) { keep = false; break; }
+          if (!product || !roomFor(e.type) || !firstInBatch(`v:${product.id}`)) { keep = false; break; }
+          counted.product_view += 1;
           s.viewedProduct = true;
           bump(inc, ['productViews']);
           bump(inc, ['products', product.id, 'v']);
@@ -398,7 +458,8 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
           /* One try-on per product per visit, however often the modal opens:
              "try-on %" (try-ons ÷ views) stays a true rate. */
           const key = product ? product.id : '(none)';
-          if ((s.triedProducts || []).includes(key)) { keep = false; break; }
+          if (!roomFor(e.type) || (s.triedProducts || []).includes(key)) { keep = false; break; }
+          counted.tryon_open += 1;
           s.triedProducts = [...(s.triedProducts || []), key].slice(-MAX_TRIED_PRODUCTS);
           s.triedOn = true;
           bump(inc, ['tryons']);
@@ -421,8 +482,9 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
              few quick real taps count; a crafted burst doesn't. */
           const key = product ? product.id : '(none)';
           const n = addsPerProduct.get(key) || 0;
-          if (n >= MAX_ADDS_PER_PRODUCT_PER_BATCH) { keep = false; break; }
+          if (n >= MAX_ADDS_PER_PRODUCT_PER_BATCH || !roomFor(e.type)) { keep = false; break; }
           addsPerProduct.set(key, n + 1);
+          counted.add_to_cart += 1;
           s.addedToCart = true;
           bump(inc, ['addToCarts']);
           if (product) bump(inc, ['products', product.id, 'a']);
@@ -493,6 +555,7 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
     /* Live cart (abandonment): what's in the cart right now, server-priced. */
     const totals = cartTotals(cart);
     if (totals) { s.cartItems = totals.items; s.cartValue = totals.value; }
+    if (cartLines) s.cartSig = cartSig;
     if (purchasedNow) { s.cartItems = 0; s.cartValue = 0; }
     s.cartDay = s.cartItems > 0 && !s.purchased ? dateKey : null;
 
@@ -557,7 +620,9 @@ export async function ingestBatch(db, { vid: vidIn, sid: sidIn, user = null, ctx
          from another device with an empty cart leaves it alone. */
       const saved = Array.isArray(u.savedCart) ? u.savedCart : [];
       const cartNow = cart?.items.length ? cart.items.map((i) => ({ _id: i.id, id: i.id, name: i.name, quantity: i.qty, price: i.price })) : null;
-      if (cartNow && JSON.stringify(cartNow) !== JSON.stringify(saved)) {
+      /* Compared by value: Firestore doesn't keep a map's key order. */
+      const cartKey = (items) => JSON.stringify(items.map((i) => [String(i.id ?? i._id ?? ''), String(i.name ?? ''), Number(i.quantity), Number(i.price)]));
+      if (cartNow && cartKey(cartNow) !== cartKey(saved)) {
         patch.savedCart = cartNow;
         patch.cartUpdatedAt = nowIso;
       }

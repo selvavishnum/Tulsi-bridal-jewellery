@@ -439,9 +439,10 @@ test('heartbeats: at most 30 s per beat, and never more than the wall-clock time
   await send([{ type: 'heartbeat', active: 0 }, { type: 'heartbeat', active: 7.6 }], as(a, { now: at(6 * MIN) }));
   assert.equal(active(), 138);
   /* Heartbeat-only batches save their seconds on the session (fewer writes
-     to the shared daily docs); the first batch's 30 s went with its page view. */
-  assert.equal(daily().activeSeconds, 30);
-  assert.equal(get('analytics_sessions', a.sid).pendingActive, 108);
+     to the shared daily docs): the first batch's 30 s went with its page
+     view, 10 + 90 were flushed once a minute had built up, 8 are waiting. */
+  assert.equal(daily().activeSeconds, 130);
+  assert.equal(get('analytics_sessions', a.sid).pendingActive, 8);
   await send([{ type: 'heartbeat', active: 0 }], as(a, { now: at(6 * MIN + 5 * SEC), final: true }));
   assert.equal(daily().activeSeconds, 138, 'the tab-hide flush adds exactly what the session got');
   assert.equal(get('analytics_sessions', a.sid).pendingActive, 0);

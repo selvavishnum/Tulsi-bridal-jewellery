@@ -13,8 +13,10 @@ const CartContext = createContext(null);
 
 const initialState = { items: [], coupon: null, discount: 0 };
 
-/* ADD_ITEM may carry `qty` (the product page's quantity picker); default 1. */
-const addQty = (action) => Math.max(1, Math.min(99, Math.round(Number(action.qty) || 1)));
+/* ADD_ITEM may carry `qty` (the product page's quantity picker); default 1.
+   No upper cap here — the picker is bounded by stock and the order API
+   checks it; only the analytics event is capped (its schema allows 99). */
+const addQty = (action) => Math.max(1, Math.round(Number(action.qty) || 1));
 
 function cartReducer(state, action) {
   switch (action.type) {
@@ -64,7 +66,7 @@ function cartReducer(state, action) {
 function trackCartAction(action, items) {
   const idOf = (i) => String(i?._id || i?.id || '');
   if (action.type === 'ADD_ITEM') {
-    track('add_to_cart', { productId: idOf(action.payload), qty: addQty(action) });
+    track('add_to_cart', { productId: idOf(action.payload), qty: Math.min(99, addQty(action)) });
   } else if (action.type === 'REMOVE_ITEM') {
     track('remove_from_cart', { productId: String(action.payload || '') });
   } else if (action.type === 'UPDATE_QUANTITY') {

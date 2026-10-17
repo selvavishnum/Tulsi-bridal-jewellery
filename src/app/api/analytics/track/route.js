@@ -38,7 +38,16 @@ const RATE = { limit: 120, windowMs: 60_000 };
 const buckets = new Map();
 /* IPv6 by its /64 (one home or phone gets a whole /64 and can rotate
    inside it); IPv4 as is (Indian mobile carriers share addresses widely). */
-const limitKey = (ip) => (ip.includes(':') ? ip.split(':').slice(0, 4).join(':') : ip);
+function limitKey(ip) {
+  /* IPv4, or IPv4 through a dual-stack proxy (::ffff:1.2.3.4): per address. */
+  if (!ip.includes(':') || ip.includes('.')) return ip;
+  /* Expand "::" first: the /64 is the first four groups however it is written. */
+  const [head, tail] = ip.toLowerCase().split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail ? tail.split(':') : [];
+  const groups = tail === undefined ? h : [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t];
+  return groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':');
+}
 function allowIp(ipRaw, now = Date.now()) {
   const ip = limitKey(String(ipRaw || 'unknown'));
   const b = buckets.get(ip);
