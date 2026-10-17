@@ -1,9 +1,9 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
-import { FiSettings, FiSave, FiPlus, FiTrash2, FiImage, FiUpload } from 'react-icons/fi';
+import { useState, useEffect } from 'react';
+import { FiSettings, FiSave, FiPlus, FiTrash2, FiImage } from 'react-icons/fi';
 import Image from 'next/image';
 import toast from 'react-hot-toast';
-import { uploadToCloudinary } from '@/lib/cloudinaryUpload';
+import CategoryShowcaseManager from '@/components/admin/showcase/CategoryShowcaseManager';
 
 /* ─────────────────────────── Toggle component ─────────────────────────── */
 function Toggle({ value, onChange, label, description }) {
@@ -184,93 +184,6 @@ function InstaPostRow({ post, index, onChange, onDelete }) {
   );
 }
 
-/* ─────────────────────────── Category Images Panel ─────────────────────────── */
-const CATEGORY_LIST = [
-  { key: 'necklace',    label: 'Necklaces',   emoji: '📿' },
-  { key: 'earrings',   label: 'Earrings',    emoji: '✨' },
-  { key: 'bangles',    label: 'Bangles',     emoji: '🟡' },
-  { key: 'maang-tikka', label: 'Maang Tikka', emoji: '👑' },
-  { key: 'set',        label: 'Bridal Sets', emoji: '💍' },
-  { key: 'rentals',    label: 'Rentals',     emoji: '🗓️' },
-];
-
-function CategoryImagesPanel({ images, onChange, shape, size, onShapeChange, onSizeChange }) {
-  const fileRefs = useRef({});
-  const [uploading, setUploading] = useState(null);
-
-  async function handleUpload(key, file) {
-    setUploading(key);
-    try {
-      const { url } = await uploadToCloudinary(file, 'tulsi-bridal/categories');
-      onChange({ ...images, [key]: url });
-      toast.success('Photo uploaded — full quality!');
-    } catch (e) { toast.error(e.message || 'Upload failed'); }
-    finally { setUploading(null); }
-  }
-
-  function removeImage(key) { const u = { ...images }; delete u[key]; onChange(u); }
-
-  const btnBase = 'px-3 py-1.5 text-xs font-semibold rounded-lg border transition';
-  const btnActive = 'bg-amber-500 text-white border-amber-500';
-  const btnInactive = 'bg-white text-gray-600 border-gray-200 hover:border-amber-300';
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-      <div className="mb-4 pb-2 border-b border-gray-100">
-        <h2 className="font-bold text-gray-800">Category Display</h2>
-        <p className="text-xs text-gray-400 mt-0.5">Upload photos and control how categories look on the homepage.</p>
-      </div>
-      <div className="grid grid-cols-2 gap-4 mb-5 p-4 bg-stone-50 rounded-xl border border-gray-100">
-        <div>
-          <p className="text-xs font-semibold text-gray-600 mb-2">Shape</p>
-          <div className="flex gap-2">
-            {['square', 'circle'].map((s) => (
-              <button key={s} type="button" onClick={() => onShapeChange(s)}
-                className={`${btnBase} ${shape === s ? btnActive : btnInactive} capitalize`}>
-                {s === 'square' ? '⬜ Square' : '⭕ Circle'}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <p className="text-xs font-semibold text-gray-600 mb-2">Size</p>
-          <div className="flex gap-2 flex-wrap">
-            {['small', 'medium', 'large'].map((s) => (
-              <button key={s} type="button" onClick={() => onSizeChange(s)}
-                className={`${btnBase} ${size === s ? btnActive : btnInactive} capitalize`}>
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        {CATEGORY_LIST.map(({ key, label, emoji }) => (
-          <div key={key} className="border border-gray-200 rounded-xl p-3 text-center flex flex-col">
-            <div className={`aspect-square overflow-hidden bg-stone-50 mb-2 flex items-center justify-center border border-gray-100 ${shape === 'circle' ? 'rounded-full' : 'rounded-xl'}`}>
-              {images[key] ? <img src={images[key]} alt={label} className="w-full h-full object-cover" /> : <span className="text-4xl">{emoji}</span>}
-            </div>
-            <p className="text-xs font-semibold text-gray-700 mb-2">{label}</p>
-            <input type="file" accept="image/*" className="hidden" ref={(el) => { if (el) fileRefs.current[key] = el; }}
-              onChange={(e) => e.target.files[0] && handleUpload(key, e.target.files[0])} />
-            <div className="flex gap-1.5 mt-auto">
-              <button type="button" onClick={() => fileRefs.current[key]?.click()} disabled={uploading === key}
-                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 transition disabled:opacity-60">
-                <FiUpload className="text-xs" />
-                {uploading === key ? 'Uploading…' : images[key] ? 'Change' : 'Upload'}
-              </button>
-              {images[key] && (
-                <button type="button" onClick={() => removeImage(key)}
-                  className="px-2.5 py-1.5 bg-red-50 text-red-500 text-xs font-semibold rounded-lg hover:bg-red-100 transition">✕</button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* ─────────────────────────── Test Email Panel ─────────────────────────── */
 function TestEmailPanel() {
   const [testEmail, setTestEmail] = useState('');
@@ -422,6 +335,12 @@ function ChargesCard() {
 
 const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400';
 
+/* The homepage category showcase saves through its own endpoint (instant
+   per-card changes), and the fields it replaced are retired: the global
+   Save never sends any of them, so it can't undo a showcase change. */
+const SHOWCASE_FIELDS = ['categoryShowcase', 'categoryImages', 'categoryShape', 'categorySize'];
+const withoutShowcase = (s) => Object.fromEntries(Object.entries(s).filter(([k]) => !SHOWCASE_FIELDS.includes(k)));
+
 /* ═══════════════════════════════════════════════════════════════════════════
    MAIN PAGE
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -478,14 +397,10 @@ export default function SettingsPage() {
     pincodeLength: 6,
     maxCartItems: 20,
     loyaltyPointsPerRupee: 0.1,
-    /* Category display */
-    categoryShape: 'square',
-    categorySize: 'large',
   });
   const [heroSlides, setHeroSlides] = useState([]);
   const [testimonials, setTestimonials] = useState([]);
   const [instagramFeed, setInstagramFeed] = useState([]);
-  const [categoryImages, setCategoryImages] = useState({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -497,7 +412,6 @@ export default function SettingsPage() {
           if (Array.isArray(d.data.heroSlides)) setHeroSlides(d.data.heroSlides);
           if (Array.isArray(d.data.testimonials)) setTestimonials(d.data.testimonials);
           if (Array.isArray(d.data.instagramFeed)) setInstagramFeed(d.data.instagramFeed);
-          if (d.data.categoryImages && typeof d.data.categoryImages === 'object') setCategoryImages(d.data.categoryImages);
         }
       })
       .catch(() => {});
@@ -530,7 +444,7 @@ export default function SettingsPage() {
       const res = await fetch('/api/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...settings, heroSlides, testimonials, instagramFeed, categoryImages }),
+        body: JSON.stringify({ ...withoutShowcase(settings), heroSlides, testimonials, instagramFeed }),
       });
       const data = await res.json();
       if (data.success) toast.success('Settings saved!');
@@ -766,10 +680,8 @@ export default function SettingsPage() {
           )}
         </div>
 
-        {/* Category Photos */}
-        <CategoryImagesPanel images={categoryImages} onChange={setCategoryImages}
-          shape={settings.categoryShape || 'square'} size={settings.categorySize || 'large'}
-          onShapeChange={(v) => upd('categoryShape', v)} onSizeChange={(v) => upd('categorySize', v)} />
+        {/* Category Showcase — saves on its own (/api/admin/category-showcase) */}
+        <CategoryShowcaseManager />
 
         {/* Testimonials */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
