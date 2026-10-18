@@ -40,11 +40,13 @@ function store() {
   try { return typeof window !== 'undefined' ? window.localStorage : null; } catch { return null; }
 }
 
-/** Remember a code to apply at checkout (expires after 30 days). */
+/** Remember a code to apply at checkout (expires after 30 days).
+ *  @returns {boolean} whether it was actually saved (false without storage). */
 export function setPendingCoupon(code) {
   const c = String(code || '').trim().toUpperCase();
-  if (!CODE_RE.test(c)) return false;
-  try { store()?.setItem(PENDING_COUPON_KEY, JSON.stringify({ code: c, at: Date.now() })); return true; } catch { return false; }
+  const s = store();
+  if (!CODE_RE.test(c) || !s) return false;
+  try { s.setItem(PENDING_COUPON_KEY, JSON.stringify({ code: c, at: Date.now() })); return true; } catch { return false; }
 }
 
 /** The remembered code, or null. */

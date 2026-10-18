@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Image from 'next/image';
@@ -22,10 +22,29 @@ import toast from 'react-hot-toast';
 import ChatWithSeller from '@/components/chat/ChatWithSeller';
 import { tryOnKind } from '@/lib/tryOn';
 import { absoluteUrl } from '@/lib/seoSchema';
+import StockBadge from '@/components/product/StockBadge';
+import LiveViewersBadge from '@/components/product/LiveViewersBadge';
+import OrderOnWhatsApp from '@/components/product/OrderOnWhatsApp';
+import WhatsAppIcon from '@/components/product/WhatsAppIcon';
+import useStoreWhatsApp from '@/components/product/useStoreWhatsApp';
+import useBuyNowReturn from '@/components/product/useBuyNowReturn';
 
 const TryOnModal = lazy(() => import('@/components/ar/TryOnModal'));
 
-const WA_NUMBER = '917695868787';
+/* The Buy Now checkout (form, payments) loads only when it's wanted —
+   fetched as the shopper reaches for the button, so it opens instantly. */
+const loadBuyNowDrawer = () => import('@/components/checkout/BuyNowDrawer');
+const BuyNowDrawer = lazy(loadBuyNowDrawer);
+function preloadBuyNowDrawer() { loadBuyNowDrawer().catch(() => {}); }
+
+/* Shown for the moment the drawer's code is still arriving. */
+function BuyNowLoading() {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40" role="status" aria-label="Opening checkout">
+      <LoadingSpinner size="lg" />
+    </div>
+  );
+}
 
 const TRUST_ITEMS = [
   { icon: FiShield,      label: 'Certified Authentic' },
@@ -202,16 +221,24 @@ function ReviewForm({ productId, onSubmitted }) {
 export default function ProductDetail({ initialProduct = null }) {
   const { id } = useParams();
   const router = useRouter();
-  const { data: session } = useSession();
   const { dispatch, charges } = useCart();
   const { toggle, isWishlisted } = useWishlist();
+  const waPhone = useStoreWhatsApp();
 
   const [product, setProduct] = useState(initialProduct);
   const [loading, setLoading] = useState(!initialProduct);
+  /* The client refresh has finished (fresh stock), success or not. */
+  const [refreshed, setRefreshed] = useState(false);
   const [selectedImage, setSelectedImageRaw] = useState(0);
   const [qty, setQty] = useState(1);
   const [zoomOpen, setZoomOpen] = useState(false);
   const [zoomIndex, setZoomIndex] = useState(0);
+  const [buyNowOpen, setBuyNowOpen] = useState(false);
+
+  /* Back from sign-in (?buynow=<qty>): reopen Buy Now for that quantity. */
+  const reopenBuyNow = useCallback((n) => { setQty(n); setBuyNowOpen(true); }, []);
+  const buyNowSoldOut = useCallback(() => toast.error('Sorry — this piece has just sold out.'), []);
+  useBuyNowReturn({ product, ready: refreshed, router, onOpen: reopenBuyNow, onSoldOut: buyNowSoldOut });
 
   const { recordCarouselClick, recordZoomInteraction } = useProductTracking(product);
   function setSelectedImage(next) { recordCarouselClick(); setSelectedImageRaw(next); }
@@ -264,7 +291,7 @@ export default function ProductDetail({ initialProduct = null }) {
       .then((r) => r.json())
       .then((d) => { if (d.success) setProduct(d.data); else if (!initialProduct) router.push('/shop'); })
       .catch(() => { if (!initialProduct) router.push('/shop'); })
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setRefreshed(true); });
   }, [id, router, initialProduct]);
 
   function loadReviews() {
@@ -295,10 +322,9 @@ export default function ProductDetail({ initialProduct = null }) {
   const discount = getDiscountPercentage(product.price, product.discountPrice);
   const displayPrice = product.discountPrice || product.price;
   const wishlisted = isWishlisted(product._id || product.id);
-
-  const waEnquiryUrl = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(
-    `Hi! I'm interested in "${product.name}" (${formatPrice(displayPrice)}). Please let me know about availability.`
-  )}`;
+  /* Real stock (a missing figure counts as none, as the order endpoint does). */
+  const stockLeft = Math.max(0, Math.floor(Number(product.stock) || 0));
+  const soldOut = stockLeft < 1;
 
   function addToCart() {
     /* One action carrying the quantity (one "add to cart" in analytics). */
@@ -306,14 +332,11 @@ export default function ProductDetail({ initialProduct = null }) {
     toast.success(`Added to cart!`);
   }
 
-  function buyNow() {
-    if (!session) {
-      router.push(`/login?callbackUrl=/product/${id}`);
-      return;
-    }
-    // Add to cart then go straight to checkout
-    dispatch({ type: 'ADD_ITEM', payload: product, qty });
-    router.push('/checkout');
+  /* Buy Now: checkout for just this piece in a slide-over — the cart is
+     left alone. Sign-in (if needed) happens inside the drawer. */
+  function openBuyNow() {
+    if (soldOut) return;
+    setBuyNowOpen(true);
   }
 
   function share() {
@@ -368,6 +391,11 @@ export default function ProductDetail({ initialProduct = null }) {
             onAddToCart={() => { addToCart(); setTryOnOpen(false); }}
             onClose={() => setTryOnOpen(false)}
           />
+        </Suspense>
+      )}
+      {buyNowOpen && (
+        <Suspense fallback={<BuyNowLoading />}>
+          <BuyNowDrawer open product={product} qty={qty} onClose={() => setBuyNowOpen(false)} />
         </Suspense>
       )}
 
@@ -551,17 +579,28 @@ export default function ProductDetail({ initialProduct = null }) {
                 </div>
               )}
 
-              {/* Price */}
-              <div className="flex items-baseline gap-3 mb-5 pb-5 border-b border-stone-100">
-                <span className="font-serif text-3xl font-bold text-wine-700">{formatPrice(displayPrice)}</span>
-                {discount > 0 && (
-                  <>
-                    <span className="text-lg text-stone-300 line-through">{formatPrice(product.price)}</span>
-                    <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
-                      Save {formatPrice(product.price - displayPrice)}
+              {/* Price + real stock / live-viewer badges */}
+              <div className="mb-5 pb-5 border-b border-stone-100">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span className="font-serif text-3xl font-bold text-wine-700">{formatPrice(displayPrice)}</span>
+                  {discount > 0 && (
+                    <>
+                      <span className="text-lg text-stone-300 line-through">{formatPrice(product.price)}</span>
+                      <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+                        Save {formatPrice(product.price - displayPrice)}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                  <StockBadge stock={product.stock} />
+                  {product.isAvailableForRent && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gold-50 text-gold-700 ring-1 ring-gold-100">
+                      <FiCalendar className="text-xs" aria-hidden="true" /> Available to Rent
                     </span>
-                  </>
-                )}
+                  )}
+                  <LiveViewersBadge productId={id} />
+                </div>
               </div>
 
               <p className="text-stone-500 leading-relaxed text-sm mb-5">{product.description}</p>
@@ -594,47 +633,67 @@ export default function ProductDetail({ initialProduct = null }) {
                 </ul>
               </div>
 
-              {/* Stock */}
-              <div className="flex items-center gap-2 mb-6">
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${product.stock > 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${product.stock > 0 ? 'bg-green-500' : 'bg-red-500'}`} />
-                  {product.stock > 0 ? `In Stock (${product.stock} available)` : 'Out of Stock'}
-                </span>
-                {product.isAvailableForRent && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gold-50 text-gold-700">
-                    <FiCalendar className="text-xs" /> Available to Rent
-                  </span>
-                )}
-              </div>
-
-              {/* Qty + Add to Cart */}
-              <div className="flex gap-3 mb-3">
-                <div className="flex items-center border border-stone-200 rounded-xl overflow-hidden">
-                  <button onClick={() => setQty(Math.max(1, qty - 1))} className="w-10 h-11 flex items-center justify-center text-stone-500 hover:bg-stone-50 transition text-lg font-light">−</button>
-                  <span className="w-10 text-center text-sm font-semibold">{qty}</span>
-                  <button onClick={() => setQty(Math.min(product.stock, qty + 1))} className="w-10 h-11 flex items-center justify-center text-stone-500 hover:bg-stone-50 transition text-lg font-light">+</button>
+              {/* Quantity + wishlist */}
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">Qty</span>
+                  <div className="flex items-center border border-stone-200 rounded-xl overflow-hidden" role="group" aria-label="Quantity">
+                    <button
+                      type="button"
+                      onClick={() => setQty(Math.max(1, qty - 1))}
+                      disabled={soldOut || qty <= 1}
+                      aria-label="Decrease quantity"
+                      className="w-11 h-11 flex items-center justify-center text-stone-500 hover:bg-stone-50 disabled:text-stone-300 disabled:hover:bg-transparent transition text-lg font-light"
+                    >−</button>
+                    <span className="w-10 text-center text-sm font-semibold" aria-live="polite">{qty}</span>
+                    <button
+                      type="button"
+                      onClick={() => setQty(Math.max(1, Math.min(stockLeft, qty + 1)))}
+                      disabled={soldOut || qty >= stockLeft}
+                      aria-label="Increase quantity"
+                      className="w-11 h-11 flex items-center justify-center text-stone-500 hover:bg-stone-50 disabled:text-stone-300 disabled:hover:bg-transparent transition text-lg font-light"
+                    >+</button>
+                  </div>
                 </div>
                 <button
-                  onClick={addToCart}
-                  disabled={product.stock === 0}
-                  className="flex-1 py-3 bg-wine-700 hover:bg-wine-800 text-white font-bold rounded-xl disabled:bg-stone-200 disabled:text-stone-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 text-sm"
+                  type="button"
+                  onClick={() => toggle(product)}
+                  aria-pressed={wishlisted}
+                  aria-label={wishlisted ? 'Remove from wishlist' : 'Save to wishlist'}
+                  className={`w-11 h-11 flex items-center justify-center rounded-xl border-2 transition ${wishlisted ? 'bg-wine-700 border-wine-700 text-white' : 'border-stone-200 text-stone-500 hover:border-wine-500 hover:text-wine-700'}`}
                 >
-                  <FiShoppingCart /> Add to Cart
-                </button>
-                <button onClick={() => toggle(product)}
-                  className={`p-3 rounded-xl border-2 transition ${wishlisted ? 'bg-wine-700 border-wine-700 text-white' : 'border-stone-200 text-stone-500 hover:border-wine-500 hover:text-wine-700'}`}>
                   <FiHeart className={wishlisted ? 'fill-current' : ''} />
                 </button>
               </div>
 
-              {/* Buy Now */}
-              <button
-                onClick={buyNow}
-                disabled={product.stock === 0}
-                className="w-full py-3 bg-amber-400 hover:bg-amber-500 text-stone-900 font-bold rounded-xl disabled:bg-stone-200 disabled:text-stone-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 text-sm mb-4 shadow-sm"
-              >
-                {session ? '⚡ Buy Now' : '⚡ Buy Now — Login to continue'}
-              </button>
+              {/* Add to Cart (secondary) + Buy Now (primary): side by side at
+                 every width — two ~150px buttons fit a 390px phone. */}
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <button
+                  type="button"
+                  onClick={addToCart}
+                  disabled={soldOut}
+                  className="min-h-[48px] px-2 sm:px-3 rounded-xl border-2 border-wine-700 bg-white text-wine-700 hover:bg-wine-50 active:bg-wine-100 font-bold text-sm whitespace-nowrap flex items-center justify-center gap-2 transition disabled:border-stone-200 disabled:bg-stone-50 disabled:text-stone-400 disabled:cursor-not-allowed"
+                >
+                  {/* Icon dropped on the narrowest phones (320px) so the label fits. */}
+                  <FiShoppingCart className="hidden min-[360px]:block flex-shrink-0" aria-hidden="true" /> Add to Cart
+                </button>
+                <button
+                  type="button"
+                  onClick={openBuyNow}
+                  onPointerEnter={preloadBuyNowDrawer}
+                  onTouchStart={preloadBuyNowDrawer}
+                  onFocus={preloadBuyNowDrawer}
+                  disabled={soldOut}
+                  aria-haspopup="dialog"
+                  className="min-h-[48px] px-2 sm:px-3 rounded-xl bg-wine-700 hover:bg-wine-800 active:bg-wine-900 text-white font-bold text-sm whitespace-nowrap flex items-center justify-center gap-1.5 shadow-luxury ring-1 ring-inset ring-gold-400/50 transition disabled:bg-stone-200 disabled:text-stone-400 disabled:shadow-none disabled:ring-0 disabled:cursor-not-allowed"
+                >
+                  <span aria-hidden="true" className="text-gold-300">⚡</span> Buy Now
+                </button>
+              </div>
+
+              {/* Secondary: order by chat */}
+              <OrderOnWhatsApp phone={waPhone} product={product} productId={id} qty={qty} className="mb-4" />
 
               {product.sellerChat && <ChatWithSeller product={product} />}
 
@@ -650,12 +709,12 @@ export default function ProductDetail({ initialProduct = null }) {
                   </div>
                   <p className="text-xs text-stone-500 mb-3">Contact us on WhatsApp to check availability and confirm your rental dates.</p>
                   <a
-                    href={`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(`Hi! I'm interested in renting *${product.name}*.\nRental price: ₹${product.rentalPrice}/day\nPlease let me know about availability and rental details.`)}`}
+                    href={`https://wa.me/${waPhone}?text=${encodeURIComponent(`Hi! I'm interested in renting *${product.name}*.\nRental price: ₹${product.rentalPrice}/day\nPlease let me know about availability and rental details.`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 w-full py-2.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition text-sm"
+                    className="flex items-center justify-center gap-2 w-full min-h-[44px] py-2.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition text-sm"
                   >
-                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.133.558 4.133 1.535 5.867L.057 23.428a.5.5 0 00.617.611l5.762-1.505A11.95 11.95 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.797 9.797 0 01-5.028-1.386l-.361-.214-3.718.971.997-3.618-.234-.371A9.797 9.797 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/></svg>
+                    <WhatsAppIcon />
                     Enquire on WhatsApp for Rental
                   </a>
                 </div>

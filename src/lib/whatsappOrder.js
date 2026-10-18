@@ -3,12 +3,15 @@
 
 export const DEFAULT_WHATSAPP = '917695868787';
 
-/** Digits only, with India's 91 prefix for a 10-digit mobile number. */
+/** Digits only, with India's 91 prefix for a 10-digit mobile number.
+ *  wa.me needs the international form, so the result never starts with 0:
+ *  a "00" dialling prefix is dropped, anything else unusable → fallback. */
 export function whatsappNumber(raw, fallback = DEFAULT_WHATSAPP) {
-  const d = String(raw || '').replace(/\D/g, '');
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
   if (/^[6-9]\d{9}$/.test(d)) return `91${d}`;
   if (/^0[6-9]\d{9}$/.test(d)) return `91${d.slice(1)}`;
-  if (/^\d{11,15}$/.test(d)) return d;
+  if (/^[1-9]\d{10,14}$/.test(d)) return d;
   return fallback;
 }
 

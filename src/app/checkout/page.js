@@ -1,63 +1,45 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
 import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
-import { loadRazorpayScript } from '@/lib/loadRazorpay';
-import { computeCharges } from '@/lib/storeCharges';
 import { track } from '@/lib/analytics/tracker';
+import useCheckoutFlow from '@/components/checkout/useCheckoutFlow';
+import useAutoApplyPendingCoupon from '@/components/checkout/useAutoApplyPendingCoupon';
+import { AddressFields, PaymentMethodFields } from '@/components/checkout/CheckoutFields';
 
-/* Mirrors the enforced limit in src/app/api/orders/route.js — shown here only
-   for the customer's benefit before they submit. The server is authoritative. */
-const COD_MAX_ORDER_VALUE = 20000;
-
+/* The form, saved addresses, COD rules, charges and the order/payment flow
+   live in useCheckoutFlow (shared with the Buy Now drawer); this page
+   checks out the cart. */
 export default function CheckoutPage() {
   const router = useRouter();
-  const { data: session, status } = useSession();
-  const { items, subtotal, shippingCost, total, discount, coupon, dispatch, charges, refreshCharges } = useCart();
+  const { items, subtotal, discount, coupon, dispatch } = useCart();
   /* Clearing the cart on a successful order makes items.length hit 0, which
      would otherwise trigger the "cart is empty → go to /cart" effect below
      and hijack the navigation to the confirmation page. This flag tells that
      effect to stand down once an order has actually been placed. */
   const orderPlacedRef = useRef(false);
-  const [loading, setLoading] = useState(false);
-  const [loyalty, setLoyalty]           = useState({ points: 0 });
-  const [loyaltyEnabled, setLoyaltyEnabled] = useState(false);
-  const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
-  const [redeemingPoints, setRedeeming] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('razorpay');
-  const [savedAddresses, setSavedAddresses] = useState([]);
-  const [addrChoice, setAddrChoice] = useState('new');
-  const [pincodeLoading, setPincodeLoading] = useState(false);
-  const [codAvailable, setCodAvailable] = useState(true); // optimistic until checked
-  const [onlinePaymentEnabled, setOnlinePaymentEnabled] = useState(true);
-  const [form, setForm] = useState({
-    fullName: session?.user?.name || '',
-    phone: '',
-    email: session?.user?.email || '',
-    street: '',
-    city: '',
-    state: '',
-    pincode: '',
+
+  const flow = useCheckoutFlow({
+    /* Prices, discounts and the total are computed server-side from the
+       products collection — only the cart contents are sent. */
+    lines: items.map((i) => ({ product: i._id || i.id, quantity: i.quantity })),
+    subtotal,
+    discount,
+    couponCode: coupon?.code,
+    withLoyalty: true,
+    onOrderPlaced: () => {
+      orderPlacedRef.current = true;
+      dispatch({ type: 'CLEAR_CART' });
+    },
   });
-
-  /* Same rule the server applies (src/lib/storeCharges.js), from the admin's
-     current settings: switching payment method re-computes instantly. */
-  const codFeeIfSelected = computeCharges({ subtotal, paymentMethod: 'cod', charges }).codFee;
-  const { codFee } = computeCharges({ subtotal, paymentMethod, charges });
-  const codBlockedByValue = (total - loyaltyDiscount) > COD_MAX_ORDER_VALUE;
-  const codBlocked = codBlockedByValue || !codAvailable;
-  const payableTotal = total - loyaltyDiscount + codFee;
-
-  /* Never let a disabled option sit selected. */
-  useEffect(() => {
-    if (paymentMethod === 'cod' && codBlocked && onlinePaymentEnabled) setPaymentMethod('razorpay');
-    if (paymentMethod === 'razorpay' && !onlinePaymentEnabled) setPaymentMethod('cod');
-  }, [paymentMethod, codBlocked, onlinePaymentEnabled]);
+  const {
+    status, charges, shippingCost, codFee, payableTotal, loading,
+    loyalty, loyaltyEnabled, loyaltyDiscount, redeemingPoints, redeemLoyaltyPoints, placeOrder,
+  } = flow;
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -74,52 +56,18 @@ export default function CheckoutPage() {
     track('checkout_start');
   }, [items.length]);
 
-  /* Start loading Razorpay as soon as the page mounts, so it's already
-     ready by the time the customer reaches "Place Order". */
-  useEffect(() => { loadRazorpayScript().catch(() => {}); }, []);
-
-  useEffect(() => {
-    if (status !== 'authenticated') return;
-    fetch('/api/loyalty').then((r) => r.json()).then((d) => { if (d.success) setLoyalty(d.data); }).catch(() => {});
-    fetch('/api/admin/settings').then((r) => r.json()).then((d) => {
-      if (d.success) {
-        setLoyaltyEnabled(!!d.data?.loyaltyEnabled);
-        setOnlinePaymentEnabled(d.data?.onlinePaymentEnabled !== false);
-      }
-    }).catch(() => {});
-    fetch('/api/user/address').then((r) => r.json()).then((d) => {
-      if (d.success && d.data.length > 0) {
-        setSavedAddresses(d.data);
-        setAddrChoice('saved-0');
-        const a = d.data[0];
-        setForm((prev) => ({
-          ...prev,
-          fullName: a.fullName || prev.fullName,
-          phone: a.phone || prev.phone,
-          street: a.street,
-          city: a.city,
-          state: a.state,
-          pincode: a.pincode,
-        }));
-      }
-    }).catch(() => {});
-  }, [status]);
-
-  useEffect(() => {
-    if (!addrChoice.startsWith('saved-')) return;
-    const idx = parseInt(addrChoice.split('-')[1]);
-    const a = savedAddresses[idx];
-    if (!a) return;
-    setForm((prev) => ({
-      ...prev,
-      fullName: a.fullName || prev.fullName,
-      phone: a.phone || prev.phone,
-      street: a.street,
-      city: a.city,
-      state: a.state,
-      pincode: a.pincode,
-    }));
-  }, [addrChoice, savedAddresses]);
+  /* The welcome code tapped in the offer bar: applied to the cart once, if
+     no coupon is on it yet (the order endpoint decides in the end). */
+  useAutoApplyPendingCoupon({
+    enabled: status === 'authenticated' && items.length > 0,
+    hasCoupon: !!coupon,
+    orderAmount: subtotal,
+    onApplied: (r) => {
+      dispatch({ type: 'APPLY_COUPON', payload: { coupon: r.coupon, discount: r.discount } });
+      toast.success(`${r.code} applied — you save ${formatPrice(r.discount)}`);
+    },
+    onRejected: (r) => (r.definite ? toast.error(`${r.code}: ${r.message}`) : toast(`${r.code}: ${r.message}`, { icon: 'ℹ️' })),
+  });
 
   /* Must run before the early return below: hooks called after a
      conditional return change the hook count between renders ("Rendered more
@@ -133,179 +81,6 @@ export default function CheckoutPage() {
     return <div className="min-h-screen flex items-center justify-center"><LoadingSpinner size="lg" /></div>;
   }
 
-  function updateForm(key, value) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }
-
-  async function handlePincodeChange(val) {
-    updateForm('pincode', val);
-    setCodAvailable(true); // reset to optimistic until re-checked for the new pincode
-    if (val.length === 6 && /^\d{6}$/.test(val)) {
-      setPincodeLoading(true);
-      try {
-        const res = await fetch(`https://api.postalpincode.in/pincode/${val}`);
-        const data = await res.json();
-        if (data[0]?.Status === 'Success' && data[0].PostOffice?.length > 0) {
-          const po = data[0].PostOffice[0];
-          setForm((prev) => ({ ...prev, city: po.District, state: po.State }));
-        }
-      } catch {}
-      finally { setPincodeLoading(false); }
-
-      fetch(`/api/cod-availability?pincode=${val}`)
-        .then((r) => r.json())
-        .then((d) => { if (d.success) setCodAvailable(d.data.available); })
-        .catch(() => {});
-    }
-  }
-
-  async function redeemLoyaltyPoints() {
-    if (loyaltyDiscount > 0) { setLoyaltyDiscount(0); return; }
-    setRedeeming(true);
-    try {
-      const res = await fetch('/api/loyalty', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'redeem' }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setLoyaltyDiscount(data.data.discount);
-        setLoyalty((prev) => ({ ...prev, points: prev.points - data.data.pointsRedeemed }));
-        toast.success(`₹${data.data.discount} discount applied!`);
-      } else {
-        toast.error(data.message);
-      }
-    } catch { toast.error('Failed to redeem points'); }
-    finally { setRedeeming(false); }
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!items.length) { toast.error('Your cart is empty'); return; }
-    if (!/^[6-9]\d{9}$/.test(form.phone)) {
-      toast.error('Enter a valid 10-digit mobile number');
-      return;
-    }
-    setLoading(true);
-
-    try {
-      /* Prices, discounts and the total are computed server-side from the
-         products collection — only the cart contents are sent. */
-      const orderItems = items.map((i) => ({
-        product: i._id || i.id,
-        quantity: i.quantity,
-      }));
-
-      const orderRes = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: orderItems,
-          shippingAddress: { ...form },
-          payment: { method: paymentMethod },
-          couponCode: coupon?.code,
-          guestEmail: !session ? form.email : undefined,
-          /* The fees shown to the customer: the server refuses the order if
-             they no longer match its own calculation (409 below). */
-          shippingCost,
-          codFee,
-        }),
-      });
-      const orderData = await orderRes.json();
-      if (orderRes.status === 409 && orderData.code === 'CHARGES_CHANGED') {
-        /* The admin changed the charges while this page was open: show the
-           new total and let the customer confirm again. */
-        await refreshCharges();
-        toast(orderData.message, { icon: 'ℹ️', duration: 10000 });
-        return;
-      }
-      if (!orderData.success) throw new Error(orderData.message || 'Could not place order. Please try again.');
-      const orderId = orderData.data.id || orderData.data._id;
-      const orderNumber = orderData.data.orderNumber;
-
-      if (paymentMethod === 'cod') {
-        orderPlacedRef.current = true;
-        dispatch({ type: 'CLEAR_CART' });
-        router.push(`/order-success?orderNumber=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(form.email)}`);
-        return;
-      }
-
-      /* In case the earlier mount-time load hasn't finished (or failed) yet */
-      await loadRazorpayScript();
-
-      const payRes = await fetch('/api/payments/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId }),
-      });
-      const payData = await payRes.json();
-      if (!payData.success) throw new Error(payData.message || 'Payment setup failed. Please try again.');
-
-      const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount: payData.data.amount,
-        currency: payData.data.currency,
-        name: 'Tulsi Bridal Jewellery',
-        description: 'Order Payment',
-        order_id: payData.data.id,
-        prefill: { name: form.fullName, email: form.email, contact: form.phone },
-        theme: { color: '#800020' },
-        /* User closed the modal without paying — the order stays pending in
-           Firestore, but they need to know nothing was charged. */
-        modal: {
-          ondismiss: () => {
-            toast('Payment cancelled. Your order was not placed.', { icon: 'ℹ️' });
-          },
-        },
-        handler: async (response) => {
-          const verifyRes = await fetch('/api/payments/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature,
-              orderId,
-            }),
-          });
-          const verifyData = await verifyRes.json();
-          if (verifyData.success) {
-            orderPlacedRef.current = true;
-            dispatch({ type: 'CLEAR_CART' });
-            router.push(`/order-success?orderNumber=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(form.email)}`);
-          } else if (verifyRes.status === 202) {
-            /* Money is on hold with the bank and is being captured — the
-               order confirms itself (webhook); don't make them pay again. */
-            orderPlacedRef.current = true;
-            dispatch({ type: 'CLEAR_CART' });
-            toast(verifyData.message, { duration: 15000 });
-            router.push('/account');
-          } else {
-            toast.error(verifyData.message || 'Payment verification failed');
-          }
-        },
-      };
-
-      const rzp = new window.Razorpay(options);
-      /* Card declined, bank timeout, etc. — Razorpay shows its own message
-         inside the modal, but the merchant page should reflect it too. */
-      rzp.on('payment.failed', (response) => {
-        toast.error(
-          response.error?.description || 'Payment failed. Please try again.',
-          { duration: 15000 }
-        );
-      });
-      rzp.open();
-    } catch (error) {
-      /* Stays on screen until dismissed — the default toast duration was too
-         short to read on a phone, let alone screenshot. */
-      toast.error(error.message || 'Checkout failed', { duration: 15000 });
-    } finally {
-      setLoading(false);
-    }
-  }
-
   if (!items.length) return null;
 
   return (
@@ -314,148 +89,19 @@ export default function CheckoutPage() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="font-serif text-3xl font-bold text-maroon-950 mb-6">Checkout</h1>
 
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={placeOrder}>
             <div className="grid lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 space-y-4">
                 {/* Shipping */}
                 <div className="bg-white rounded-xl p-6 shadow-sm">
                   <h2 className="font-semibold text-gray-700 mb-4">Shipping Details</h2>
-
-                  {/* Saved address cards */}
-                  {savedAddresses.length > 0 && (
-                    <div className="mb-5 space-y-2">
-                      <p className="text-xs text-gray-500 mb-2">Saved addresses</p>
-                      {savedAddresses.map((a, i) => (
-                        <label
-                          key={a.id || i}
-                          className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition ${addrChoice === `saved-${i}` ? 'border-gold-600 bg-gold-50' : 'border-gray-200 hover:border-gray-300'}`}
-                        >
-                          <input
-                            type="radio"
-                            name="addrChoice"
-                            value={`saved-${i}`}
-                            checked={addrChoice === `saved-${i}`}
-                            onChange={() => setAddrChoice(`saved-${i}`)}
-                            className="accent-gold-600 mt-1 flex-shrink-0"
-                          />
-                          <div className="text-sm min-w-0">
-                            <p className="font-semibold text-gray-800">{a.fullName}</p>
-                            <p className="text-gray-600 text-xs mt-0.5">{a.street}, {a.city}, {a.state} — {a.pincode}</p>
-                            {a.phone && <p className="text-gray-400 text-xs">{a.phone}</p>}
-                          </div>
-                        </label>
-                      ))}
-                      <label
-                        className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition ${addrChoice === 'new' ? 'border-gold-600 bg-gold-50' : 'border-gray-200 hover:border-gray-300'}`}
-                      >
-                        <input
-                          type="radio"
-                          name="addrChoice"
-                          value="new"
-                          checked={addrChoice === 'new'}
-                          onChange={() => {
-                            setAddrChoice('new');
-                            setForm((prev) => ({ ...prev, street: '', city: '', state: '', pincode: '', phone: '' }));
-                          }}
-                          className="accent-gold-600 flex-shrink-0"
-                        />
-                        <span className="text-sm font-semibold text-gray-700">+ Use a different address</span>
-                      </label>
-                    </div>
-                  )}
-
-                  {/* Address form */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2 md:col-span-1">
-                      <label className="text-xs text-gray-500 mb-1 block">Full Name *</label>
-                      <input required value={form.fullName} onChange={(e) => updateForm('fullName', e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
-                    </div>
-                    <div className="col-span-2 md:col-span-1">
-                      <label className="text-xs text-gray-500 mb-1 block">Phone *</label>
-                      <input
-                        required
-                        type="tel"
-                        value={form.phone}
-                        onChange={(e) => updateForm('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
-                        maxLength={10}
-                        inputMode="numeric"
-                        pattern="[6-9][0-9]{9}"
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-xs text-gray-500 mb-1 block">Email *</label>
-                      <input required type="email" value={form.email} onChange={(e) => updateForm('email', e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-xs text-gray-500 mb-1 block">Street Address *</label>
-                      <input required value={form.street} onChange={(e) => updateForm('street', e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
-                    </div>
-                    <div className="col-span-2 md:col-span-1">
-                      <label className="text-xs text-gray-500 mb-1 block">Pincode *</label>
-                      <div className="relative">
-                        <input
-                          required
-                          value={form.pincode}
-                          onChange={(e) => handlePincodeChange(e.target.value)}
-                          maxLength={6}
-                          inputMode="numeric"
-                          className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500"
-                        />
-                        {pincodeLoading && (
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">Loading…</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="col-span-2 md:col-span-1">
-                      <label className="text-xs text-gray-500 mb-1 block">City *</label>
-                      <input required value={form.city} onChange={(e) => updateForm('city', e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 mb-1 block">State *</label>
-                      <input required value={form.state} onChange={(e) => updateForm('state', e.target.value)} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
-                    </div>
-                  </div>
+                  <AddressFields flow={flow} />
                 </div>
 
                 {/* Payment */}
                 <div className="bg-white rounded-xl p-6 shadow-sm">
                   <h2 className="font-semibold text-gray-700 mb-4">Payment Method</h2>
-                  <div className="space-y-3">
-                    <label className={`flex items-center gap-3 p-3 rounded-xl border-2 transition ${!onlinePaymentEnabled ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed' : paymentMethod === 'razorpay' ? 'border-gold-600 bg-gold-50 cursor-pointer' : 'border-gray-200 hover:border-gray-300 cursor-pointer'}`}>
-                      <input
-                        type="radio" name="payment" value="razorpay" checked={paymentMethod === 'razorpay'} disabled={!onlinePaymentEnabled}
-                        onChange={() => setPaymentMethod('razorpay')} className="accent-gold-600"
-                      />
-                      <div>
-                        <p className="font-semibold text-sm text-gray-800">Pay Online (Razorpay)</p>
-                        {onlinePaymentEnabled ? (
-                          <p className="text-xs text-gray-500">Cards, UPI, Net Banking, Wallets</p>
-                        ) : (
-                          <p className="text-xs text-amber-600 font-medium">Coming Soon</p>
-                        )}
-                      </div>
-                    </label>
-
-                    <label className={`flex items-center gap-3 p-3 rounded-xl border-2 transition ${codBlocked ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed' : paymentMethod === 'cod' ? 'border-gold-600 bg-gold-50 cursor-pointer' : 'border-gray-200 hover:border-gray-300 cursor-pointer'}`}>
-                      <input
-                        type="radio" name="payment" value="cod" checked={paymentMethod === 'cod'} disabled={codBlocked}
-                        onChange={() => setPaymentMethod('cod')} className="accent-gold-600"
-                      />
-                      <div>
-                        <p className="font-semibold text-sm text-gray-800">Cash on Delivery</p>
-                        {codBlockedByValue ? (
-                          <p className="text-xs text-red-500">Not available above {formatPrice(COD_MAX_ORDER_VALUE)}</p>
-                        ) : !codAvailable ? (
-                          <p className="text-xs text-red-500">Not available for this pincode</p>
-                        ) : codFeeIfSelected > 0 ? (
-                          <p className="text-xs text-gray-500">Pay when you receive · +{formatPrice(codFeeIfSelected)} COD fee{charges.cod_fee_waive_above ? ` (none on orders of ${formatPrice(charges.cod_fee_waive_above)}+)` : ''}</p>
-                        ) : (
-                          <p className="text-xs text-gray-500">Pay when you receive</p>
-                        )}
-                      </div>
-                    </label>
-                  </div>
+                  <PaymentMethodFields flow={flow} />
                 </div>
               </div>
 

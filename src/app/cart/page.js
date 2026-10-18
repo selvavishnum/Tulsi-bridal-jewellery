@@ -7,11 +7,32 @@ import { FiTrash2, FiPlus, FiMinus, FiShoppingBag } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/utils';
 import toast from 'react-hot-toast';
+import useAutoApplyPendingCoupon from '@/components/checkout/useAutoApplyPendingCoupon';
 
 export default function CartPage() {
   const { items, dispatch, subtotal, shippingCost, total, discount, coupon, charges } = useCart();
   const [couponCode, setCouponCode] = useState('');
   const [couponLoading, setCouponLoading] = useState(false);
+
+  /* The welcome code tapped in the offer bar: applied once when the cart
+     has items and no coupon yet. Refused (expired, first order only…) →
+     forgotten, with the reason; offline → left in the box to retry. */
+  useAutoApplyPendingCoupon({
+    enabled: items.length > 0,
+    hasCoupon: !!coupon,
+    orderAmount: subtotal,
+    onApplied: (r) => {
+      dispatch({ type: 'APPLY_COUPON', payload: { coupon: r.coupon, discount: r.discount } });
+      toast.success(`${r.code} applied — you save ${formatPrice(r.discount)}`);
+    },
+    onRejected: (r) => {
+      if (r.definite) { toast.error(`${r.code}: ${r.message}`); return; }
+      /* e.g. below the code's minimum: kept for a bigger cart. */
+      setCouponCode(r.code);
+      toast(`${r.code}: ${r.message}`, { icon: 'ℹ️' });
+    },
+    onUnavailable: (r) => setCouponCode(r.code),
+  });
 
   async function applyCoupon() {
     if (!couponCode.trim()) return;

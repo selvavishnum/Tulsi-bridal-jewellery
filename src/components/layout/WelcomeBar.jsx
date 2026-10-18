@@ -111,8 +111,10 @@ export default function WelcomeBar({ settings, charges }) {
     try { navigator.clipboard?.writeText(a.code)?.catch(() => {}); } catch { /* no clipboard (http, old browser) */ }
     /* Lets an already-open cart or checkout pick the code up without a reload. */
     try { window.dispatchEvent(new CustomEvent('tj:pending-coupon', { detail: { code: a.code } })); } catch { /* old browser */ }
-    if (saved) toast.success(`${a.code} will be applied at checkout`, { id: 'welcome-code' });
-    else toast(`Use code ${a.code} at checkout`, { id: 'welcome-code', icon: '✨' });
+    /* At the bottom: a toast at the top would sit right over this strip
+       (and its ✕) on phones. */
+    if (saved) toast.success(`${a.code} will be applied at checkout`, { id: 'welcome-code', position: 'bottom-center' });
+    else toast(`Use code ${a.code} at checkout`, { id: 'welcome-code', icon: '✨', position: 'bottom-center' });
   };
 
   const dismiss = () => {

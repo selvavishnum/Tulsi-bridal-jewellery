@@ -759,10 +759,11 @@ test('cart context: ADD_ITEM with a quantity adds that many pieces and tracks ON
   assert.equal(all('analytics_events').find((e) => e.sid === a.sid && e.type === 'add_to_cart').qty, 3);
 });
 
-test('product page: Add to cart and Buy now dispatch ADD_ITEM once with the picked quantity (no per-piece loop)', () => {
+test('product page: Add to cart dispatches ADD_ITEM once with the picked quantity (no per-piece loop); Buy Now never touches the cart', () => {
   const code = srcText('app/product/[id]/ProductDetail.js');
   const adds = code.match(/dispatch\(\{\s*type:\s*'ADD_ITEM'[^}]*\}\)/g) || [];
-  assert.equal(adds.length, 2, 'addToCart and buyNow');
+  assert.equal(adds.length, 1, 'addToCart only (Buy Now opens the checkout drawer for that piece)');
+  assert.match(code, /BuyNowDrawer/);
   for (const d of adds) assert.match(d, /\bqty\b/, d);
   assert.doesNotMatch(code, /for\s*\([^)]*\)\s*\{?\s*dispatch\(\{\s*type:\s*'ADD_ITEM'/);
 });
