@@ -12,6 +12,14 @@ function startOfDay(v) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+/* "Valid Until 2026-12-31" works all of that day in India: it ends at
+   23:59:59.999 IST, not at 05:30 IST (UTC midnight). A full timestamp is
+   kept as is. Only new saves: coupons stored earlier keep their value. */
+function endOfDay(v) {
+  const d = new Date(DATE_ONLY.test(String(v)) ? `${v}T23:59:59.999+05:30` : v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 /** @returns {{ data: object } | { error: string }} — partial when `partial`. */
 export function parseCouponInput(body, { partial = false } = {}) {
   const b = body || {};
@@ -67,9 +75,12 @@ export function parseCouponInput(body, { partial = false } = {}) {
   }
   const exp = b.expiresAt ?? b.validUntil;
   if (exp !== undefined || !partial) {
-    if (exp === null || exp === '' || exp === undefined) data.expiresAt = null;
-    else if (Number.isNaN(new Date(exp).getTime())) return { error: 'Enter a valid expiry date.' };
-    else data.expiresAt = new Date(exp).toISOString();
+    if (blank(exp)) data.expiresAt = null;
+    else {
+      const iso = endOfDay(exp);
+      if (!iso) return { error: 'Enter a valid expiry date.' };
+      data.expiresAt = iso;
+    }
   }
   if (data.startsAt && data.expiresAt && data.startsAt >= data.expiresAt) {
     return { error: 'The start date must be before the expiry date.' };
@@ -133,6 +144,18 @@ export function isPlacedOrder(order) {
   return order.payment?.status === 'paid' || order.payment?.method === 'cod';
 }
 
+/* An online order whose payment was never completed and that nothing has
+   happened to since: still pending, not cash on delivery, not paid, no
+   stock taken. A new order from the same customer may take over what it
+   holds (its coupon use, its parked loyalty discount) and replace it, and
+   the daily clean-up expires it after a day. Anything further along was
+   moved on by the store and is left alone. */
+export function isAbandonedAttempt(order) {
+  return !!order && order.status === 'pending'
+    && order.payment?.method !== 'cod' && order.payment?.status !== 'paid'
+    && !order.stockDeducted;
+}
+
 /* Per lookup. A customer with more than this many orders under one key,
    none of them placed, is vanishingly rare — the cost is one discount. */
 const PLACED_ORDER_SCAN = 25;
@@ -144,15 +167,20 @@ export function phone10(raw) {
 }
 
 /**
- * Has this customer placed an order before? By account id, by email (the
- * order's guestEmail — every order stores the customer's email there) and
- * by the delivery phone. Bounded, single-field equality queries only (no
- * composite index needed). Takes the Firestore Admin db.
+ * Has this customer placed an order before? By account id and by email (the
+ * order's guestEmail — every order stores the customer's email there).
+ * Bounded, single-field equality queries only (no composite index needed).
+ * Takes the Firestore Admin db.
  *
  * Pass `email` only when the caller has PROVED it (canMatchGuestOrders):
  * otherwise anyone could open-register someone's address and learn from a
  * refusal that they have shopped here. The shipping-address email is not
  * matched — a gift sent to a bride doesn't make her a returning customer.
+ *
+ * `phone` (a delivery phone) is NOT passed by checkout or the coupon check:
+ * a delivery phone isn't the customer — matching it told anyone whether a
+ * number had bought here, and a gift shipped to the bride's phone blocked
+ * her own first order. Kept only for a caller holding a verified number.
  * @param {object} db
  * @param {{ userId?: string|null, email?: string|null, phone?: string|null }} who
  * @returns {Promise<boolean>}

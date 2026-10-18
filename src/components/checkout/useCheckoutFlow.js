@@ -28,6 +28,12 @@
      points), then the new one is placed. It is never cancelled when the
      Razorpay window closes: a UPI payment can still land after that, and
      an attempt that turns out paid goes to the confirmation page;
+   • the points discount shown includes what the customer redeemed on an
+     earlier visit (parked on their account, GET /api/loyalty
+     parkedDiscount): the server takes it off whatever they order next;
+   • paying the kept order again: create-order answers ALREADY_PAID (→ the
+     confirmation page) or ORDER_CANCELLED (→ a fresh order for what is on
+     screen). Any other failure is shown as it is, and nothing is cancelled;
    • once an order is placed, `placed` stays true until the page leaves —
      a second tap can't place it twice.
    ───────────────────────────────────────────── */
@@ -38,7 +44,12 @@ import toast from 'react-hot-toast';
 import { useCart } from '@/context/CartContext';
 import { loadRazorpayScript } from '@/lib/loadRazorpay';
 import { getPendingCoupon, clearPendingCoupon } from '@/lib/welcomeOffer';
-import { checkoutAmounts, correctedPaymentMethod, fillFromAddress, loyaltyDiscountFor, orderSuccessPath, PHONE_RE } from './checkoutRules';
+import { checkoutAmounts, correctedPaymentMethod, fillFromAddress, loyaltyCapFor, loyaltyDiscountFor, orderSuccessPath, PHONE_RE } from './checkoutRules';
+import { fetchJsonWithin } from './fetchWithin';
+
+/* How long the points balance may take to load before checkout carries on
+   without it (Place order is held meanwhile). */
+export const LOYALTY_LOAD_TIMEOUT_MS = 8000;
 
 const toastNotify = (type, message, options) => (type === 'error' ? toast.error(message, options) : toast(message, options));
 
@@ -50,10 +61,25 @@ const ADDRESS_KEYS = ['fullName', 'phone', 'email', 'street', 'city', 'state', '
    couldn't check it just now. */
 const KEEP_PENDING_REASONS = new Set(['min_order', 'sign_in_required', 'check_failed']);
 
+/* "Couldn't check the coupon just now" this many times in a row → the
+   coupon comes off, so the customer isn't stuck retrying. */
+export const CHECK_FAILED_LIMIT = 2;
+
 /* The remembered welcome code is forgotten once THIS code was spent or refused. */
 function forgetPendingCoupon(code) {
   const pending = getPendingCoupon();
   if (pending && code && String(code).toUpperCase() === pending) clearPendingCoupon();
+}
+
+/* GET /api/loyalty → { data, parked } (parked: the ₹ points discount the
+   next order takes, before the 20% cap), or null — offline, too slow, or
+   refused: checkout carries on without it (the server decides anyway). */
+async function loadLoyalty() {
+  try {
+    const { data: d } = await fetchJsonWithin('/api/loyalty', {}, { ms: LOYALTY_LOAD_TIMEOUT_MS });
+    if (!d?.success || !d.data) return null;
+    return { data: d.data, parked: Math.max(0, Math.floor(Number(d.data.parkedDiscount) || 0)) };
+  } catch { return null; }
 }
 
 async function readOrder(orderId) {
@@ -98,7 +124,12 @@ async function settleUnpaidOrder(orderId) {
  * @param {number} p.subtotal       display subtotal of those lines
  * @param {number} [p.discount]     coupon discount shown
  * @param {string} [p.couponCode]   coupon to send (the server re-validates it)
- * @param {boolean} [p.withLoyalty] load and offer loyalty points (the page)
+ * @param {boolean} [p.withLoyalty] load and offer loyalty points (the page);
+ *   includes withParkedLoyalty
+ * @param {boolean} [p.withParkedLoyalty] load the points discount already
+ *   redeemed on the customer's account (the drawer) — the server takes it
+ *   off any order they place, so every checkout that places orders for a
+ *   signed-in customer must show it
  * @param {boolean} [p.preloadPayment] start loading Razorpay now (default true)
  * @param {(type: 'error'|'info', message: string, options?: object) => void} [p.notify]
  * @param {string} [p.emptyMessage] shown if there is nothing to order
@@ -108,6 +139,8 @@ async function settleUnpaidOrder(orderId) {
  *   the server would apply the coupon differently from what was shown (409
  *   COUPON_CHANGED): remove it (couponApplied false) or show `discount`
  *   for the current subtotal. Nothing was ordered; the customer is told.
+ *   Also called (couponApplied false, reason 'check_failed') once the
+ *   server couldn't check the coupon CHECK_FAILED_LIMIT times in a row.
  */
 export default function useCheckoutFlow({
   lines,
@@ -115,6 +148,7 @@ export default function useCheckoutFlow({
   discount = 0,
   couponCode,
   withLoyalty = false,
+  withParkedLoyalty = false,
   preloadPayment = true,
   notify = toastNotify,
   emptyMessage = 'Your cart is empty',
@@ -135,13 +169,27 @@ export default function useCheckoutFlow({
   /* The online order of an attempt whose payment wasn't completed:
      { orderId, orderNumber, email, couponCode, signature, total }. */
   const unpaid = useRef(null);
+  /* COUPON_CHANGED 'check_failed' answers in a row, for one code. */
+  const checkFailed = useRef({ code: null, count: 0 });
   const [loyalty, setLoyalty] = useState({ points: 0 });
   const [loyaltyEnabled, setLoyaltyEnabled] = useState(false);
+  /* Points discount (₹) redeemed before this page opened and still parked
+     on the account — including what an abandoned online attempt holds,
+     which the next order takes over (GET /api/loyalty parkedDiscount). */
+  const wantsParked = withLoyalty || withParkedLoyalty;
+  const [parked, setParked] = useState(0);
+  const [loyaltyLoaded, setLoyaltyLoaded] = useState(false);
+  /* Place order waits for it: the server takes it off the order anyway. */
+  const loyaltyLoading = wantsParked && status === 'authenticated' && !loyaltyLoaded;
   /* What was redeemed on this page (₹). The order takes at most 20% of the
-     subtotal of it (the rest stays parked) — `loyaltyDiscount` below. */
+     subtotal of parked + redeemed (the rest stays parked for a later
+     order) — `loyaltyDiscount` below, the same rule the server applies. */
   const [redeemed, setRedeemed] = useState(0);
-  const loyaltyDiscount = loyaltyDiscountFor(redeemed, subtotal);
+  const loyaltyDiscount = loyaltyDiscountFor(parked + redeemed, subtotal);
   const [redeemingPoints, setRedeeming] = useState(false);
+  /* Offered once per visit, while points would still lower this order. */
+  const canRedeemPoints = withLoyalty && loyaltyEnabled && (Number(loyalty.points) || 0) >= 50
+    && redeemed === 0 && loyaltyDiscount < loyaltyCapFor(subtotal);
   const [paymentMethod, setPaymentMethod] = useState('razorpay');
   const [savedAddresses, setSavedAddresses] = useState([]);
   const [addrChoice, setAddrChoice] = useState('new');
@@ -189,8 +237,10 @@ export default function useCheckoutFlow({
 
   useEffect(() => {
     if (status !== 'authenticated') return;
-    if (withLoyalty) {
-      fetch('/api/loyalty').then((r) => r.json()).then((d) => { if (d.success) setLoyalty(d.data); }).catch(() => {});
+    if (wantsParked) {
+      loadLoyalty()
+        .then((d) => { if (d) { setLoyalty(d.data); setParked(d.parked); } })
+        .finally(() => setLoyaltyLoaded(true));
     }
     fetch('/api/admin/settings').then((r) => r.json()).then((d) => {
       if (d.success) {
@@ -205,7 +255,7 @@ export default function useCheckoutFlow({
         setForm((prev) => fillFromAddress(prev, d.data[0]));
       }
     }).catch(() => {});
-  }, [status, withLoyalty]);
+  }, [status, wantsParked]);
 
   function updateForm(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -244,8 +294,17 @@ export default function useCheckoutFlow({
     }
   }
 
+  /* Points → a parked discount on the account, which this order (and, past
+     the 20% cap, the next one) takes. /checkout offers it once per visit
+     (canRedeemPoints). A redemption can't be undone — the server takes
+     parked points off the next order whatever a page shows — so a second
+     call doesn't hide it: it re-reads the account's parked discount. */
   async function redeemLoyaltyPoints() {
-    if (redeemed > 0) { setRedeemed(0); return; }
+    if (redeemed > 0) {
+      const d = await loadLoyalty();
+      if (d) { setLoyalty(d.data); setParked(d.parked); setRedeemed(0); }
+      return;
+    }
     setRedeeming(true);
     try {
       const res = await fetch('/api/loyalty', {
@@ -255,9 +314,12 @@ export default function useCheckoutFlow({
       });
       const data = await res.json();
       if (data.success) {
-        setRedeemed(data.data.discount);
+        const added = Math.max(0, Number(data.data.discount) || 0);
+        setRedeemed(added);
         setLoyalty((prev) => ({ ...prev, points: prev.points - data.data.pointsRedeemed }));
-        toast.success(`₹${loyaltyDiscountFor(data.data.discount, subtotal)} discount applied!`);
+        const gain = loyaltyDiscountFor(parked + added, subtotal) - loyaltyDiscount;
+        if (gain > 0) toast.success(`₹${gain} discount applied!`);
+        else toast.success('Points redeemed — they’ll come off your next order.');
       } else {
         toast.error(data.message);
       }
@@ -294,6 +356,91 @@ export default function useCheckoutFlow({
     router.push(orderSuccessPath(prev.orderNumber, prev.email));
   }
 
+  /* "Couldn't check the coupon just now" (409 COUPON_CHANGED check_failed):
+     the coupon stays on and the next tap tries again — until it has
+     happened CHECK_FAILED_LIMIT times in a row: then it comes off. */
+  function couponCheckFailed(message) {
+    const code = String(couponCode || '').toUpperCase();
+    const count = checkFailed.current.code === code ? checkFailed.current.count + 1 : 1;
+    if (count < CHECK_FAILED_LIMIT) {
+      checkFailed.current = { code, count };
+      notify('info', message || `We couldn’t check ${code} just now. Please try again.`, { icon: 'ℹ️', duration: 10000 });
+      return;
+    }
+    checkFailed.current = { code: null, count: 0 };
+    /* Forgotten too, or the page would put it straight back on. */
+    forgetPendingCoupon(couponCode);
+    onCouponChanged?.({ code: couponCode, couponApplied: false, discount: 0, reason: 'check_failed' });
+    notify('info', `We still couldn’t check ${code}, so it has been taken off this order. Please check your total and place the order again.`, { icon: 'ℹ️', duration: 10000 });
+  }
+
+  /* POST /api/orders for what is on screen → the new order, or null when
+     the answer was handled here: a 409 (the new total is shown, nothing
+     was ordered) or a COD order placed. Throws on any other failure. */
+  async function submitOrder(signature) {
+    /* Prices, discounts and the total are computed server-side from the
+       products collection — only the lines are sent. */
+    const orderRes = await fetch('/api/orders', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        items: lines,
+        shippingAddress: { ...form },
+        payment: { method: paymentMethod },
+        couponCode,
+        guestEmail: !session ? form.email : undefined,
+        /* The fees and coupon discount shown to the customer: the server
+           refuses the order if they no longer match its own
+           calculation (409 below). */
+        shippingCost,
+        codFee,
+        couponDiscount: couponCode ? discount : undefined,
+      }),
+    });
+    const orderData = await orderRes.json();
+    const couponChanged = orderRes.status === 409 && orderData.code === 'COUPON_CHANGED';
+    if (!(couponChanged && orderData.reason === 'check_failed')) checkFailed.current = { code: null, count: 0 };
+    if (orderRes.status === 409 && orderData.code === 'CHARGES_CHANGED') {
+      /* The admin changed the charges while this page was open: show the
+         new total and let the customer confirm again. */
+      await refreshCharges();
+      notify('info', orderData.message, { icon: 'ℹ️', duration: 10000 });
+      return null;
+    }
+    if (couponChanged) {
+      /* The coupon gives a different discount (or none) for this order:
+         nothing was ordered — show the new total and let the customer
+         confirm it. */
+      const couponApplied = orderData.couponApplied === true;
+      const serverDiscount = Math.max(0, Number(orderData.discount) || 0);
+      const reason = orderData.reason || null;
+      if (reason === 'check_failed') { couponCheckFailed(orderData.message); return null; }
+      /* Refused for good → the remembered welcome code goes too; below
+         its minimum it stays for a bigger order. */
+      if (!couponApplied && !KEEP_PENDING_REASONS.has(reason)) forgetPendingCoupon(couponCode);
+      onCouponChanged?.({ code: couponCode, couponApplied, discount: serverDiscount, reason });
+      notify('info', orderData.message || (couponApplied
+        ? `Your coupon now saves ₹${serverDiscount.toLocaleString('en-IN')} on this order. Please check your total and place the order again.`
+        : 'Your coupon can’t be used on this order, so it has been removed. Please check your total and place the order again.'), { icon: 'ℹ️', duration: 10000 });
+      return null;
+    }
+    if (!orderData.success) throw new Error(orderData.message || 'Could not place order. Please try again.');
+    const order = {
+      orderId: orderData.data.id || orderData.data._id,
+      orderNumber: orderData.data.orderNumber,
+      email: form.email,
+      couponCode,
+      signature,
+      total: orderData.data.total,
+    };
+    if (paymentMethod === 'cod') {
+      orderPlaced();
+      router.push(orderSuccessPath(order.orderNumber, order.email));
+      return null;
+    }
+    return order;
+  }
+
   async function placeOrder(e) {
     e?.preventDefault?.();
     /* Placed already (the confirmation page is loading), or a tap that
@@ -325,97 +472,51 @@ export default function useCheckoutFlow({
         }
       }
 
-      if (!order) {
-        /* Prices, discounts and the total are computed server-side from the
-           products collection — only the lines are sent. */
-        const orderRes = await fetch('/api/orders', {
+      /* Round 2 only after ORDER_CANCELLED on the kept order: a fresh order
+         for what is on screen. */
+      let payData = null;
+      for (let round = 0; !payData; round += 1) {
+        if (!order) {
+          order = await submitOrder(signature);
+          if (!order) return; // answered (409 → new total shown, or COD placed)
+          /* Kept until it's paid: a retry pays this order instead of placing
+             another one. */
+          unpaid.current = order;
+        }
+
+        /* In case the earlier mount-time load hasn't finished (or failed) yet */
+        await loadRazorpayScript();
+
+        const payRes = await fetch('/api/payments/create-order', {
           method: 'POST',
           headers: JSON_HEADERS,
-          body: JSON.stringify({
-            items: lines,
-            shippingAddress: { ...form },
-            payment: { method: paymentMethod },
-            couponCode,
-            guestEmail: !session ? form.email : undefined,
-            /* The fees and coupon discount shown to the customer: the server
-               refuses the order if they no longer match its own
-               calculation (409 below). */
-            shippingCost,
-            codFee,
-            couponDiscount: couponCode ? discount : undefined,
-          }),
+          body: JSON.stringify({ orderId: order.orderId }),
         });
-        const orderData = await orderRes.json();
-        if (orderRes.status === 409 && orderData.code === 'CHARGES_CHANGED') {
-          /* The admin changed the charges while this page was open: show the
-             new total and let the customer confirm again. */
-          await refreshCharges();
-          notify('info', orderData.message, { icon: 'ℹ️', duration: 10000 });
-          return;
-        }
-        if (orderRes.status === 409 && orderData.code === 'COUPON_CHANGED') {
-          /* The coupon gives a different discount (or none) for this order:
-             nothing was ordered — show the new total and let the customer
-             confirm it. */
-          const couponApplied = orderData.couponApplied === true;
-          const serverDiscount = Math.max(0, Number(orderData.discount) || 0);
-          const reason = orderData.reason || null;
-          /* Refused for good → the remembered welcome code goes too; below
-             its minimum it stays for a bigger order. */
-          if (!couponApplied && !KEEP_PENDING_REASONS.has(reason)) forgetPendingCoupon(couponCode);
-          /* "Couldn't check it just now": nothing changed — the coupon stays
-             on and the next tap tries again. */
-          if (reason !== 'check_failed') onCouponChanged?.({ code: couponCode, couponApplied, discount: serverDiscount, reason });
-          notify('info', orderData.message || (couponApplied
-            ? `Your coupon now saves ₹${serverDiscount.toLocaleString('en-IN')} on this order. Please check your total and place the order again.`
-            : 'Your coupon can’t be used on this order, so it has been removed. Please check your total and place the order again.'), { icon: 'ℹ️', duration: 10000 });
-          return;
-        }
-        if (!orderData.success) throw new Error(orderData.message || 'Could not place order. Please try again.');
-        order = {
-          orderId: orderData.data.id || orderData.data._id,
-          orderNumber: orderData.data.orderNumber,
-          email: form.email,
-          couponCode,
-          signature,
-          total: orderData.data.total,
-        };
+        const answer = await payRes.json().catch(() => null);
+        if (answer?.success) { payData = answer; break; }
 
-        if (paymentMethod === 'cod') {
-          orderPlaced();
-          router.push(orderSuccessPath(order.orderNumber, order.email));
-          return;
+        /* The kept order's payment came through (late UPI). */
+        if (answer?.code === 'ALREADY_PAID') { earlierAttemptPaid(order); return; }
+        const retry = order === prev;
+        let gone = answer?.code === 'ORDER_CANCELLED';
+        if (!gone && retry && !answer?.code) {
+          /* No code (e.g. a proxy's error page): look the kept order up —
+             only a look-up, nothing is cancelled. */
+          const now = await readOrder(order.orderId);
+          if (now?.payment?.status === 'paid') { earlierAttemptPaid(order); return; }
+          gone = now?.status === 'cancelled';
         }
-        /* Kept until it's paid: a retry pays this order instead of placing
-           another one. */
-        unpaid.current = order;
+        if (gone) {
+          /* Cancelled (by the store, or taken over by a later attempt):
+             it can't be paid. Its coupon use and points went back with it. */
+          if (unpaid.current === order) unpaid.current = null;
+          if (retry && round === 0) { order = null; continue; }
+        }
+        /* Anything else (online payment paused, Razorpay down…): shown as
+           it is; the kept order stays for the next tap. */
+        throw new Error(answer?.message || 'Payment setup failed. Please try again.');
       }
       const { orderId, orderNumber } = order;
-
-      /* In case the earlier mount-time load hasn't finished (or failed) yet */
-      await loadRazorpayScript();
-
-      const payRes = await fetch('/api/payments/create-order', {
-        method: 'POST',
-        headers: JSON_HEADERS,
-        body: JSON.stringify({ orderId }),
-      });
-      const payData = await payRes.json();
-      if (!payData.success) {
-        /* The earlier attempt's payment came through (late UPI). */
-        if (payData.code === 'ALREADY_PAID') { earlierAttemptPaid(order); return; }
-        if (order === prev && payRes.status === 400) {
-          /* The earlier order can't be paid any more: paid meanwhile, or
-             cancelled (e.g. by the store). */
-          const outcome = await settleUnpaidOrder(orderId);
-          if (outcome === 'paid') { earlierAttemptPaid(order); return; }
-          if (outcome === 'cancelled') {
-            unpaid.current = null;
-            throw new Error('Your earlier payment attempt has expired. Please tap Place order again.');
-          }
-        }
-        throw new Error(payData.message || 'Payment setup failed. Please try again.');
-      }
 
       const options = {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
@@ -505,6 +606,8 @@ export default function useCheckoutFlow({
     loyalty,
     loyaltyEnabled,
     loyaltyDiscount,
+    loyaltyLoading,
+    canRedeemPoints,
     redeemingPoints,
     redeemLoyaltyPoints,
     ...amounts,

@@ -5,6 +5,7 @@ import { getAccess } from '@/lib/requireRole';
 import { ROLES, CAN, FULFILLMENT_STATUSES, toFulfillmentOrder } from '@/lib/access';
 import { ownsOrder } from '@/lib/orderOwnership';
 import { applyOrderUpdate, OrderStateError } from '@/lib/orderStatus';
+import { isAbandonedAttempt } from '@/lib/coupons';
 import { autoDispatchOnPacked } from '@/lib/shipmentDispatch';
 import Razorpay from 'razorpay';
 
@@ -87,6 +88,10 @@ export async function PUT(request, context) {
        online order whose payment was abandoned (checkout gives it up before
        placing the shopper's retry): cancelling runs reverseOrderRewards,
        which hands back its coupon use and the parked loyalty discount. */
+    /* Checkout giving up its own unpaid online attempt (unpaidOnly) is
+       bookkeeping, not news: the customer gets no "order cancelled" email
+       or WhatsApp — they are about to place the order again. */
+    let quiet = false;
     if (!isAdmin) {
       if (status !== 'cancelled') {
         return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
@@ -106,11 +111,13 @@ export async function PUT(request, context) {
         || (order.payment?.method === 'razorpay' && order.payment?.status !== 'paid' && await razorpayOrderPaid(order.payment?.razorpayOrderId))) {
         return NextResponse.json({ success: false, code: 'ALREADY_PAID', message: 'Your payment for this order has just come through, so it has not been cancelled. Please check My Orders.' }, { status: 409 });
       }
+      quiet = unpaidOnly && isAbandonedAttempt(order);
     }
 
     const { after: updatedOrder, settlementError, settlementNote } = await applyOrderUpdate(db, id,
       { status, trackingNumber, courierName, notes, shippingCostPatch },
       {
+        notify: !quiet,
         /* Fulfilment fields are staff-only — a customer's cancel request
            used to be able to set its own tracking number, courier and notes. */
         writeFulfilmentFields: isAdmin,

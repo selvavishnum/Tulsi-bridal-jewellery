@@ -83,11 +83,14 @@ function BuyNowDialog({ onClose, product, initialQty }) {
     notify: (type, message) => setFeedback({ type, message }),
     emptyMessage: 'This piece is out of stock right now.',
     preloadPayment: !soldOut,
-    /* 409 COUPON_CHANGED: off (back in the box), or the server's figure. */
+    /* Points the customer already redeemed come off this order too. */
+    withParkedLoyalty: true,
+    /* 409 COUPON_CHANGED: off (back in the box when it may still work: a
+       bigger order, or a check that kept failing), or the server's figure. */
     onCouponChanged: ({ code, couponApplied, discount: serverDiscount, reason }) => {
       if (couponApplied && coupon) { setPin({ subtotal, discount: serverDiscount }); return; }
       setCoupon(null);
-      setCouponInput(reason === 'min_order' ? code || '' : '');
+      setCouponInput(reason === 'min_order' || reason === 'check_failed' ? code || '' : '');
     },
   });
   const { status } = flow;
@@ -118,8 +121,11 @@ function BuyNowDialog({ onClose, product, initialQty }) {
     },
     onKept: (code) => setCouponInput((c) => c || code),
   });
-  /* Hold "Place order" while a coupon is being checked. */
+  /* Hold "Place order" while a coupon is being checked, and for the moment
+     the points discount already on the account takes to load (the total
+     may still drop). Both give up after a few seconds. */
   const couponChecking = autoApply.checking || couponBusy;
+  const holding = couponChecking || flow.loyaltyLoading;
 
   async function applyCoupon() {
     const code = couponInput.trim().toUpperCase();
@@ -196,7 +202,7 @@ function BuyNowDialog({ onClose, product, initialQty }) {
 
   function submit(e) {
     e.preventDefault();
-    if (couponChecking || busy) return;
+    if (holding || busy) return;
     setFeedback(null);
     flow.placeOrder(e);
   }
@@ -389,6 +395,9 @@ function BuyNowDialog({ onClose, product, initialQty }) {
                     {discount > 0 && (
                       <div className="flex justify-between text-green-700"><span>Coupon {coupon?.code}</span><span>−{formatPrice(discount)}</span></div>
                     )}
+                    {flow.loyaltyDiscount > 0 && (
+                      <div className="flex justify-between text-amber-700"><span>Points discount</span><span>−{formatPrice(flow.loyaltyDiscount)}</span></div>
+                    )}
                     {flow.shippingCost > 0 && (
                       <div className="flex justify-between"><span>Shipping</span><span>{formatPrice(flow.shippingCost)}</span></div>
                     )}
@@ -423,7 +432,7 @@ function BuyNowDialog({ onClose, product, initialQty }) {
               )}
               <button
                 type="submit"
-                disabled={busy || couponChecking}
+                disabled={busy || holding}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-wine-700 py-4 text-base font-bold text-white shadow-luxury transition hover:bg-wine-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {flow.placed ? 'Order placed — opening confirmation…'

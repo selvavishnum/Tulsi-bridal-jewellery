@@ -329,10 +329,14 @@ describe('an abandoned Razorpay attempt never costs the coupon or the parked loy
     assert.deepEqual([A.couponReleased, A.couponMovedTo, A.loyaltyRestored, A.loyaltyMovedTo], [true, b.json.data.id, true, b.json.data.id]);
     assert.deepEqual([B.couponReleased, B.couponMovedTo, B.loyaltyRestored, B.loyaltyMovedTo], [true, c.json.data.id, true, c.json.data.id]);
 
-    /* The customer (or a clean-up) cancels the stale attempts: nothing is handed back twice. */
+    /* Taken over = cancelled in the same step (a late payment on them is
+       refunded, never confirmed); cancelling again changes nothing and
+       nothing is handed back twice. */
     for (const stale of [a, b]) {
+      const doc = orderDoc(stale.json.data.id);
+      assert.deepEqual([doc.status, doc.cancelReason], ['cancelled', 'replaced']);
       const r = await cancel(stale.json.data.id);
-      assert.equal(r.status, 200, r.json.message);
+      assert.notEqual(r.status, 200, 'already cancelled');
     }
     assert.deepEqual(couponDoc().usedBy, ['u:u-new']);
     assert.equal(couponDoc().usedCount, 1);
@@ -472,29 +476,17 @@ describe('first-order-only: who is a first-time customer', () => {
     assert.equal(preview.json.data.coupon.firstOrderOnly, true);
   });
 
-  test('phone: a placed order to the same mobile blocks a new account, in any format; abandoned or cancelled ones don’t', async () => {
+  test('phone: a placed order to the same mobile does NOT block another account (no order-history oracle by phone, gift recipients keep their first-order code)', async () => {
     signInAs(customer('a'));
     const placed = await post(order({ couponCode: undefined, shippingAddress: addressFor('9876500001') }));
     assert.equal(placed.status, 201);
-    const abandoned = await post(online({ couponCode: undefined, shippingAddress: addressFor('9876500002') }));
-    assert.equal(abandoned.status, 201);
-    const gone = await post(order({ couponCode: undefined, shippingAddress: addressFor('9876500003') }));
-    signInAs(OWNER);
-    assert.equal((await cancel(gone.json.data.id)).status, 200);
     mirrorPhones();
 
     signInAs(customer('fresh', { emailVerified: false }));
     for (const phone of ['9876500001', '+91 98765 00001']) {
-      const before = snapshot();
-      const r = await post(order({ shippingAddress: addressFor(phone), couponDiscount: 150 }));
-      assert.equal(r.status, 409, phone);
-      assert.equal(r.json.reason, 'first_order_only', phone);
-      assert.equal(snapshot(), before);
-    }
-    for (const phone of ['9876500002', '9876500003', '9123456780']) {
       const r = await post(order({ shippingAddress: addressFor(phone), couponDiscount: 150 }));
       assert.equal(r.status, 201, `${phone}: ${r.json.message}`);
-      assert.equal(r.json.data.discount, 150);
+      assert.equal(r.json.data.discount, 150, 'the delivery phone is not used to refuse a first-order code');
       signInAs(OWNER);
       await cancel(r.json.data.id); // a fresh first order for the next phone
       signInAs(customer('fresh', { emailVerified: false }));
@@ -722,10 +714,11 @@ describe('POST /api/payments/create-order twice for the same unpaid order', () =
     assert.equal(orderDoc(id).payment.status, 'paid');
     assert.equal(orderDoc(id).status, 'confirmed');
     const third = await payFor(id);
-    assert.equal(third.status, 400, 'already paid');
+    assert.equal(third.status, 409, 'already paid');
+    assert.equal(third.json.code, 'ALREADY_PAID');
   });
 
-  test('paid on Razorpay but not yet here → 409 ALREADY_PAID (no second payment); cancelled → 400; not theirs → 403', async () => {
+  test('paid on Razorpay but not yet here → 409 ALREADY_PAID (no second payment); cancelled → 409 ORDER_CANCELLED; not theirs → 403', async () => {
     signInAs(NEW);
     const o = await post(online({ couponDiscount: 150 }));
     const id = o.json.data.id;
@@ -741,7 +734,8 @@ describe('POST /api/payments/create-order twice for the same unpaid order', () =
     signInAs(NEW);
     await cancel(o2.json.data.id);
     const gone = await payFor(o2.json.data.id);
-    assert.equal(gone.status, 400);
+    assert.equal(gone.status, 409);
+    assert.equal(gone.json.code, 'ORDER_CANCELLED');
     assert.equal(gone.json.message, 'This order was cancelled.');
   });
 });

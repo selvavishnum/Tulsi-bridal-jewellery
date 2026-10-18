@@ -352,16 +352,13 @@ describe('first-order-only: who counts as a first-time customer', () => {
     assert.equal(legacy.json.data.discount, 0);
   });
 
-  test('a placed order to the same delivery phone (raw or last 10 digits) is not a first order', async () => {
+  test('another account’s placed order to the same delivery phone does not refuse a first-order code (no phone oracle; gift recipients)', async () => {
     /* The fake doesn't resolve dotted where() paths: mirror the field. */
     db.store.get('orders').set('byPhone', { userId: 'u-someone', guestEmail: 'x@x.test', status: 'pending', payment: { method: 'cod', status: 'pending' }, shippingAddress: { phone: '9876543210' }, 'shippingAddress.phone': '9876543210' });
     signInAs({ id: 'u-fresh', email: 'fresh@x.test', emailVerified: false });
     const r = await post(order({ shippingAddress: { ...ADDRESS, phone: '+91 98765 43210' }, couponDiscount: 150 }));
-    assert.equal(r.status, 409);
-    assert.equal(r.json.reason, 'first_order_only');
-    const other = await post(order({ shippingAddress: { ...ADDRESS, phone: '9123456780' }, couponDiscount: 150 }));
-    assert.equal(other.status, 201);
-    assert.equal(other.json.data.discount, 150);
+    assert.equal(r.status, 201, r.json.message);
+    assert.equal(r.json.data.discount, 150);
   });
 
   test('an unverified account is matched by account and phone only — no order-history oracle by email', async () => {

@@ -4,6 +4,23 @@ import { ownsOrder } from '@/lib/orderOwnership';
 import Razorpay from 'razorpay';
 import { getDB } from '@/lib/firebase';
 
+/* POST /api/payments/create-order { orderId } — the Razorpay order to pay
+   this order with (the same one again for a retry at the same amount).
+
+   Answers:
+     200 { success: true, data: <Razorpay order> }
+     409 { code: 'ORDER_CANCELLED', replaced } this order can't be paid any
+         more: it was cancelled, or replaced by a newer order of the
+         customer's (replaced: true — the newer one holds its coupon use /
+         points discount). Place a new order; never pay this one.
+     409 { code: 'ALREADY_PAID' }  paid already — here, or on Razorpay and
+         we haven't heard yet (late UPI approval). Never pay it again; open
+         the order.
+     400 / 401 / 403 / 404 / 500 { message } (no code) — anything else, e.g.
+         online payment paused by the store, or Razorpay unreachable. Show
+         the message; the order itself is unchanged and stays payable.
+   Only the two codes mean "this order is finished": checkout gives up its
+   unpaid attempt on those, never on a plain error. */
 export async function POST(request) {
   try {
     const access = await getAccess();
@@ -33,11 +50,24 @@ export async function POST(request) {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }
 
-    if (order.payment?.status === 'paid') {
-      return NextResponse.json({ success: false, message: 'Order is already paid' }, { status: 400 });
+    /* Cancelled first: money that arrived after a cancel is being refunded
+       (paidAfterCancel) — the shopper must not be sent to it as if placed.
+       A pending attempt whose coupon use / points a newer order took over
+       (saved before replaced attempts were cancelled) is finished too. */
+    const replaced = order.cancelReason === 'replaced'
+      || (order.status === 'pending' && !!(order.couponMovedTo || order.loyaltyMovedTo));
+    if (order.status === 'cancelled' || replaced) {
+      return NextResponse.json({
+        success: false,
+        code: 'ORDER_CANCELLED',
+        replaced,
+        message: replaced
+          ? 'This payment attempt was replaced by your newer order, so it can’t be paid. Please check My Orders.'
+          : 'This order was cancelled.',
+      }, { status: 409 });
     }
-    if (order.status === 'cancelled') {
-      return NextResponse.json({ success: false, message: 'This order was cancelled.' }, { status: 400 });
+    if (order.payment?.status === 'paid') {
+      return NextResponse.json({ success: false, code: 'ALREADY_PAID', message: 'This order is already paid. Please check My Orders.' }, { status: 409 });
     }
 
     /* Admin can pause online payment site-wide (e.g. while Razorpay KYC is

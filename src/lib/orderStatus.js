@@ -24,11 +24,15 @@ export class OrderStateError extends Error {}
  *   writeFulfilmentFields    may set tracking / courier / notes / courier charge
  *   codPaidOnDelivery        "delivered" also marks COD cash as received (staff only —
  *                            a vendor saying "delivered" doesn't prove Tulsi has the cash)
+ *   notify                   false: no status email / WhatsApp to the customer — for
+ *                            internal bookkeeping (an unpaid online attempt given up by
+ *                            checkout, or expired by the daily clean-up). Everything
+ *                            else (stock, coupon use, loyalty) runs as usual.
  * @returns {{ before, after, settlementError, settlementNote }}
  */
 export async function applyOrderUpdate(db, id, change, opts = {}) {
   const { status, trackingNumber, courierName, notes, shippingCostPatch, extra } = change;
-  const { check, writeFulfilmentFields = false, codPaidOnDelivery = true } = opts;
+  const { check, writeFulfilmentFields = false, codPaidOnDelivery = true, notify = true } = opts;
   const ref = db.collection('orders').doc(id);
 
   /* The whole read-decide-write cycle runs inside one transaction so a
@@ -135,7 +139,7 @@ export async function applyOrderUpdate(db, id, change, opts = {}) {
   const after = docToObj(await ref.get());
 
   /* Tell the customer — email + WhatsApp — on a real status change. */
-  if (status && status !== currentOrder.status) {
+  if (notify !== false && status && status !== currentOrder.status) {
     await Promise.all([
       sendStatusUpdateEmail(after, status).catch((e) => console.error('[Email] Status update failed:', e.message)),
       sendStatusWhatsApp(after, status).catch((e) => console.error('[WhatsApp] Status update failed:', e.message)),

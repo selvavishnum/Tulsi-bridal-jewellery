@@ -8,30 +8,35 @@
    that no is about the code itself, so a remembered welcome code should be
    forgotten (see isDefiniteCouponRejection). Offline, rate-limited or a
    server error is neither — keep the code and try again later.
+
+   No answer within COUPON_CHECK_TIMEOUT_MS counts as offline (plus
+   `timedOut: true`): the code is kept but not applied, and whatever was
+   waiting on the check ("Place order") is released.
    ───────────────────────────────────────────── */
 import { isDefiniteCouponRejection } from './checkoutRules.js';
+import { fetchJsonWithin } from './fetchWithin.js';
 
 const OFFLINE = 'Couldn’t check the code — check your connection and try again.';
+export const COUPON_CHECK_TIMEOUT_MS = 8000;
 
-export async function validateCoupon(rawCode, orderAmount, { fetchImpl } = {}) {
+export async function validateCoupon(rawCode, orderAmount, { fetchImpl, timeoutMs = COUPON_CHECK_TIMEOUT_MS } = {}) {
   const code = String(rawCode || '').trim().toUpperCase();
   const doFetch = fetchImpl || (typeof fetch === 'function' ? fetch : null);
   if (!code) return { ok: false, code, refused: false, definite: false, status: 0, message: 'Enter a coupon code' };
   if (!doFetch) return { ok: false, code, refused: false, definite: false, status: 0, message: OFFLINE };
 
   let res;
+  let data;
   try {
-    res = await doFetch('/api/coupons/validate', {
+    ({ res, data } = await fetchJsonWithin('/api/coupons/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, orderAmount }),
-    });
-  } catch {
-    return { ok: false, code, refused: false, definite: false, status: 0, message: OFFLINE };
+    }, { ms: timeoutMs, fetchImpl: doFetch }));
+  } catch (e) {
+    const offline = { ok: false, code, refused: false, definite: false, status: 0, message: OFFLINE };
+    return e?.name === 'TimeoutError' ? { ...offline, timedOut: true } : offline;
   }
-
-  let data = null;
-  try { data = await res.json(); } catch { /* not JSON (proxy/edge error page) */ }
 
   if (data?.success && data.data?.coupon) {
     return {

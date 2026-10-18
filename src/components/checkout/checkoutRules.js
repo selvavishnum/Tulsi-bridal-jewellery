@@ -20,10 +20,14 @@ export const COD_MAX_ORDER_VALUE = 20000;
    rest stays parked for a later order. Display copy — the server decides. */
 export const MAX_LOYALTY_SHARE = 0.2;
 
+/** The most points discount an order of this subtotal can take (₹). */
+export function loyaltyCapFor(subtotal) {
+  return Math.floor(Math.max(0, Number(subtotal) || 0) * MAX_LOYALTY_SHARE);
+}
+
 /** The points discount an order takes from `parked` ₹ of redeemed points. */
 export function loyaltyDiscountFor(parked, subtotal) {
-  const cap = Math.floor(Math.max(0, Number(subtotal) || 0) * MAX_LOYALTY_SHARE);
-  return Math.max(0, Math.min(Number(parked) || 0, cap));
+  return Math.max(0, Math.min(Number(parked) || 0, loyaltyCapFor(subtotal)));
 }
 
 /* Indian mobile number, 10 digits starting 6–9 (what checkout asks for). */
@@ -148,9 +152,32 @@ export function orderSuccessPath(orderNumber, email) {
   return `/order-success?orderNumber=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(email)}`;
 }
 
+/* The product page with Buy Now reopened for that quantity once it has
+   loaded (?buynow=<qty>, see src/components/product/useBuyNowReturn.js). */
+export function buyNowReturnPath(productId, qty) {
+  return `/product/${encodeURIComponent(String(productId || ''))}?buynow=${Math.max(1, Math.round(Number(qty) || 1))}`;
+}
+
 /* Sign-in from the Buy Now drawer: come back to the product with the
-   drawer reopened for the same quantity (?buynow=<qty>). */
+   drawer reopened for the same quantity. */
 export function buyNowSignInUrl(productId, qty) {
-  const back = `/product/${encodeURIComponent(String(productId || ''))}?buynow=${Math.max(1, Math.round(Number(qty) || 1))}`;
-  return `/login?callbackUrl=${encodeURIComponent(back)}`;
+  return `/login?callbackUrl=${encodeURIComponent(buyNowReturnPath(productId, qty))}`;
+}
+
+export const BUY_NOW_RELOADING = 'Opening checkout…';
+export const BUY_NOW_REFRESH = 'Couldn’t open checkout — please refresh the page';
+
+/**
+ * The Buy Now drawer's code failed to load. Retrying import() in the same
+ * page never helps: the bundler's runtime (Turbopack) keeps the failed
+ * chunk load and hands it back on every later import(). A fresh page load
+ * does help (and fetches the current build's chunks after a deploy).
+ *   → { reloadTo, message }: load `reloadTo` (the product with Buy Now
+ *     reopened), saying `message`;
+ *   → { reloadTo: null, message } when this page load already came from
+ *     ?buynow: loading it again would loop, so ask for a refresh and stop.
+ */
+export function buyNowLoadFailure({ productId, qty, openedWithBuyNow }) {
+  if (openedWithBuyNow) return { reloadTo: null, message: BUY_NOW_REFRESH };
+  return { reloadTo: buyNowReturnPath(productId, qty), message: BUY_NOW_RELOADING };
 }

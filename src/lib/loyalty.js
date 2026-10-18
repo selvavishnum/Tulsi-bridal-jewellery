@@ -1,4 +1,48 @@
 import { getDB, FieldValue } from './firebase';
+import { isAbandonedAttempt } from './coupons';
+
+/* An online attempt that was never paid but spent the customer's parked
+   loyalty discount (loyaltyDiscount, not yet given back). The customer's
+   next order takes it over (POST /api/orders) — closing the payment window
+   must not cost them their points discount. */
+export const holdsParkedLoyalty = (o) => isAbandonedAttempt(o)
+  && (Number(o.loyaltyDiscount) || 0) > 0 && !o.loyaltyRestored;
+
+/* Per lookup: a customer with more abandoned attempts than this is
+   vanishingly rare (each new order takes the older ones over). */
+const ATTEMPT_SCAN = 25;
+
+/**
+ * This customer's abandoned online attempts that still hold parked loyalty
+ * discount (document snapshots). Equality filters only. Throws if the read
+ * fails — the caller decides what that means.
+ */
+export async function attemptsHoldingLoyalty(db, userId) {
+  const snap = await db.collection('orders')
+    .where('userId', '==', String(userId)).where('status', '==', 'pending')
+    .limit(ATTEMPT_SCAN).get();
+  return snap.docs.filter((d) => holdsParkedLoyalty(d.data()));
+}
+
+/**
+ * The loyalty discount (₹) this customer's NEXT order gets automatically,
+ * before the 20%-of-subtotal cap the order applies: the parked
+ * pendingLoyaltyDiscount, plus what their unpaid abandoned online attempts
+ * hold (a new order takes that over). If the attempts can't be read, only
+ * the parked amount.
+ * @param {object} [user] the users/<id> data, if already read
+ */
+export async function parkedLoyaltyDiscount(db, userId, user) {
+  const u = user || (await db.collection('users').doc(String(userId)).get()).data() || {};
+  const parked = Math.max(0, Number(u.pendingLoyaltyDiscount) || 0);
+  let held = 0;
+  try {
+    held = (await attemptsHoldingLoyalty(db, userId)).reduce((sum, d) => sum + (Number(d.data().loyaltyDiscount) || 0), 0);
+  } catch (e) {
+    console.error('[loyalty] abandoned-attempt lookup failed:', e?.message);
+  }
+  return parked + held;
+}
 
 /**
  * Award loyalty points for an order that has actually been paid.

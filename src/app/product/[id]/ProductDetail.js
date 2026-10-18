@@ -28,6 +28,7 @@ import OrderOnWhatsApp from '@/components/product/OrderOnWhatsApp';
 import WhatsAppIcon from '@/components/product/WhatsAppIcon';
 import useStoreWhatsApp from '@/components/product/useStoreWhatsApp';
 import useBuyNowReturn from '@/components/product/useBuyNowReturn';
+import { buyNowLoadFailure } from '@/components/checkout/checkoutRules';
 
 const TryOnModal = lazy(() => import('@/components/ar/TryOnModal'));
 
@@ -35,8 +36,11 @@ const TryOnModal = lazy(() => import('@/components/ar/TryOnModal'));
    fetched as the shopper reaches for the button, so it opens instantly.
    Not React.lazy: a chunk that fails to load (flaky data, or a tab left
    open across a deploy) would throw during render and take the whole
-   product page down, and lazy keeps that failure for good. Here a failed
-   load is a toast, and the next tap simply tries again. */
+   product page down. Trying import() again in the same page doesn't help
+   either — Turbopack's runtime keeps the failed chunk load and returns it
+   to every later import() — so a failed load reloads the page with Buy
+   Now reopened (?buynow=<qty>, see buyNowLoadFailure); a page that was
+   itself that reload asks for a refresh instead of looping. */
 let loadedBuyNowDrawer = null;
 function loadBuyNowDrawer() {
   if (loadedBuyNowDrawer) return Promise.resolve(loadedBuyNowDrawer);
@@ -248,7 +252,13 @@ export default function ProductDetail({ initialProduct = null }) {
   const [BuyNowDrawer, setBuyNowDrawer] = useState(() => loadedBuyNowDrawer);
   const [buyNowLoading, setBuyNowLoading] = useState(false);
   const buyNowLoadingRef = useRef(false);
-  const showBuyNow = useCallback(() => {
+  /* This page load came with ?buynow (back from sign-in, or the reload
+     after a failed load) — read before useBuyNowReturn drops it. */
+  const openedWithBuyNow = useRef(false);
+  useEffect(() => {
+    try { openedWithBuyNow.current = new URLSearchParams(window.location?.search || '').has('buynow'); } catch { /* no URL to read */ }
+  }, []);
+  const showBuyNow = useCallback((productId, wantedQty) => {
     if (loadedBuyNowDrawer) {
       setBuyNowDrawer(() => loadedBuyNowDrawer);
       setBuyNowOpen(true);
@@ -259,12 +269,21 @@ export default function ProductDetail({ initialProduct = null }) {
     setBuyNowLoading(true);
     loadBuyNowDrawer()
       .then((Drawer) => { setBuyNowDrawer(() => Drawer); setBuyNowOpen(true); })
-      .catch(() => { toast.error('Couldn’t open checkout — please try again'); })
+      .catch(() => {
+        const next = buyNowLoadFailure({ productId, qty: wantedQty, openedWithBuyNow: openedWithBuyNow.current });
+        const nav = typeof window !== 'undefined' ? window.location : null;
+        if (next.reloadTo && typeof nav?.assign === 'function') {
+          toast(next.message);
+          nav.assign(next.reloadTo);
+        } else {
+          toast.error(next.reloadTo ? 'Couldn’t open checkout — please try again' : next.message);
+        }
+      })
       .finally(() => { buyNowLoadingRef.current = false; setBuyNowLoading(false); });
   }, []);
 
   /* Back from sign-in (?buynow=<qty>): reopen Buy Now for that quantity. */
-  const reopenBuyNow = useCallback((n) => { setQty(n); showBuyNow(); }, [showBuyNow]);
+  const reopenBuyNow = useCallback((n) => { setQty(n); showBuyNow(id, n); }, [showBuyNow, id]);
   const buyNowSoldOut = useCallback(() => toast.error('Sorry — this piece has just sold out.'), []);
   useBuyNowReturn({ product, ready: refreshed, router, onOpen: reopenBuyNow, onSoldOut: buyNowSoldOut });
 
@@ -364,7 +383,7 @@ export default function ProductDetail({ initialProduct = null }) {
      left alone. Sign-in (if needed) happens inside the drawer. */
   function openBuyNow() {
     if (soldOut) return;
-    showBuyNow();
+    showBuyNow(id || product._id || product.id, qty); // this page's own URL
   }
 
   function share() {
