@@ -25,9 +25,12 @@ export function loyaltyCapFor(subtotal) {
   return Math.floor(Math.max(0, Number(subtotal) || 0) * MAX_LOYALTY_SHARE);
 }
 
-/** The points discount an order takes from `parked` ₹ of redeemed points. */
-export function loyaltyDiscountFor(parked, subtotal) {
-  return Math.max(0, Math.min(Number(parked) || 0, loyaltyCapFor(subtotal)));
+/** The points discount an order takes from `parked` ₹ of redeemed points:
+    at most 20% of the subtotal, and never more than the coupon discount
+    leaves of it (the server keeps the rest parked). */
+export function loyaltyDiscountFor(parked, subtotal, couponDiscount = 0) {
+  const room = Math.max(0, (Number(subtotal) || 0) - Math.max(0, Number(couponDiscount) || 0));
+  return Math.max(0, Math.min(Number(parked) || 0, loyaltyCapFor(subtotal), room));
 }
 
 /* Indian mobile number, 10 digits starting 6–9 (what checkout asks for). */

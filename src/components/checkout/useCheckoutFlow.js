@@ -33,7 +33,9 @@
      parkedDiscount): the server takes it off whatever they order next;
    • paying the kept order again: create-order answers ALREADY_PAID (→ the
      confirmation page) or ORDER_CANCELLED (→ a fresh order for what is on
-     screen). Any other failure is shown as it is, and nothing is cancelled;
+     screen — unless the points discount changed meanwhile, e.g. an order
+     from another tab took it over: then the new total is shown first).
+     Any other failure is shown as it is, and nothing is cancelled;
    • once an order is placed, `placed` stays true until the page leaves —
      a second tap can't place it twice.
    ───────────────────────────────────────────── */
@@ -44,7 +46,7 @@ import toast from 'react-hot-toast';
 import { useCart } from '@/context/CartContext';
 import { loadRazorpayScript } from '@/lib/loadRazorpay';
 import { getPendingCoupon, clearPendingCoupon } from '@/lib/welcomeOffer';
-import { checkoutAmounts, correctedPaymentMethod, fillFromAddress, loyaltyCapFor, loyaltyDiscountFor, orderSuccessPath, PHONE_RE } from './checkoutRules';
+import { checkoutAmounts, correctedPaymentMethod, fillFromAddress, loyaltyDiscountFor, orderSuccessPath, PHONE_RE } from './checkoutRules';
 import { fetchJsonWithin } from './fetchWithin';
 
 /* How long the points balance may take to load before checkout carries on
@@ -92,14 +94,15 @@ async function readOrder(orderId) {
 
 /**
  * An earlier unpaid online order is being given up: paid meanwhile
- * ('paid' — never cancel it), cancelled now or already ('cancelled'), or
- * we couldn't tell ('failed' — place nothing new, it would hold the coupon
- * twice).
+ * ('paid' — never cancel it), cancelled now ('cancelled'), found cancelled
+ * by something else ('gone' — e.g. replaced by an order from another tab,
+ * which took its points discount), or we couldn't tell ('failed' — place
+ * nothing new, it would hold the coupon twice).
  */
 async function settleUnpaidOrder(orderId) {
   const before = await readOrder(orderId);
   if (before?.payment?.status === 'paid') return 'paid';
-  if (before?.status === 'cancelled') return 'cancelled';
+  if (before?.status === 'cancelled') return 'gone';
   try {
     const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
       method: 'PUT',
@@ -114,7 +117,7 @@ async function settleUnpaidOrder(orderId) {
   } catch { /* offline — looked up below */ }
   const after = await readOrder(orderId);
   if (after?.payment?.status === 'paid') return 'paid';
-  if (after?.status === 'cancelled') return 'cancelled';
+  if (after?.status === 'cancelled') return 'gone';
   return 'failed';
 }
 
@@ -182,14 +185,15 @@ export default function useCheckoutFlow({
   /* Place order waits for it: the server takes it off the order anyway. */
   const loyaltyLoading = wantsParked && status === 'authenticated' && !loyaltyLoaded;
   /* What was redeemed on this page (₹). The order takes at most 20% of the
-     subtotal of parked + redeemed (the rest stays parked for a later
-     order) — `loyaltyDiscount` below, the same rule the server applies. */
+     subtotal of parked + redeemed, and no more than the coupon leaves (the
+     rest stays parked for a later order) — `loyaltyDiscount` below, the
+     same rule the server applies. */
   const [redeemed, setRedeemed] = useState(0);
-  const loyaltyDiscount = loyaltyDiscountFor(parked + redeemed, subtotal);
+  const loyaltyDiscount = loyaltyDiscountFor(parked + redeemed, subtotal, discount);
   const [redeemingPoints, setRedeeming] = useState(false);
   /* Offered once per visit, while points would still lower this order. */
   const canRedeemPoints = withLoyalty && loyaltyEnabled && (Number(loyalty.points) || 0) >= 50
-    && redeemed === 0 && loyaltyDiscount < loyaltyCapFor(subtotal);
+    && redeemed === 0 && loyaltyDiscount < loyaltyDiscountFor(Infinity, subtotal, discount);
   const [paymentMethod, setPaymentMethod] = useState('razorpay');
   const [savedAddresses, setSavedAddresses] = useState([]);
   const [addrChoice, setAddrChoice] = useState('new');
@@ -317,7 +321,7 @@ export default function useCheckoutFlow({
         const added = Math.max(0, Number(data.data.discount) || 0);
         setRedeemed(added);
         setLoyalty((prev) => ({ ...prev, points: prev.points - data.data.pointsRedeemed }));
-        const gain = loyaltyDiscountFor(parked + added, subtotal) - loyaltyDiscount;
+        const gain = loyaltyDiscountFor(parked + added, subtotal, discount) - loyaltyDiscount;
         if (gain > 0) toast.success(`₹${gain} discount applied!`);
         else toast.success('Points redeemed — they’ll come off your next order.');
       } else {
@@ -347,6 +351,23 @@ export default function useCheckoutFlow({
       address: ADDRESS_KEYS.map((k) => String(form[k] ?? '').trim()),
       method: paymentMethod,
     });
+  }
+
+  /* The kept attempt turned out cancelled by something else before a
+     fresh order is placed for it: replaced by a newer order of the
+     customer's (another tab), which took its points discount — or
+     expired / cancelled by the store, which gave it back. The points
+     discount shown may no longer be what the fresh order gets: re-read it,
+     and if it changed show the new total instead of placing (false). */
+  async function parkedStillAsShown() {
+    if (!wantsParked || status !== 'authenticated') return true;
+    const d = await loadLoyalty();
+    if (!d || loyaltyDiscountFor(d.parked, subtotal, discount) === loyaltyDiscount) return true;
+    setLoyalty(d.data);
+    setParked(d.parked);
+    setRedeemed(0);
+    notify('info', 'Your points discount has changed — an order placed in another tab or window used it. Please check your total and place the order again.', { icon: 'ℹ️', duration: 10000 });
+    return false;
   }
 
   /* An earlier attempt turned out paid: that's the order. */
@@ -465,10 +486,11 @@ export default function useCheckoutFlow({
         } else {
           const outcome = await settleUnpaidOrder(prev.orderId);
           if (outcome === 'paid') { earlierAttemptPaid(prev); return; }
-          if (outcome !== 'cancelled') {
+          if (outcome !== 'cancelled' && outcome !== 'gone') {
             throw new Error('We couldn’t update your earlier payment attempt. Please check your connection and try again.');
           }
           unpaid.current = null;
+          if (outcome === 'gone' && !(await parkedStillAsShown())) return;
         }
       }
 
@@ -507,10 +529,15 @@ export default function useCheckoutFlow({
           gone = now?.status === 'cancelled';
         }
         if (gone) {
-          /* Cancelled (by the store, or taken over by a later attempt):
-             it can't be paid. Its coupon use and points went back with it. */
+          /* Cancelled (by the store or the daily clean-up — its coupon use
+             and points went back — or replaced by a later order, which
+             took them over): it can't be paid. */
           if (unpaid.current === order) unpaid.current = null;
-          if (retry && round === 0) { order = null; continue; }
+          if (retry && round === 0) {
+            if (!(await parkedStillAsShown())) return;
+            order = null;
+            continue;
+          }
         }
         /* Anything else (online payment paused, Razorpay down…): shown as
            it is; the kept order stays for the next tap. */

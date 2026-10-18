@@ -514,8 +514,12 @@ export async function POST(request) {
         let loyaltyDiscount = 0;
         if (userRef) {
           const parked = Math.max(0, Number(uDoc.exists ? uDoc.data().pendingLoyaltyDiscount : 0) || 0) + movedAmount;
-          /* Cap the loyalty contribution so no single balance can zero an order */
-          loyaltyDiscount = Math.min(parked, Math.floor(computedSubtotal * MAX_LOYALTY_SHARE));
+          /* Cap the loyalty contribution so no single balance can zero an
+             order — and never more than the coupon leaves of the subtotal:
+             points it can't use stay parked (parkedChange below) instead of
+             being taken for nothing. checkoutRules.loyaltyDiscountFor shows
+             the same figure. */
+          loyaltyDiscount = Math.min(parked, Math.floor(computedSubtotal * MAX_LOYALTY_SHARE), Math.max(0, computedSubtotal - appliedCoupon));
         }
 
         const discount = Math.min(appliedCoupon + loyaltyDiscount, computedSubtotal);
