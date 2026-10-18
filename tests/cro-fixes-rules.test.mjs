@@ -10,6 +10,7 @@
      couponStateRefusal /   who may use a code at all; what counts as a
      isPlacedOrder          placed (first) order
      parseCouponInput       the admin form's blank / cleared fields
+     loyaltyDiscountFor     the Points Discount shown = what the order takes
      keptAttemptStillHolds  the auto-apply cool-down (10 minutes, same
                             basket, below the minimum)
 
@@ -21,6 +22,7 @@
    ───────────────────────────────────────────── */
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   couponDiscountFor, couponStateRefusal, isPlacedOrder, parseCouponInput, couponRefusalMessage, phone10,
 } from '../src/lib/coupons.js';
@@ -109,6 +111,29 @@ describe('shownCouponDiscount — a server figure holds only for the subtotal it
     /* The order endpoint: 1500 − couponDiscountFor(1500) + ₹99 shipping (no COD fee above ₹500). */
     assert.equal(payableTotal, 1500 - couponDiscountFor(TULSI10, 1500) + 99);
     assert.equal(payableTotal, 1449);
+  });
+});
+
+describe('loyaltyDiscountFor — the Points Discount shown is what the order endpoint takes', () => {
+  /* The orders route: Math.min(parked, Math.floor(subtotal * 0.2)). */
+  const server = (parked, subtotal) => Math.min(parked, Math.floor(subtotal * 0.2));
+  const TABLE = [
+    ['₹100 redeemed on ₹1,500', 100, 1500, 100],
+    ['₹1,000 redeemed on ₹1,500 → 20% = ₹300 (was shown ₹1,000)', 1000, 1500, 300],
+    ['exactly 20%', 300, 1500, 300],
+    ['20% rounds down', 100, 499, 99],
+    ['nothing redeemed', 0, 1500, 0],
+    ['empty basket', 100, 0, 0],
+  ];
+  for (const [label, parked, subtotal, expected] of TABLE) {
+    test(label, () => {
+      assert.equal(rules.loyaltyDiscountFor(parked, subtotal), expected);
+      assert.equal(rules.loyaltyDiscountFor(parked, subtotal), server(parked, subtotal));
+    });
+  }
+  test('the share is the order endpoint’s own (no drift)', () => {
+    const route = readFileSync(new URL('../src/app/api/orders/route.js', import.meta.url), 'utf8');
+    assert.equal(rules.MAX_LOYALTY_SHARE, Number(/const MAX_LOYALTY_SHARE = ([\d.]+)/.exec(route)?.[1]));
   });
 });
 

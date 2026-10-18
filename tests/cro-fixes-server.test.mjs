@@ -148,13 +148,31 @@ const snapshot = () => JSON.stringify([...db.store.entries()].filter(([c, m]) =>
 /* As real Firestore resolves where('shippingAddress.phone', …). */
 const mirrorPhones = () => { for (const o of orderDocs()) if (o.shippingAddress?.phone) o['shippingAddress.phone'] = o.shippingAddress.phone; };
 
+/* Real Firestore refuses a read after a write inside a transaction; the
+   in-memory fake doesn't, so every transaction here is held to that rule. */
+function strictTransactions(fake) {
+  const run = fake.runTransaction.bind(fake);
+  fake.runTransaction = (fn) => run((tx) => {
+    let wrote = false;
+    const write = (op) => (...args) => { wrote = true; return tx[op](...args); };
+    return fn({
+      get: (target) => {
+        if (wrote) throw new Error('Firestore transactions require all reads to be executed before all writes.');
+        return tx.get(target);
+      },
+      set: write('set'), update: write('update'), delete: write('delete'),
+    });
+  });
+  return fake;
+}
+
 const COUPON = { type: 'percentage', maxUses: 0, usedCount: 0, usedBy: [], isActive: true, minOrderAmount: 0, maxDiscount: null, startsAt: null, expiresAt: null };
 const DAY = 86_400_000;
 
 beforeEach(() => {
   session = null;
   rzp.orders.clear(); rzp.payments.clear(); rzp.creates = 0; rzp.down = false;
-  db = fakeFirestore({
+  db = strictTransactions(fakeFirestore({
     products: {
       p1: { name: 'Temple Jhumka', sku: 'TJ-ER-104', price: 2000, discountPrice: 1500, stock: 500, isActive: true },
       big: { name: 'Bridal Set', price: 150000, stock: 5, isActive: true },
@@ -167,7 +185,7 @@ beforeEach(() => {
     orders: {},
     users: { 'u-new': { email: 'new@x.test', pendingLoyaltyDiscount: 0 }, 'u-old': { email: 'old@x.test' } },
     settings: { site: {} },
-  });
+  }));
 });
 
 /* ══ Contract 2: the coupon discount the shopper was shown, or 409 ══ */
@@ -639,6 +657,36 @@ describe('PUT /api/orders/[id] { status: "cancelled" } by the customer', () => {
     const packed = await cancel('packed');
     assert.equal(packed.status, 400);
     assert.match(packed.json.message, /already processing/);
+  });
+
+  test('checkout giving up an attempt (unpaidOnly) never cancels one that was paid meanwhile — however late the webhook', async () => {
+    const id = await unpaidAttempt();
+    const pay = await payFor(id);
+    const paid = payOnRazorpay(pay.json.data.id);
+    /* The webhook settled it after the shopper's page looked it up. */
+    assert.equal((await call(verify, 'POST', { ...paid, orderId: id })).status, 200);
+    assert.equal(orderDoc(id).status, 'confirmed');
+    const before = snapshot();
+    const r = await call(orderById, 'PUT', { status: 'cancelled', unpaidOnly: true }, { id });
+    assert.equal(r.status, 409);
+    assert.equal(r.json.code, 'ALREADY_PAID');
+    assert.equal(snapshot(), before);
+
+    /* …and it lands in the very moment between this route's read and its write. */
+    const id2 = (await post(online({ couponCode: undefined }))).json.data.id;
+    const realTx = db.runTransaction.bind(db);
+    db.runTransaction = (fn) => {
+      db.runTransaction = realTx;
+      Object.assign(orderDoc(id2), { status: 'confirmed', payment: { ...orderDoc(id2).payment, status: 'paid' } });
+      return realTx(fn);
+    };
+    const late = await call(orderById, 'PUT', { status: 'cancelled', unpaidOnly: true }, { id: id2 });
+    assert.equal(late.status, 400);
+    assert.equal(orderDoc(id2).status, 'confirmed', 'not cancelled');
+
+    /* Its own unpaid attempt: cancelled as usual. */
+    const id3 = (await post(online({ couponCode: undefined }))).json.data.id;
+    assert.equal((await call(orderById, 'PUT', { status: 'cancelled', unpaidOnly: true }, { id: id3 })).status, 200);
   });
 
   test('Razorpay unreachable: the unpaid order is still cancelled (a late payment is then recorded as paidAfterCancel)', async () => {

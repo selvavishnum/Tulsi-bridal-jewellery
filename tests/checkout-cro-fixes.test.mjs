@@ -442,7 +442,7 @@ describe('useCheckoutFlow: what is charged is what was shown', { skip }, () => {
     await tick();
     const seq = calls.filter((c) => c.url.startsWith('/api/orders')).map((c) => `${c.method} ${c.url}`);
     assert.deepEqual(seq, ['POST /api/orders', 'GET /api/orders/o1', 'PUT /api/orders/o1', 'POST /api/orders']);
-    assert.deepEqual(calls.find((c) => c.method === 'PUT').body, { status: 'cancelled' });
+    assert.deepEqual(calls.find((c) => c.method === 'PUT').body, { status: 'cancelled', unpaidOnly: true });
     assert.equal(posts(calls)[1].body.payment.method, 'cod');
     assert.equal(posts(calls)[1].body.couponCode, 'TULSI10', 'the coupon the cancel gave back is used again');
     assert.equal(onOrderPlaced.mock.callCount(), 1);

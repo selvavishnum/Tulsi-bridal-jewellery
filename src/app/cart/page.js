@@ -21,7 +21,9 @@ export default function CartPage() {
   /* Which account the coupon was checked for (null: signed out) — checkout
      re-checks a first-order code that wasn't checked for this customer. */
   const checkedFor = session?.user?.id || null;
-  const applyResult = (r) => dispatch({ type: 'APPLY_COUPON', payload: { coupon: { ...r.coupon, checkedFor }, discount: r.discount } });
+  /* `at`: the subtotal the code was checked for (the quantity can change
+     while the check is in flight). */
+  const applyResult = (r, at = r.orderAmount) => dispatch({ type: 'APPLY_COUPON', payload: { coupon: { ...r.coupon, checkedFor }, discount: r.discount, subtotal: at } });
 
   /* The welcome code tapped in the offer bar: applied when the cart has
      items and no coupon yet. Refused (expired, first order only…) →
@@ -51,10 +53,11 @@ export default function CartPage() {
     if (!code || couponLoading) return;
     if (coupon?.code === code) { setCouponCode(''); return; }
     setCouponLoading(true);
-    const r = await validateCoupon(code, subtotal);
+    const checkedAt = subtotal;
+    const r = await validateCoupon(code, checkedAt);
     setCouponLoading(false);
     if (r.ok) {
-      applyResult(r);
+      applyResult(r, checkedAt);
       setCouponCode('');
       toast.success(`Coupon applied! You saved ${formatPrice(r.discount)}`);
     } else {

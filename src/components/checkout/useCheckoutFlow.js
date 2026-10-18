@@ -38,7 +38,7 @@ import toast from 'react-hot-toast';
 import { useCart } from '@/context/CartContext';
 import { loadRazorpayScript } from '@/lib/loadRazorpay';
 import { getPendingCoupon, clearPendingCoupon } from '@/lib/welcomeOffer';
-import { checkoutAmounts, correctedPaymentMethod, fillFromAddress, orderSuccessPath, PHONE_RE } from './checkoutRules';
+import { checkoutAmounts, correctedPaymentMethod, fillFromAddress, loyaltyDiscountFor, orderSuccessPath, PHONE_RE } from './checkoutRules';
 
 const toastNotify = (type, message, options) => (type === 'error' ? toast.error(message, options) : toast(message, options));
 
@@ -78,7 +78,8 @@ async function settleUnpaidOrder(orderId) {
     const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
       method: 'PUT',
       headers: JSON_HEADERS,
-      body: JSON.stringify({ status: 'cancelled' }),
+      /* unpaidOnly: refused if a payment was confirmed since the look-up. */
+      body: JSON.stringify({ status: 'cancelled', unpaidOnly: true }),
     });
     const data = await res.json().catch(() => null);
     if (data?.success) return 'cancelled';
@@ -136,7 +137,10 @@ export default function useCheckoutFlow({
   const unpaid = useRef(null);
   const [loyalty, setLoyalty] = useState({ points: 0 });
   const [loyaltyEnabled, setLoyaltyEnabled] = useState(false);
-  const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
+  /* What was redeemed on this page (₹). The order takes at most 20% of the
+     subtotal of it (the rest stays parked) — `loyaltyDiscount` below. */
+  const [redeemed, setRedeemed] = useState(0);
+  const loyaltyDiscount = loyaltyDiscountFor(redeemed, subtotal);
   const [redeemingPoints, setRedeeming] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('razorpay');
   const [savedAddresses, setSavedAddresses] = useState([]);
@@ -241,7 +245,7 @@ export default function useCheckoutFlow({
   }
 
   async function redeemLoyaltyPoints() {
-    if (loyaltyDiscount > 0) { setLoyaltyDiscount(0); return; }
+    if (redeemed > 0) { setRedeemed(0); return; }
     setRedeeming(true);
     try {
       const res = await fetch('/api/loyalty', {
@@ -251,9 +255,9 @@ export default function useCheckoutFlow({
       });
       const data = await res.json();
       if (data.success) {
-        setLoyaltyDiscount(data.data.discount);
+        setRedeemed(data.data.discount);
         setLoyalty((prev) => ({ ...prev, points: prev.points - data.data.pointsRedeemed }));
-        toast.success(`₹${data.data.discount} discount applied!`);
+        toast.success(`₹${loyaltyDiscountFor(data.data.discount, subtotal)} discount applied!`);
       } else {
         toast.error(data.message);
       }

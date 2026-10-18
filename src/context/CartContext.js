@@ -63,7 +63,12 @@ function cartReducer(state, action) {
       if (!state.items.length || !action.payload?.coupon) return state;
       const d = Number(action.payload.discount);
       const pinned = action.payload.discount !== undefined && action.payload.discount !== null && Number.isFinite(d);
-      return { ...state, coupon: action.payload.coupon, discount: pinned ? d : 0, discountAt: pinned ? subtotalOf(state.items) : null };
+      /* `subtotal`: what the server's figure was computed for — the answer
+         can land after the quantity changed, and then it isn't this
+         basket's figure (the formula takes over). Default: the cart now. */
+      const at = Number(action.payload.subtotal);
+      const checkedAt = action.payload.subtotal !== undefined && action.payload.subtotal !== null && Number.isFinite(at) ? at : subtotalOf(state.items);
+      return { ...state, coupon: action.payload.coupon, discount: pinned ? d : 0, discountAt: pinned ? checkedAt : null };
     }
     case 'REMOVE_COUPON':
       return { ...state, ...NO_COUPON };

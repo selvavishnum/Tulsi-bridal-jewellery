@@ -15,6 +15,17 @@ import { couponDiscountFor } from '../../lib/coupons.js';
    for the customer's benefit before they submit. The server is authoritative. */
 export const COD_MAX_ORDER_VALUE = 20000;
 
+/* Mirrors the order endpoint (MAX_LOYALTY_SHARE in src/app/api/orders/route.js):
+   parked loyalty points pay for at most this share of the subtotal; the
+   rest stays parked for a later order. Display copy — the server decides. */
+export const MAX_LOYALTY_SHARE = 0.2;
+
+/** The points discount an order takes from `parked` ₹ of redeemed points. */
+export function loyaltyDiscountFor(parked, subtotal) {
+  const cap = Math.floor(Math.max(0, Number(subtotal) || 0) * MAX_LOYALTY_SHARE);
+  return Math.max(0, Math.min(Number(parked) || 0, cap));
+}
+
 /* Indian mobile number, 10 digits starting 6–9 (what checkout asks for). */
 export const PHONE_RE = /^[6-9]\d{9}$/;
 

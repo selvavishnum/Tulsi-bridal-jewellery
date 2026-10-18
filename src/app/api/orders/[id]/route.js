@@ -53,6 +53,7 @@ export async function PUT(request, context) {
     const db = getDB();
     const body = await request.json();
     const { status, trackingNumber, courierName, notes, shippingCostActual } = body;
+    const unpaidOnly = body.unpaidOnly === true;
     /* Staff confirm they refunded a prepaid order the courier returned. */
     if (body.refundDone === true) {
       if (!CAN.manageOrders.includes(access.tier)) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
@@ -97,8 +98,12 @@ export async function PUT(request, context) {
       if (!['pending', 'confirmed'].includes(order.status)) {
         return NextResponse.json({ success: false, message: `Order cannot be cancelled — it is already ${order.status}` }, { status: 400 });
       }
-      /* Never cancel an online order Razorpay has just been paid for. */
-      if (order.payment?.method === 'razorpay' && order.payment?.status !== 'paid' && await razorpayOrderPaid(order.payment?.razorpayOrderId)) {
+      /* Never cancel an online order Razorpay has just been paid for. Checkout
+         giving up an unpaid attempt says so (unpaidOnly): a payment
+         confirmed since its page looked (the webhook) also stops it — the
+         shopper would otherwise pay twice, online and again on delivery. */
+      if ((unpaidOnly && order.payment?.status === 'paid')
+        || (order.payment?.method === 'razorpay' && order.payment?.status !== 'paid' && await razorpayOrderPaid(order.payment?.razorpayOrderId))) {
         return NextResponse.json({ success: false, code: 'ALREADY_PAID', message: 'Your payment for this order has just come through, so it has not been cancelled. Please check My Orders.' }, { status: 409 });
       }
     }
@@ -114,6 +119,9 @@ export async function PUT(request, context) {
         check(currentOrder) {
           if (!isAdmin && !['pending', 'confirmed'].includes(currentOrder.status)) {
             throw new OrderStateError(`Order cannot be cancelled — it is already ${currentOrder.status}`);
+          }
+          if (!isAdmin && unpaidOnly && currentOrder.payment?.status === 'paid') {
+            throw new OrderStateError('This order has been paid, so it has not been cancelled.');
           }
           /* Fulfilment staff only touch orders inside the packing/shipping
              window — a pending COD order hasn't had its stock deducted. */
