@@ -64,14 +64,14 @@ beforeEach(() => {
 });
 
 /** A batch exactly as the endpoint builds it (through parseBatch). */
-function batchOf(events, { tab = 'tab0001', n, cart } = {}) {
-  const r = parseBatch({ tab, n: n ?? autoN++, ...(cart && { cart }), events: events.map((e, i) => ({ seq: i, ...e })) });
+function batchOf(events, { tab = 'tab0001', n, cart, final } = {}) {
+  const r = parseBatch({ tab, n: n ?? autoN++, ...(final && { final: true }), ...(cart && { cart }), events: events.map((e, i) => ({ seq: i, ...e })) });
   assert.ok(r.batch, `test batch rejected: ${r.error}`);
   return r.batch;
 }
 
-function send(events, { vid, sid, user = null, now = NOW, ua = UA_ANDROID, geo = GEO_TN, ipMasked = '49.37.x.x', tab, n, cart } = {}) {
-  return ingestBatch(db, { vid, sid, user, ctx: { ua, ipMasked, geo, siteHost: 'tulsi.test', now }, batch: batchOf(events, { tab, n, cart }) });
+function send(events, { vid, sid, user = null, now = NOW, ua = UA_ANDROID, geo = GEO_TN, ipMasked = '49.37.x.x', tab, n, cart, final } = {}) {
+  return ingestBatch(db, { vid, sid, user, ctx: { ua, ipMasked, geo, siteHost: 'tulsi.test', now }, batch: batchOf(events, { tab, n, cart, final }) });
 }
 /** Continue as the same browser (the cookies the route would send back). */
 const as = (prev, extra = {}) => ({ vid: prev.vid, sid: prev.sid, ...extra });
@@ -112,8 +112,9 @@ test('first batch creates the visitor, the session, today’s marker and a daily
     channel: 'google_organic', source: 'google', medium: 'organic', campaign: '', content: '', refHost: 'google.co.in',
     landingPath: '/', currentPath: '/shop/necklaces', device: 'mobile', os: 'android', browser: 'chrome',
     city: 'Madurai', region: 'Tamil Nadu', regionKey: 'IN-TN', country: 'IN', ipMasked: '49.37.x.x',
-    pageviews: 2, activeSeconds: 0, events: 2,
+    pageviews: 2, activeSeconds: 0, pendingActive: 0, events: 2,
     viewedProduct: false, triedOn: false, addedToCart: false, reachedCheckout: false, purchased: false, engaged: true,
+    triedProducts: [],
     cartItems: 0, cartValue: 0, cartDay: null, orderNumbers: [], revenue: 0, batchIds: ['tab0001:0'],
     lastSeenAt: iso(), updatedAt: iso(),
   });
@@ -405,20 +406,26 @@ test('add-to-cart rollups count add actions, not pieces', async () => {
   assert.deepEqual(adds.map((e) => e.qty).sort(), [1, 1, 3]);
 });
 
-test('try-on: opens, modes and skin tones', async () => {
-  await send([
+test('try-on: opens, modes and skin tones — one try-on per product per visit', async () => {
+  const a = await send([
     { type: 'product_view', productId: 'p1' },
     { type: 'tryon_open', productId: 'p1', mode: 'ai' },
     { type: 'tryon_mode', mode: 'live' },
     { type: 'tryon_tone', tone: 'wheatish' },
     { type: 'tryon_open', productId: 'p1' },
   ]);
+  /* The modal closed and reopened on the same product later in the visit. */
+  await send([{ type: 'tryon_open', productId: 'p1', mode: 'ai' }], as(a, { now: at(2 * MIN) }));
   const d = daily();
-  assert.equal(d.tryons, 2);
+  assert.equal(d.tryons, 1, 'reopening the modal is still the same try-on');
   assert.deepEqual(d.tryonModes, { ai: 1, live: 1 });
   assert.deepEqual(d.tones, { wheatish: 1 });
-  assert.deepEqual(d.products, { p1: { v: 1, t: 2 } });
+  assert.deepEqual(d.products, { p1: { v: 1, t: 1 } }, 'try-on % stays ≤ 100');
   assert.equal(d.funnel.tryon, 1);
+  /* A different product in the same visit is a new try-on. */
+  await send([{ type: 'product_view', productId: 'p2' }, { type: 'tryon_open', productId: 'p2', mode: 'live' }], as(a, { now: at(4 * MIN) }));
+  assert.equal(daily().tryons, 2);
+  assert.deepEqual(get('analytics_sessions', a.sid).triedProducts, ['p1', 'p2']);
 });
 
 test('heartbeats: at most 30 s per beat, and never more than the wall-clock time since the session began', async () => {
@@ -431,7 +438,14 @@ test('heartbeats: at most 30 s per beat, and never more than the wall-clock time
   assert.equal(active(), 130, 'three beats × 30 s');
   await send([{ type: 'heartbeat', active: 0 }, { type: 'heartbeat', active: 7.6 }], as(a, { now: at(6 * MIN) }));
   assert.equal(active(), 138);
-  assert.equal(daily().activeSeconds, 138, 'the rollup adds exactly what the session got');
+  /* Heartbeat-only batches save their seconds on the session (fewer writes
+     to the shared daily docs): the first batch's 30 s went with its page
+     view, 10 + 90 were flushed once a minute had built up, 8 are waiting. */
+  assert.equal(daily().activeSeconds, 130);
+  assert.equal(get('analytics_sessions', a.sid).pendingActive, 8);
+  await send([{ type: 'heartbeat', active: 0 }], as(a, { now: at(6 * MIN + 5 * SEC), final: true }));
+  assert.equal(daily().activeSeconds, 138, 'the tab-hide flush adds exactly what the session got');
+  assert.equal(get('analytics_sessions', a.sid).pendingActive, 0);
   assert.ok(active() <= 6 * 60 + 30);
   assert.equal(all('analytics_events').filter((e) => e.type === 'heartbeat').length, 0, 'heartbeats are never stored');
 });
@@ -446,12 +460,18 @@ test('heartbeat: 10 s of activity marks the session engaged', async () => {
   assert.equal(daily().engaged, 1, 'engaged counted once');
 });
 
-test('the cart snapshot sets cartItems / cartValue / cartDay (live cart abandonment)', async () => {
-  const a = await send([pv('/cart')], { cart: { items: [{ id: 'p1', name: 'Temple Jhumka', qty: 2, price: 1500 }, { id: 'p2', name: 'Kundan Choker', qty: 1, price: 999.5 }] } });
+test('the cart snapshot sets cartItems / cartValue / cartDay (live cart abandonment), priced by the server', async () => {
+  const a = await send([pv('/cart')], {
+    cart: { items: [
+      { id: 'p1', name: 'Temple Jhumka', qty: 2, price: 1 }, // real price 1500 (discount)
+      { id: 'p2', name: 'Free gold', qty: 1, price: 0 }, // real price 5000
+      { id: 'fake1', name: 'Planted', qty: 99, price: 10_000_000 }, // not a product: ignored
+    ] },
+  });
   const s = () => get('analytics_sessions', a.sid);
-  assert.deepEqual([s().cartItems, s().cartValue, s().cartDay], [3, 3999.5, TODAY]);
+  assert.deepEqual([s().cartItems, s().cartValue, s().cartDay], [3, 8000, TODAY], 'client prices and unknown ids are ignored');
   await send([{ type: 'heartbeat', active: 5 }], as(a, { now: at(1 * MIN) }));
-  assert.deepEqual([s().cartItems, s().cartValue, s().cartDay], [3, 3999.5, TODAY], 'no snapshot → unchanged');
+  assert.deepEqual([s().cartItems, s().cartValue, s().cartDay], [3, 8000, TODAY], 'no snapshot → unchanged');
   await send([{ type: 'remove_from_cart', productId: 'p1' }], as(a, { now: at(2 * MIN), cart: { items: [] } }));
   assert.deepEqual([s().cartItems, s().cartValue, s().cartDay], [0, 0, null], 'emptied cart');
 });

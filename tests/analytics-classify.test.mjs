@@ -358,7 +358,8 @@ test('parseBatch: unknown fields are stripped at every level', () => {
       utm: { source: 'ig', evil: '1' }, clickIds: { gclid: true, other: true },
     })],
   });
-  assert.deepEqual(Object.keys(r.batch).sort(), ['cart', 'events', 'n', 'tab']);
+  assert.deepEqual(Object.keys(r.batch).sort(), ['cart', 'events', 'final', 'n', 'tab']);
+  assert.equal(r.batch.final, false, 'final only when the tracker says so');
   assert.deepEqual(r.batch.events[0], { type: 'page_view', seq: 0, path: '/', utm: { source: 'ig' }, clickIds: { gclid: true } });
   assert.deepEqual(r.batch.cart, { items: [{ id: 'p1', name: 'Jhumka', qty: 1, price: 10 }] });
 });

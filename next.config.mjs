@@ -16,7 +16,19 @@ const SECURITY_HEADERS = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   async headers() {
-    return [{ source: '/:path*', headers: SECURITY_HEADERS }];
+    return [
+      { source: '/:path*', headers: SECURITY_HEADERS },
+      /* The admin's category-showcase preview is an iframe on our own admin
+         page: allow same-origin framing for that one path only (a later
+         match overrides the same header key). */
+      {
+        source: '/showcase-preview',
+        headers: [
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'" },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+        ],
+      },
+    ];
   },
   images: {
     /* Serve AVIF first (smaller than WebP for most photos), falling back to

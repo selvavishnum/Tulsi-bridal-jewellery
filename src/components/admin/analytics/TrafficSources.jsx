@@ -6,7 +6,7 @@ import { fmtNum, fmtPct, fmtINR, channelColor, inkOn, n0, share } from './format
 
 const TH = 'font-medium text-[11px] uppercase tracking-wider text-slate-500 px-2 py-2 whitespace-nowrap';
 
-export default function TrafficSources({ sources, label }) {
+export default function TrafficSources({ sources, label, untracked = 0 }) {
   const rows = (Array.isArray(sources) ? sources : []).filter((r) => n0(r.count) > 0);
   const total = rows.reduce((a, r) => a + n0(r.count), 0);
 
@@ -64,6 +64,12 @@ export default function TrafficSources({ sources, label }) {
               </tbody>
             </table>
           </div>
+          {n0(untracked) > 0 && (
+            <p className="mt-3 text-[11px] text-slate-500">
+              {fmtNum(untracked)} {n0(untracked) === 1 ? 'order' : 'orders'} in this range came without a tracked visit (for example, the
+              shopper closed the app before the order-confirmation page) and {n0(untracked) === 1 ? 'is' : 'are'} not in this table.
+            </p>
+          )}
         </>
       )}
     </Card>

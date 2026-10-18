@@ -12,6 +12,7 @@ import { canMatchGuestOrders } from '@/lib/orderOwnership';
 import { normalizeEmail, isValidEmail } from '@/lib/otp';
 import { computeCharges } from '@/lib/storeCharges';
 import { getStoreCharges } from '@/lib/storeChargesServer';
+import { hasPlacedOrder } from '@/lib/coupons';
 import crypto from 'crypto';
 import { vendorCanSell } from '@/lib/vendorStatus';
 import { analyticsVidFrom } from '@/lib/analytics/ingest';
@@ -250,7 +251,17 @@ export async function POST(request) {
         .where('code', '==', String(couponCode).toUpperCase()).limit(1).get();
       if (!cSnap.empty) {
         const c = cSnap.docs[0].data();
-        const usable = couponUsable(c, computedSubtotal, couponUserKey);
+        let usable = couponUsable(c, computedSubtotal, couponUserKey);
+        /* First-order-only codes (the welcome offer): not for a customer who
+           already has a placed order — treated like any unusable coupon. If
+           the lookup fails, the code isn't applied (the order still goes
+           through). */
+        if (usable && c.firstOrderOnly === true) {
+          usable = !(await hasPlacedOrder(db, { userId: session?.user?.id, email: resolvedEmail }).catch((e) => {
+            console.error('[orders POST] first-order check failed:', e?.message);
+            return true;
+          }));
+        }
         if (usable) {
           couponDiscount = c.type === 'percentage'
             ? Math.round((computedSubtotal * Number(c.value)) / 100)

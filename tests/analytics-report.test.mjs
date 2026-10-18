@@ -203,7 +203,7 @@ test('rangeReport today: visitors, KPIs, funnel, sources, devices, regions, page
     sessions: 4, pageviews: 5, pagesPerSession: 1.3, avgActiveSeconds: 5,
     engagedSessions: 2, bounceRate: 50,
     productViews: 3, tryons: 1, addToCarts: 1, checkouts: 1,
-    orders: 3, revenue: 5300, trackedOrders: 1, conversionRate: 75, cartAbandonmentRate: 0,
+    orders: 3, revenue: 5300, trackedOrders: 1, untrackedOrders: 2, conversionRate: 75, cartAbandonmentRate: 0,
   });
   assert.deepEqual(r.funnel.map((f) => [f.key, f.count, f.ofPrevious]), [
     ['sessions', 4, 100], ['product', 2, 50], ['tryon', 1, 50], ['cart', 1, 50], ['checkout', 1, 100], ['paid', 1, 100],
@@ -517,4 +517,23 @@ test('liveReport: a cart follows the shopper — an earlier visit of the same br
   const again = await liveReport(db, NOW);
   assert.equal(again.carts.open + again.carts.abandoned, 1);
   assert.equal(again.carts.open, 1);
+});
+
+test('chart and sources count real orders: a credited order that is later cancelled drops out', async () => {
+  await seedToday();
+  /* A's Instagram order (credited, attributed) is cancelled / RTO'd afterwards. */
+  const ref = [...db.store.get('orders').entries()].find(([, o]) => o.orderNumber === ORD(1));
+  assert.equal(ref[1].attribution.channel, 'instagram', 'attribution written when the purchase was credited');
+  ref[1].status = 'cancelled';
+
+  const r = await rangeReport(db, { range: '7d', now: NOW });
+  const ig = byKey(r.sources).instagram;
+  assert.deepEqual([ig.orders, ig.revenue, ig.conversion], [0, 0, 0], 'channel table follows the order as it stands');
+  assert.equal(r.kpis.trackedOrders, 1, 'the rollup still remembers the purchase event');
+  assert.equal(r.kpis.orders, 3, 'COD today, the midnight order, and last night’s (still in the 7 days)');
+  const today = r.series.points.find((p) => p.key === TODAY);
+  const yesterday = r.series.points.find((p) => p.key === '2026-10-15');
+  assert.deepEqual([today.orders, today.revenue], [2, 2300], 'COD 1800 + midnight 500 (IST day)');
+  assert.deepEqual([yesterday.orders, yesterday.revenue], [1, 700], '23:59:59 IST belongs to yesterday');
+  assert.equal(r.series.points.reduce((a, p) => a + p.orders, 0), r.kpis.orders, 'chart total = Orders KPI');
 });

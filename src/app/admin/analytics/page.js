@@ -59,7 +59,7 @@ export default function AnalyticsPage() {
             <LiveFeed live={live} />
             {report && (
               <div className="grid gap-5 sm:gap-6 xl:grid-cols-5">
-                <div className="xl:col-span-2 min-w-0"><TrafficSources sources={report.sources} label={label} /></div>
+                <div className="xl:col-span-2 min-w-0"><TrafficSources sources={report.sources} label={label} untracked={report.kpis?.untrackedOrders} /></div>
                 <div className="xl:col-span-3 min-w-0"><TopProducts products={report.topProducts} label={label} /></div>
               </div>
             )}

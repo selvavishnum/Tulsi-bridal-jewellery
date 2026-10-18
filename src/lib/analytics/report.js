@@ -113,44 +113,39 @@ function breakdown(map, { known = null, label = (k) => k, limit = 50 } = {}) {
     .slice(0, limit);
 }
 
-async function namesFor(db, userIds) {
+/* Customer names for the live list, cached per instance for 10 minutes so
+   a dashboard polling every 15 s doesn't re-read the same users. */
+const nameCache = new Map();
+const NAME_TTL_MS = 10 * 60 * 1000;
+export function _resetReportCaches() { nameCache.clear(); }
+async function namesFor(db, userIds, nowMs = Date.now()) {
   const ids = [...new Set(userIds.filter((id) => typeof id === 'string' && id))].slice(0, 100);
-  const snaps = await Promise.all(ids.map((id) => db.collection('users').doc(id).get().catch(() => null)));
   const out = new Map();
-  snaps.forEach((s, i) => { if (s?.exists) out.set(ids[i], String(s.data().name || '').slice(0, 60)); });
+  const misses = [];
+  for (const id of ids) {
+    const hit = nameCache.get(id);
+    if (hit && nowMs - hit.at < NAME_TTL_MS) { if (hit.name !== null) out.set(id, hit.name); } else misses.push(id);
+  }
+  if (misses.length) {
+    const refs = misses.map((id) => db.collection('users').doc(id));
+    const snaps = typeof db.getAll === 'function'
+      ? await db.getAll(...refs).catch(() => [])
+      : await Promise.all(refs.map((r) => r.get().catch(() => null)));
+    if (nameCache.size > 2000) nameCache.clear();
+    misses.forEach((id, i) => {
+      const snap = snaps[i];
+      /* A failed read is not remembered: the next poll asks again. */
+      if (!snap) return;
+      const name = snap.exists ? String(snap.data().name || '').slice(0, 60) : null;
+      nameCache.set(id, { at: nowMs, name });
+      if (name !== null) out.set(id, name);
+    });
+  }
   return out;
 }
 
-/* ── Live: who is on the site right now ── */
-export async function liveReport(db, now = new Date()) {
-  const nowMs = now.getTime();
-  const nowIso = now.toISOString();
-  const since = new Date(nowMs - LIVE_WINDOW_MS).toISOString();
-  const todayKey = istDateKey(now);
-  const idleCutoff = new Date(nowMs - SESSION_IDLE_MS).toISOString();
-
-  const liveQ = db.collection('analytics_sessions').where('lastSeenAt', '>=', since);
-  const [liveSnap, cartSnap] = await Promise.all([
-    liveQ.orderBy('lastSeenAt', 'desc').limit(LIVE_LIMIT).get(),
-    db.collection('analytics_sessions').where('cartDay', '==', todayKey).limit(CART_LIMIT).get(),
-  ]);
-  const live = liveSnap.docs.map((d) => d.data());
-  let activeVisitors = new Set(live.map((s) => s.vid)).size;
-  if (live.length >= LIVE_LIMIT) activeVisitors = Math.max(activeVisitors, (await countOf(liveQ)).n);
-
-  /* Carts: still shopping (seen in the last 30 min) vs abandoned today. */
-  /* One cart per browser: its most recent visit today. */
-  const latestByVid = new Map();
-  for (const s of cartSnap.docs.map((d) => d.data())) {
-    const cur = latestByVid.get(s.vid);
-    if (!cur || String(s.lastSeenAt) > String(cur.lastSeenAt)) latestByVid.set(s.vid, s);
-  }
-  const carts = [...latestByVid.values()].filter((s) => n0(s.cartItems) > 0 && !s.purchased);
-  const abandoned = carts.filter((s) => s.lastSeenAt < idleCutoff);
-  const open = carts.filter((s) => s.lastSeenAt >= idleCutoff);
-
-  const names = await namesFor(db, [...live, ...abandoned].map((s) => s.userId));
-  const visitorRow = (s) => ({
+function visitorRow(s, names) {
+  return {
     sid: s.sid,
     visitor: shortVid(s.vid),
     ip: s.ipMasked || '',
@@ -174,20 +169,61 @@ export async function liveReport(db, now = new Date()) {
     startedAt: s.startedAt, lastSeenAt: s.lastSeenAt,
     cartItems: n0(s.cartItems), cartValue: money(s.cartValue),
     stage: stageOf(s),
-  });
+  };
+}
 
+/* ── Carts today: still shopping (seen in the last 30 min) vs abandoned ──
+   Abandonment works on a 30-minute scale, so the admin API caches this
+   for a couple of minutes instead of re-reading it on every live poll. */
+export async function cartsReport(db, now = new Date()) {
+  const nowMs = now.getTime();
+  const idleCutoff = new Date(nowMs - SESSION_IDLE_MS).toISOString();
+  const cartSnap = await db.collection('analytics_sessions').where('cartDay', '==', istDateKey(now)).limit(CART_LIMIT).get();
+  /* One cart per browser: its most recent visit today. */
+  const latestByVid = new Map();
+  for (const s of cartSnap.docs.map((d) => d.data())) {
+    const cur = latestByVid.get(s.vid);
+    if (!cur || String(s.lastSeenAt) > String(cur.lastSeenAt)) latestByVid.set(s.vid, s);
+  }
+  const carts = [...latestByVid.values()].filter((s) => n0(s.cartItems) > 0 && !s.purchased);
+  const abandoned = carts.filter((s) => s.lastSeenAt < idleCutoff);
+  const open = carts.filter((s) => s.lastSeenAt >= idleCutoff);
+  const recent = abandoned.sort((a, b) => n0(b.cartValue) - n0(a.cartValue)).slice(0, 10);
+  const names = await namesFor(db, recent.map((s) => s.userId), nowMs);
+  return {
+    abandoned: abandoned.length,
+    abandonedValue: money(abandoned.reduce((a, s) => a + n0(s.cartValue), 0)),
+    open: open.length,
+    openValue: money(open.reduce((a, s) => a + n0(s.cartValue), 0)),
+    recent: recent.map((s) => visitorRow(s, names)),
+  };
+}
+
+/* ── Live: who is on the site right now ──
+   `carts`: include today's carts (true), or leave them out (false) when the
+   caller supplies them from its own cache. */
+export async function liveReport(db, now = new Date(), { carts: withCarts = true } = {}) {
+  const nowMs = now.getTime();
+  const nowIso = now.toISOString();
+  const since = new Date(nowMs - LIVE_WINDOW_MS).toISOString();
+
+  const liveQ = db.collection('analytics_sessions').where('lastSeenAt', '>=', since);
+  const [liveSnap, carts] = await Promise.all([
+    liveQ.orderBy('lastSeenAt', 'desc').limit(LIVE_LIMIT).get(),
+    withCarts ? cartsReport(db, now) : Promise.resolve(null),
+  ]);
+  const live = liveSnap.docs.map((d) => d.data());
+  let activeVisitors = new Set(live.map((s) => s.vid)).size;
+  if (live.length >= LIVE_LIMIT) activeVisitors = Math.max(activeVisitors, (await countOf(liveQ)).n);
+
+  const shown = live.slice(0, 60);
+  const names = await namesFor(db, shown.map((s) => s.userId), nowMs);
   return {
     generatedAt: nowIso,
     activeVisitors,
     activeRegistered: new Set(live.filter((s) => s.userId).map((s) => s.vid)).size,
-    sessions: live.slice(0, 60).map(visitorRow),
-    carts: {
-      abandoned: abandoned.length,
-      abandonedValue: money(abandoned.reduce((a, s) => a + n0(s.cartValue), 0)),
-      open: open.length,
-      openValue: money(open.reduce((a, s) => a + n0(s.cartValue), 0)),
-      recent: abandoned.sort((a, b) => n0(b.cartValue) - n0(a.cartValue)).slice(0, 10).map(visitorRow),
-    },
+    sessions: shown.map((s) => visitorRow(s, names)),
+    ...(carts && { carts }),
   };
 }
 
@@ -211,23 +247,33 @@ async function uniqueVisitors(db, bounds, total) {
   return { visitors, registered, guests: Math.max(0, visitors - registered), newVisitors: n0(total.newVisitors), exact: all.exact && reg.exact };
 }
 
-/** Real orders in the range: paid online, or cash on delivery; not cancelled. */
+/** Real orders in the range: paid online, or cash on delivery; not
+ *  cancelled — as they stand now (a cancelled or RTO order drops out). Also
+ *  split by IST day and by the channel the visit came from, so the chart and
+ *  the sources table agree with the Orders KPI. */
 async function ordersIn(db, bounds) {
   const snap = await db.collection('orders')
     .where('createdAt', '>=', bounds.start.toISOString())
     .where('createdAt', '<', bounds.end.toISOString())
-    .select('createdAt', 'status', 'payment', 'total')
+    .select('createdAt', 'status', 'payment', 'total', 'attribution')
     .limit(ORDER_LIMIT)
     .get();
   let count = 0; let revenue = 0;
+  const byDay = {};
+  const byChannel = {};
   for (const d of snap.docs) {
     const o = d.data();
     if (o.status === 'cancelled') continue;
     if (o.payment?.status !== 'paid' && o.payment?.method !== 'cod') continue;
+    const total = n0(o.total);
     count += 1;
-    revenue += n0(o.total);
+    revenue += total;
+    const day = istDateKey(new Date(o.createdAt));
+    byDay[day] = { orders: (byDay[day]?.orders || 0) + 1, revenue: (byDay[day]?.revenue || 0) + total };
+    const ch = Object.hasOwn(CHANNELS, o.attribution?.channel) ? o.attribution.channel : 'untracked';
+    byChannel[ch] = { orders: (byChannel[ch]?.orders || 0) + 1, revenue: (byChannel[ch]?.revenue || 0) + total };
   }
-  return { count, revenue: money(revenue) };
+  return { count, revenue: money(revenue), byDay, byChannel };
 }
 
 async function topProducts(db, productsMap, limit = 10) {
@@ -270,7 +316,7 @@ export function funnelRows(f = {}) {
   });
 }
 
-function seriesFor(bounds, days) {
+function seriesFor(bounds, days, ordersByDay = {}) {
   if (bounds.dateKeys.length === 1) {
     const hours = days[0]?.hours || {};
     return {
@@ -285,7 +331,7 @@ function seriesFor(bounds, days) {
     unit: 'day',
     points: days.map((d) => ({
       key: d.dateKey, label: d.dateKey.slice(5), visitors: n0(d.visitors), sessions: n0(d.sessions),
-      pageviews: n0(d.pageviews), orders: n0(d.orders), revenue: money(d.revenue),
+      pageviews: n0(d.pageviews), orders: n0(ordersByDay[d.dateKey]?.orders), revenue: money(ordersByDay[d.dateKey]?.revenue),
     })),
   };
 }
@@ -306,10 +352,11 @@ export async function rangeReport(db, { range = 'today', now = new Date() } = {}
 
   const sessions = n0(total.sessions);
   const funnel = total.funnel || {};
-  const channelOrders = total.ordersByChannel || {};
-  const channelRevenue = total.revenueByChannel || {};
+  /* Orders per channel from the orders themselves (attribution written
+     when the purchase was credited), so cancellations drop out. */
+  const byChannel = orders.byChannel;
   const sources = breakdown(total.channels, { known: Object.keys(CHANNELS), label: (k) => CHANNELS[k] })
-    .map((r) => ({ ...r, orders: n0(channelOrders[r.key]), revenue: money(channelRevenue[r.key]), conversion: pct(n0(channelOrders[r.key]), r.count) }));
+    .map((r) => ({ ...r, orders: n0(byChannel[r.key]?.orders), revenue: money(byChannel[r.key]?.revenue), conversion: pct(n0(byChannel[r.key]?.orders), r.count) }));
 
   return {
     generatedAt: now.toISOString(),
@@ -332,6 +379,9 @@ export async function rangeReport(db, { range = 'today', now = new Date() } = {}
       orders: orders.count,
       revenue: orders.revenue,
       trackedOrders: n0(total.orders),
+      /* Orders placed without a credited visit (tracker blocked, app
+         switched before the success page, a phone order…). */
+      untrackedOrders: n0(orders.byChannel.untracked?.orders),
       conversionRate: pct(orders.count, visitors.visitors),
       cartAbandonmentRate: n0(funnel.cart) ? Math.round((1 - Math.min(n0(funnel.paid), n0(funnel.cart)) / n0(funnel.cart)) * 1000) / 10 : 0,
     },
@@ -348,7 +398,7 @@ export async function rangeReport(db, { range = 'today', now = new Date() } = {}
       tones: breakdown(total.tones, { known: ['fair', 'wheatish', 'dusky', 'bronze'], label: (k) => k[0].toUpperCase() + k.slice(1) }),
     },
     topProducts: products,
-    series: seriesFor(bounds, days),
+    series: seriesFor(bounds, days, orders.byDay),
   };
 }
 

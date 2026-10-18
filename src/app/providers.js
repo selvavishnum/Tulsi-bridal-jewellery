@@ -12,7 +12,9 @@ import { usePathname } from 'next/navigation';
 
 export function Providers({ children }) {
   const pathname = usePathname();
-  const isAdmin = pathname?.startsWith('/admin') || pathname === '/vendor' || pathname?.startsWith('/vendor/');
+  /* No storefront header/footer: admin, seller portal, and the admin's
+     category-showcase preview frame. */
+  const isAdmin = pathname?.startsWith('/admin') || pathname === '/vendor' || pathname?.startsWith('/vendor/') || pathname === '/showcase-preview';
 
   return (
     <SessionProvider refetchOnWindowFocus={false} refetchInterval={0}>

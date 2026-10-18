@@ -14,8 +14,14 @@ import { SECURE_COOKIES } from '@/lib/authCookies';
 const RATE_LIMITED = 'RateLimited';
 
 /* Compared against when there's no account, so an unknown email takes as
-   long as a wrong password (no timing oracle for which emails exist). */
-const DUMMY_HASH = bcrypt.hashSync('timing-equaliser', 10);
+   long as a wrong password (no timing oracle for which emails exist).
+   Precomputed bcrypt (cost 10) of a throwaway string: hashing it at module
+   load cost ~0.1 s of CPU on every cold start of every route importing
+   authOptions — including the busy analytics beacon. */
+const DUMMY_HASH = '$2a$10$0eZHuO9NhAHjJB7adbtVcOr2Y74HMir/ot6K33689zt1QRmY7mqMK';
+/* Customer passwords are hashed at cost 12 (register route), staff at 10:
+   each path compares against a dummy of the same cost. */
+const DUMMY_HASH_CUSTOMER = '$2a$12$jkZWQFOvL1yI9rPYzPN6Duklw9NRPbVqhaLAZLtACqYU6wd1r4eXW';
 
 /* How often a signed-in admin/vendor session re-checks that the person is
    still allowed in. Sessions last 30 days; without this, deactivating a
@@ -105,7 +111,7 @@ providers.push(
         if (access.role === 'customer') {
           const snap = await db.collection('users').where('email', '==', email).limit(1).get();
           const user = snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
-          const isValid = await bcrypt.compare(credentials.password, user?.password || DUMMY_HASH);
+          const isValid = await bcrypt.compare(credentials.password, user?.password || DUMMY_HASH_CUSTOMER);
           if (!user || !user.isActive || !user.password || !isValid) return null;
           if (user.role !== 'customer') await snap.docs[0].ref.update({ role: 'customer' });
           return { id: user.id, name: user.name, email: user.email, role: 'customer', emailVerified: user.emailVerified === true };

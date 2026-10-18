@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FiPlus, FiTrash2, FiX } from 'react-icons/fi';
+import { FiPlus, FiTrash2, FiX, FiEdit2 } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
 import Badge from '@/components/ui/Badge';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -11,13 +11,31 @@ import toast from 'react-hot-toast';
 const EMPTY = {
   code: '', description: '', type: 'percentage', value: '',
   minOrderAmount: '', maxDiscount: '', usageLimit: '',
-  validFrom: '', validUntil: '', isActive: true,
+  validFrom: '', validUntil: '', isActive: true, firstOrderOnly: false,
 };
+
+/* A stored coupon → the form (edit). */
+function toForm(c) {
+  const until = c.expiresAt || c.validUntil;
+  return {
+    ...EMPTY,
+    code: c.code || '',
+    description: c.description || '',
+    type: c.type || 'percentage',
+    value: c.value ?? '',
+    minOrderAmount: c.minOrderAmount ? String(c.minOrderAmount) : '',
+    usageLimit: c.maxUses ?? c.usageLimit ?? '',
+    validUntil: until ? String(until).slice(0, 10) : '',
+    isActive: c.isActive !== false,
+    firstOrderOnly: c.firstOrderOnly === true,
+  };
+}
 
 export default function AdminCouponsPage() {
   const [coupons, setCoupons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
 
@@ -32,13 +50,19 @@ export default function AdminCouponsPage() {
 
   useEffect(() => { fetchCoupons(); }, []);
 
+  function openCreate() { setEditingId(null); setForm(EMPTY); setModalOpen(true); }
+  function openEdit(c) { setEditingId(c._id || c.id); setForm(toForm(c)); setModalOpen(true); }
+  function closeModal() { setModalOpen(false); setEditingId(null); setForm(EMPTY); }
+
   async function handleSave() {
     setSaving(true);
     try {
-      const payload = { ...form, value: parseFloat(form.value), minOrderAmount: form.minOrderAmount ? parseFloat(form.minOrderAmount) : 0, maxDiscount: form.maxDiscount ? parseFloat(form.maxDiscount) : undefined, usageLimit: form.usageLimit ? parseInt(form.usageLimit) : undefined };
-      const res = await fetch('/api/coupons', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const payload = { ...form, value: parseFloat(form.value), minOrderAmount: form.minOrderAmount ? parseFloat(form.minOrderAmount) : 0, maxDiscount: form.maxDiscount ? parseFloat(form.maxDiscount) : undefined, usageLimit: form.usageLimit ? parseInt(form.usageLimit) : undefined, firstOrderOnly: form.firstOrderOnly === true };
+      const res = editingId
+        ? await fetch(`/api/coupons/${editingId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        : await fetch('/api/coupons', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await res.json();
-      if (data.success) { toast.success('Coupon created!'); setModalOpen(false); fetchCoupons(); setForm(EMPTY); }
+      if (data.success) { toast.success(editingId ? 'Coupon updated' : 'Coupon created!'); closeModal(); fetchCoupons(); }
       else toast.error(data.message);
     } finally { setSaving(false); }
   }
@@ -53,7 +77,7 @@ export default function AdminCouponsPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Coupons</h1>
-        <button onClick={() => setModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-maroon-950 text-white text-sm font-semibold rounded-lg hover:bg-maroon-900 transition">
+        <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-maroon-950 text-white text-sm font-semibold rounded-lg hover:bg-maroon-900 transition">
           <FiPlus /> Add Coupon
         </button>
       </div>
@@ -81,15 +105,23 @@ export default function AdminCouponsPage() {
                   <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No coupons yet</td></tr>
                 ) : coupons.map((c) => (
                   <tr key={c._id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-mono font-bold text-maroon-950">{c.code}</td>
+                    <td className="px-4 py-3">
+                      <span className="font-mono font-bold text-maroon-950">{c.code}</span>
+                      {c.firstOrderOnly === true && (
+                        <Badge variant="gold" className="ml-2 whitespace-nowrap">First order only</Badge>
+                      )}
+                    </td>
                     <td className="px-4 py-3 capitalize text-gray-600">{c.type}</td>
                     <td className="px-4 py-3 font-semibold">{c.type === 'percentage' ? `${c.value}%` : formatPrice(c.value)}</td>
                     <td className="px-4 py-3 text-gray-500">{formatPrice(c.minOrderAmount || 0)}</td>
-                    <td className="px-4 py-3 text-gray-500">{c.usedCount}/{c.usageLimit || '∞'}</td>
+                    <td className="px-4 py-3 text-gray-500">{c.usedCount || 0}/{c.maxUses || c.usageLimit || '∞'}</td>
                     <td className="px-4 py-3 text-xs text-gray-400">{(c.expiresAt || c.validUntil) ? format(new Date(c.expiresAt || c.validUntil), 'dd MMM yyyy') : '—'}</td>
                     <td className="px-4 py-3"><Badge variant={c.isActive && (!c.expiresAt || new Date(c.expiresAt) > new Date()) ? 'success' : 'danger'}>{c.isActive && (!c.expiresAt || new Date(c.expiresAt) > new Date()) ? 'Active' : 'Inactive'}</Badge></td>
                     <td className="px-4 py-3">
-                      <button onClick={() => deleteCoupon(c._id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"><FiTrash2 /></button>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => openEdit(c)} aria-label={`Edit ${c.code}`} className="p-1.5 text-gray-500 hover:text-maroon-950 hover:bg-gray-100 rounded-lg transition"><FiEdit2 /></button>
+                        <button onClick={() => deleteCoupon(c._id)} aria-label={`Delete ${c.code}`} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"><FiTrash2 /></button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -103,8 +135,8 @@ export default function AdminCouponsPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-5 border-b">
-              <h2 className="font-bold text-gray-800">Create Coupon</h2>
-              <button onClick={() => setModalOpen(false)}><FiX /></button>
+              <h2 className="font-bold text-gray-800">{editingId ? `Edit ${form.code || 'Coupon'}` : 'Create Coupon'}</h2>
+              <button onClick={closeModal} aria-label="Close"><FiX /></button>
             </div>
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -143,12 +175,23 @@ export default function AdminCouponsPage() {
                   <label className="text-xs text-gray-500 mb-1 block">Valid Until *</label>
                   <input type="date" value={form.validUntil} onChange={(e) => setForm({ ...form, validUntil: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
                 </div>
+                <label className="col-span-2 flex items-start gap-3 p-3 rounded-lg border border-amber-100 bg-amber-50 cursor-pointer">
+                  <input type="checkbox" checked={form.firstOrderOnly} onChange={(e) => setForm({ ...form, firstOrderOnly: e.target.checked })} className="mt-0.5 h-4 w-4 accent-amber-600" />
+                  <span>
+                    <span className="block text-sm font-semibold text-gray-800">First order only</span>
+                    <span className="block text-xs text-gray-500 mt-0.5">Checkout refuses this code to customers who already have a paid or cash-on-delivery order. Tick this for the welcome-offer code shown in the top bar.</span>
+                  </span>
+                </label>
+                <label className="col-span-2 flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 accent-amber-600" />
+                  <span className="text-sm text-gray-700">Active</span>
+                </label>
               </div>
             </div>
             <div className="p-5 border-t flex justify-end gap-3">
-              <button onClick={() => setModalOpen(false)} className="px-4 py-2 border border-gray-200 text-gray-600 text-sm font-semibold rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={closeModal} className="px-4 py-2 border border-gray-200 text-gray-600 text-sm font-semibold rounded-lg hover:bg-gray-50">Cancel</button>
               <button onClick={handleSave} disabled={saving || !form.code || !form.value} className="px-6 py-2 bg-maroon-950 text-white text-sm font-semibold rounded-lg hover:bg-maroon-900 disabled:opacity-60 transition flex items-center gap-2">
-                {saving && <LoadingSpinner size="sm" />} Create
+                {saving && <LoadingSpinner size="sm" />} {editingId ? 'Save' : 'Create'}
               </button>
             </div>
           </div>

@@ -65,13 +65,15 @@ const BatchShape = z.object({
      whatever order beacons arrive in. */
   tab: z.string().regex(/^[a-z0-9]{4,16}$/),
   n: int(0, 1_000_000),
+  /* Sent when the tab hides or the page unloads (the visit may be over). */
+  final: z.boolean().optional(),
   /* Items are checked one by one below: one odd item never costs the batch. */
   cart: z.object({ items: z.array(z.unknown()).max(30) }).strip().optional(),
   events: z.array(z.unknown()).min(1).max(MAX_EVENTS),
 }).strip();
 
 /**
- * @returns {{ batch: { tab, n, cart, events } } | { error: string }}
+ * @returns {{ batch: { tab, n, final, cart, events } } | { error: string }}
  */
 export function parseBatch(input) {
   const shape = BatchShape.safeParse(input);
@@ -90,7 +92,7 @@ export function parseBatch(input) {
         .map(({ data: i }) => ({ ...i, name: (i.name || '').replace(/[<>]/g, '').slice(0, 120) })),
     }
     : null;
-  return { batch: { tab: shape.data.tab, n: shape.data.n, cart, events } };
+  return { batch: { tab: shape.data.tab, n: shape.data.n, final: !!shape.data.final, cart, events } };
 }
 
 /** Cart snapshot → { items (pieces), value (₹) }. */

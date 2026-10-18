@@ -11,7 +11,9 @@
 
    Identity is the server's HttpOnly tj_vid / tj_sid cookies — this file
    never sees or stores a visitor id. A "tab" is one page load: a random id
-   plus a batch counter, which lets the server drop retried batches.
+   plus a batch counter, which lets the server drop retried batches — and,
+   until the first response has set the cookies, lets it keep every request
+   of this page load on one visitor.
 
    Safe to import anywhere: nothing touches window until start().
    ───────────────────────────────────────────── */
@@ -37,6 +39,9 @@ let seq = 0;
 let batchNo = 0;
 let queue = [];
 let inflight = null; // { body, attempts }
+/* Heartbeat seconds sent since the last final batch: when the tab hides,
+   a final batch must follow so the server books them. */
+let beatsSinceFinal = false;
 let retryBatch = null;
 let flushTimer = null;
 let flushDue = 0;
@@ -50,11 +55,11 @@ let lastInteraction = 0;
 const now = () => Date.now();
 const randomTab = () => {
   try {
-    const a = new Uint8Array(6);
+    const a = new Uint8Array(16);
     crypto.getRandomValues(a);
     return Array.from(a, (b) => (b % 36).toString(36)).join('');
   } catch {
-    return Math.random().toString(36).slice(2, 10).padEnd(6, '0');
+    return (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)).replace(/[^a-z0-9]/g, '').padEnd(16, '0').slice(0, 16);
   }
 };
 
@@ -65,7 +70,8 @@ export function isAutomated() {
   return /HeadlessChrome|PhantomJS|Lighthouse|Chrome-Lighthouse/i.test(navigator.userAgent || '');
 }
 
-const staffPath = (p) => /^\/(admin|vendor)(\/|$)/.test(p || '');
+/* Staff and seller areas, including the staff sign-in page. */
+const staffPath = (p) => /^\/(admin|vendor|admin-portal|showcase-preview)(\/|$)/.test(p || '');
 
 /* ── Active time ── */
 const idle = () => now() - lastInteraction >= IDLE_AFTER_MS;
@@ -82,7 +88,9 @@ function beat() {
   if (mode === 'off') return;
   const active = takeActiveSeconds();
   /* An idle open tab is not a live visitor. */
-  if (active > 0) push({ type: 'heartbeat', active });
+  /* The page rides along, so a tab resumed after a long pause still shows
+     where the shopper is. */
+  if (active > 0) push({ type: 'heartbeat', active, path: window.location.pathname.slice(0, 300) });
 }
 
 /* ── Queue & send ── */
@@ -121,15 +129,19 @@ function cartSnapshot() {
   }
 }
 
-function nextBody() {
+function nextBody(final = false) {
   if (!queue.length) return null;
   const events = queue.splice(0, MAX_BATCH);
-  return JSON.stringify({ tab, n: batchNo++, cart: cartSnapshot(), events });
+  if (final) beatsSinceFinal = false;
+  else if (events.some((e) => e.type === 'heartbeat' && e.active > 0)) beatsSinceFinal = true;
+  return JSON.stringify({ tab, n: batchNo++, ...(final && { final: true }), cart: cartSnapshot(), events });
 }
 
 async function flush() {
   if (mode !== 'on' || inflight) return;
-  const body = retryBatch?.body || nextBody();
+  /* Sent from a hidden tab (e.g. the answer to an earlier request came back
+     after the shopper switched away): the visit may be over — final. */
+  const body = retryBatch?.body || nextBody(document.visibilityState === 'hidden');
   if (!body) return;
   inflight = { body, attempts: (retryBatch?.attempts || 0) + 1 };
   retryBatch = null;
@@ -151,14 +163,23 @@ async function flush() {
   if (queue.length || retryBatch) schedule(retryBatch ? FLUSH_MS * 2 : SOON_MS);
 }
 
-/** Page is going away (or to the background): send everything now. */
+/** Page is going away (or to the background): send everything now.
+ *  Also while the sign-in check is still loading — the server drops staff
+ *  and sellers itself, and these are exactly the quick-bounce visits. A
+ *  beacon sent before the first response has set the cookies is fine: the
+ *  server keeps every request of this page load (same tab id) on one visitor. */
 function flushOnHide() {
-  if (mode !== 'on') return;
+  if (mode === 'off') return;
   beat();
+  /* Nothing new to say, but heartbeat seconds were sent since the last
+     final batch: say "final" so the server books them for the day. */
+  if (!queue.length && beatsSinceFinal) {
+    queue.push({ type: 'heartbeat', active: 0, path: window.location.pathname.slice(0, 300), seq: seq++ });
+  }
   const bodies = [];
   if (retryBatch) { bodies.push(retryBatch.body); retryBatch = null; }
   let b;
-  while ((b = nextBody())) bodies.push(b);
+  while ((b = nextBody(true))) bodies.push(b);
   for (const body of bodies) {
     let sent = false;
     try {
@@ -196,7 +217,11 @@ export function start({ cart } = {}) {
   }
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flushOnHide();
-    else { visibleSince = now(); lastInteraction = now(); }
+    else {
+      visibleSince = now();
+      lastInteraction = now();
+      if (queue.length) schedule(SOON_MS);
+    }
   });
   window.addEventListener('pagehide', flushOnHide);
   beatTimer = setInterval(beat, HEARTBEAT_MS);
@@ -250,7 +275,7 @@ export function trackPageView(path) {
 
 /** Test hook: back to a fresh state. */
 export function _reset() {
-  mode = 'pending'; started = false; tab = ''; seq = 0; batchNo = 0; queue = []; inflight = null; retryBatch = null;
+  mode = 'pending'; started = false; tab = ''; seq = 0; batchNo = 0; queue = []; inflight = null; retryBatch = null; beatsSinceFinal = false;
   if (flushTimer) clearTimeout(flushTimer);
   if (beatTimer) clearInterval(beatTimer);
   flushTimer = null; beatTimer = null; getCart = () => null; firstPageView = true; activeMs = 0; visibleSince = 0; lastInteraction = 0;
