@@ -3,26 +3,36 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import { FiTrash2, FiPlus, FiMinus, FiShoppingBag } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/utils';
+import { clearPendingCoupon } from '@/lib/welcomeOffer';
 import toast from 'react-hot-toast';
 import useAutoApplyPendingCoupon from '@/components/checkout/useAutoApplyPendingCoupon';
+import { validateCoupon } from '@/components/checkout/validateCoupon';
 
 export default function CartPage() {
-  const { items, dispatch, subtotal, shippingCost, total, discount, coupon, charges } = useCart();
+  const { items, dispatch, subtotal, shippingCost, total, discount, coupon, couponShortfall = 0, charges } = useCart();
+  const { data: session } = useSession();
   const [couponCode, setCouponCode] = useState('');
   const [couponLoading, setCouponLoading] = useState(false);
 
-  /* The welcome code tapped in the offer bar: applied once when the cart
-     has items and no coupon yet. Refused (expired, first order only…) →
-     forgotten, with the reason; offline → left in the box to retry. */
+  /* Which account the coupon was checked for (null: signed out) — checkout
+     re-checks a first-order code that wasn't checked for this customer. */
+  const checkedFor = session?.user?.id || null;
+  const applyResult = (r) => dispatch({ type: 'APPLY_COUPON', payload: { coupon: { ...r.coupon, checkedFor }, discount: r.discount } });
+
+  /* The welcome code tapped in the offer bar: applied when the cart has
+     items and no coupon yet. Refused (expired, first order only…) →
+     forgotten, with the reason; below its minimum or offline → left in the
+     box to retry (and not re-checked on every visit). */
   useAutoApplyPendingCoupon({
     enabled: items.length > 0,
     hasCoupon: !!coupon,
     orderAmount: subtotal,
     onApplied: (r) => {
-      dispatch({ type: 'APPLY_COUPON', payload: { coupon: r.coupon, discount: r.discount } });
+      applyResult(r);
       toast.success(`${r.code} applied — you save ${formatPrice(r.discount)}`);
     },
     onRejected: (r) => {
@@ -32,26 +42,32 @@ export default function CartPage() {
       toast(`${r.code}: ${r.message}`, { icon: 'ℹ️' });
     },
     onUnavailable: (r) => setCouponCode(r.code),
+    onKept: (code) => setCouponCode((c) => c || code),
   });
 
+  /* Typed code: applied, or replaces the coupon that's on. */
   async function applyCoupon() {
-    if (!couponCode.trim()) return;
+    const code = couponCode.trim().toUpperCase();
+    if (!code || couponLoading) return;
+    if (coupon?.code === code) { setCouponCode(''); return; }
     setCouponLoading(true);
-    try {
-      const res = await fetch('/api/coupons/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: couponCode, orderAmount: subtotal }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        dispatch({ type: 'APPLY_COUPON', payload: { coupon: data.data.coupon, discount: data.data.discount } });
-        toast.success(`Coupon applied! You saved ${formatPrice(data.data.discount)}`);
-      } else {
-        toast.error(data.message);
-      }
-    } catch { toast.error('Failed to apply coupon'); }
-    finally { setCouponLoading(false); }
+    const r = await validateCoupon(code, subtotal);
+    setCouponLoading(false);
+    if (r.ok) {
+      applyResult(r);
+      setCouponCode('');
+      toast.success(`Coupon applied! You saved ${formatPrice(r.discount)}`);
+    } else {
+      toast.error(r.message);
+    }
+  }
+
+  /* Off the cart — and the remembered welcome code is forgotten, so it
+     isn't put straight back on the next visit. */
+  function removeCoupon() {
+    if (coupon?.code) setCouponCode(coupon.code);
+    dispatch({ type: 'REMOVE_COUPON' });
+    clearPendingCoupon();
   }
 
   if (items.length === 0) {
@@ -114,19 +130,36 @@ export default function CartPage() {
             {/* Coupon */}
             <div className="bg-white rounded-xl p-4 shadow-sm">
               <h3 className="font-semibold text-gray-700 mb-3 text-sm">Apply Coupon</h3>
+              {coupon && (
+                <div className={`mb-3 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 ${couponShortfall > 0 ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'}`}>
+                  {couponShortfall > 0 ? (
+                    <p className="min-w-0 text-xs text-amber-800" role="status">
+                      Add {formatPrice(couponShortfall)} more to use &ldquo;{coupon.code}&rdquo;
+                    </p>
+                  ) : (
+                    <p className="min-w-0 text-xs text-green-700" role="status">
+                      ✓ Coupon &ldquo;{coupon.code}&rdquo; applied — saving {formatPrice(discount)}
+                    </p>
+                  )}
+                  <button type="button" onClick={removeCoupon} className="flex-shrink-0 text-xs font-semibold text-gray-500 underline-offset-2 hover:text-red-600 hover:underline">
+                    Remove
+                  </button>
+                </div>
+              )}
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={couponCode}
                   onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                  placeholder="Enter code"
-                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500 uppercase"
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyCoupon(); } }}
+                  placeholder={coupon ? 'Have another code?' : 'Enter code'}
+                  aria-label="Coupon code"
+                  className="flex-1 min-w-0 px-3 py-2 border border-gray-200 rounded-lg text-base md:text-sm outline-none focus:ring-2 focus:ring-gold-500 uppercase"
                 />
-                <button onClick={applyCoupon} disabled={couponLoading || !!coupon} className="px-4 py-2 bg-gold-600 text-white text-sm font-semibold rounded-lg hover:bg-gold-700 disabled:opacity-50 transition">
-                  Apply
+                <button type="button" onClick={applyCoupon} disabled={couponLoading || !couponCode.trim()} className="px-4 py-2 bg-gold-600 text-white text-sm font-semibold rounded-lg hover:bg-gold-700 disabled:opacity-50 transition">
+                  {couponLoading ? 'Checking…' : 'Apply'}
                 </button>
               </div>
-              {coupon && <p className="text-green-600 text-xs mt-2">✓ Coupon &ldquo;{coupon.code}&rdquo; applied — saving {formatPrice(discount)}</p>}
             </div>
 
             {/* Order summary */}

@@ -261,7 +261,7 @@ describe('parseCouponInput firstOrderOnly', () => {
     assert.equal(parseCouponInput({ ...BASE, firstOrderOnly: true }).data.firstOrderOnly, true);
     assert.equal(parseCouponInput({ ...BASE, firstOrderOnly: false }).data.firstOrderOnly, false);
     assert.deepEqual(parseCouponInput({ ...BASE, firstOrderOnly: true }).data, {
-      code: 'TULSI10', type: 'percentage', value: 10, maxUses: 100, minOrderAmount: 0, expiresAt: null, firstOrderOnly: true,
+      code: 'TULSI10', type: 'percentage', value: 10, maxUses: 0, minOrderAmount: 0, maxDiscount: null, startsAt: null, expiresAt: null, firstOrderOnly: true,
     });
   });
 
@@ -357,21 +357,39 @@ describe('hasPlacedOrder', () => {
     assert.equal(await hasPlacedOrder(ordersDb(ORDERS), { userId: 'u-new', email: 'new@x.test' }), false);
   });
 
-  test('by email: the order’s guestEmail or its shipping-address email, any case or spacing', async () => {
+  test('by email: the order’s guestEmail, any case or spacing — never the shipping-address email (a gift recipient)', async () => {
     assert.equal(await hasPlacedOrder(ordersDb(ORDERS), { email: 'guest@x.test' }), true, 'guest COD order');
     assert.equal(await hasPlacedOrder(ordersDb(ORDERS), { userId: 'u-new', email: '  Guest@X.Test ' }), true, 'new account, same email');
-    assert.equal(await hasPlacedOrder(ordersDb(ORDERS), { email: 'gift.sender@x.test' }), true, 'shipping-address email');
+    assert.equal(await hasPlacedOrder(ordersDb(ORDERS), { email: 'gift.sender@x.test' }), false, 'shipping-address email is not the customer');
     assert.equal(await hasPlacedOrder(ordersDb(ORDERS), { email: 'nobody@x.test' }), false);
+  });
+
+  test('by delivery phone: the number as typed and its last 10 digits', async () => {
+    const PHONES = {
+      p1: { userId: 'u-a', guestEmail: 'a@x.test', shippingAddress: { phone: '+91 98765 43210' }, ...COD },
+      p2: { userId: 'u-b', guestEmail: 'b@x.test', shippingAddress: { phone: '9123456780' }, ...PAID },
+      p3: { userId: 'u-c', guestEmail: 'c@x.test', shippingAddress: { phone: '9000000001' }, ...UNPAID },
+    };
+    assert.equal(await hasPlacedOrder(ordersDb(PHONES), { userId: 'u-new', phone: '+91 98765 43210' }), true, 'same raw form');
+    assert.equal(await hasPlacedOrder(ordersDb(PHONES), { userId: 'u-new', phone: '+91-91234-56780' }), true, '10-digit form');
+    assert.equal(await hasPlacedOrder(ordersDb(PHONES), { userId: 'u-new', phone: '9000000001' }), false, 'an unpaid attempt on that phone');
+    assert.equal(await hasPlacedOrder(ordersDb(PHONES), { userId: 'u-new', phone: '98765' }), false, 'too short to match');
+    const db = ordersDb(PHONES);
+    await hasPlacedOrder(db, { phone: '+91 98765 43210' });
+    assert.deepEqual(db.queries.map((q) => q.filters), [[['shippingAddress.phone', '+91 98765 43210']], [['shippingAddress.phone', '9876543210']]]);
+    const same = ordersDb(PHONES);
+    await hasPlacedOrder(same, { phone: '9876543210' });
+    assert.equal(same.queries.length, 1, 'one query when the typed form is already 10 digits');
   });
 
   test('someone else’s orders never count', async () => {
     assert.equal(await hasPlacedOrder(ordersDb(ORDERS), { userId: 'u-paid-not', email: 'paid@x.test.in' }), false);
   });
 
-  test('bounded single-field lookups: account id, guestEmail, shipping email — status and payment only, 25 each', async () => {
+  test('bounded single-field lookups: account id, guestEmail, phone — status and payment only, 25 each', async () => {
     const db = ordersDb(ORDERS);
-    await hasPlacedOrder(db, { userId: 7, email: 'A@x.test' });
-    assert.deepEqual(db.queries.map((q) => q.filters), [[['userId', '7']], [['guestEmail', 'a@x.test']], [['shippingAddress.email', 'a@x.test']]]);
+    await hasPlacedOrder(db, { userId: 7, email: 'A@x.test', phone: '9876543210' });
+    assert.deepEqual(db.queries.map((q) => q.filters), [[['userId', '7']], [['guestEmail', 'a@x.test']], [['shippingAddress.phone', '9876543210']]]);
     for (const q of db.queries) {
       assert.deepEqual(q.fields, ['status', 'payment']);
       assert.equal(q.limit, 25);
@@ -381,7 +399,7 @@ describe('hasPlacedOrder', () => {
     assert.equal(onlyUser.queries.length, 1);
     const onlyEmail = ordersDb(ORDERS);
     await hasPlacedOrder(onlyEmail, { email: 'paid@x.test' });
-    assert.equal(onlyEmail.queries.length, 2);
+    assert.equal(onlyEmail.queries.length, 1);
   });
 
   test('nobody to look up → false, without a query', async () => {

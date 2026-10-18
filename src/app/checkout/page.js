@@ -9,6 +9,8 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { track } from '@/lib/analytics/tracker';
 import useCheckoutFlow from '@/components/checkout/useCheckoutFlow';
 import useAutoApplyPendingCoupon from '@/components/checkout/useAutoApplyPendingCoupon';
+import useCouponRecheck from '@/components/checkout/useCouponRecheck';
+import { minimumFromMessage } from '@/components/checkout/checkoutRules';
 import { AddressFields, PaymentMethodFields } from '@/components/checkout/CheckoutFields';
 
 /* The form, saved addresses, COD rules, charges and the order/payment flow
@@ -16,7 +18,7 @@ import { AddressFields, PaymentMethodFields } from '@/components/checkout/Checko
    checks out the cart. */
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, subtotal, discount, coupon, dispatch } = useCart();
+  const { items, subtotal, discount, coupon, couponShortfall = 0, dispatch } = useCart();
   /* Clearing the cart on a successful order makes items.length hit 0, which
      would otherwise trigger the "cart is empty → go to /cart" effect below
      and hijack the navigation to the confirmation page. This flag tells that
@@ -35,11 +37,19 @@ export default function CheckoutPage() {
       orderPlacedRef.current = true;
       dispatch({ type: 'CLEAR_CART' });
     },
+    /* 409 COUPON_CHANGED: the server's figure for this order — the coupon
+       comes off, or shows the server's discount; the customer confirms the
+       new total. */
+    onCouponChanged: ({ couponApplied, discount: serverDiscount }) => {
+      if (couponApplied && coupon) dispatch({ type: 'APPLY_COUPON', payload: { coupon, discount: serverDiscount } });
+      else dispatch({ type: 'REMOVE_COUPON' });
+    },
   });
   const {
-    status, charges, shippingCost, codFee, payableTotal, loading,
+    status, charges, shippingCost, codFee, payableTotal, loading, placed,
     loyalty, loyaltyEnabled, loyaltyDiscount, redeemingPoints, redeemLoyaltyPoints, placeOrder,
   } = flow;
+  const userId = flow.session?.user?.id || null;
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -56,18 +66,51 @@ export default function CheckoutPage() {
     track('checkout_start');
   }, [items.length]);
 
-  /* The welcome code tapped in the offer bar: applied to the cart once, if
-     no coupon is on it yet (the order endpoint decides in the end). */
-  useAutoApplyPendingCoupon({
-    enabled: status === 'authenticated' && items.length > 0,
+  /* The welcome code tapped in the offer bar (before or on this page):
+     applied to the cart if no coupon is on it yet (the order endpoint
+     decides in the end). */
+  const autoApply = useAutoApplyPendingCoupon({
+    enabled: status === 'authenticated' && items.length > 0 && !placed,
     hasCoupon: !!coupon,
     orderAmount: subtotal,
     onApplied: (r) => {
-      dispatch({ type: 'APPLY_COUPON', payload: { coupon: r.coupon, discount: r.discount } });
+      dispatch({ type: 'APPLY_COUPON', payload: { coupon: { ...r.coupon, checkedFor: userId }, discount: r.discount } });
       toast.success(`${r.code} applied — you save ${formatPrice(r.discount)}`);
     },
     onRejected: (r) => (r.definite ? toast.error(`${r.code}: ${r.message}`) : toast(`${r.code}: ${r.message}`, { icon: 'ℹ️' })),
   });
+
+  /* A first-order-only code put on the cart while signed out (or under
+     another account) was only a preview: check it for this customer before
+     they can order, so a returning customer hears "first order only" now
+     rather than paying more than the button said. */
+  const recheckCode = status === 'authenticated' && !placed && coupon?.firstOrderOnly === true && coupon.checkedFor !== userId ? coupon.code : null;
+  const recheck = useCouponRecheck({
+    code: recheckCode,
+    orderAmount: subtotal,
+    onResult: (r) => {
+      if (!coupon || coupon.code !== r.code) return; // changed meanwhile
+      if (r.ok) {
+        dispatch({ type: 'APPLY_COUPON', payload: { coupon: { ...r.coupon, checkedFor: userId }, discount: r.discount } });
+      } else if (r.refused && r.definite) {
+        dispatch({ type: 'REMOVE_COUPON' });
+        toast.error(`${r.code}: ${r.message}`, { duration: 8000 });
+      } else if (r.refused) {
+        /* Only this basket's minimum (checked after first-order): kept, at ₹0 until it's met. */
+        const minOrderAmount = Number(coupon.minOrderAmount) || minimumFromMessage(r.message);
+        dispatch({ type: 'APPLY_COUPON', payload: { coupon: { ...coupon, minOrderAmount, checkedFor: userId } } });
+      }
+      /* Offline / rate-limited: left as it is — the order endpoint answers
+         409 COUPON_CHANGED rather than charge a different amount. */
+    },
+  });
+  /* Hold "Place order" while the coupon is being checked: the order would
+     otherwise go without it (or with one about to be refused). */
+  const couponChecking = autoApply.checking || recheck.checking;
+  function submit(e) {
+    if (couponChecking) { e?.preventDefault?.(); return; }
+    placeOrder(e);
+  }
 
   /* Must run before the early return below: hooks called after a
      conditional return change the hook count between renders ("Rendered more
@@ -89,7 +132,7 @@ export default function CheckoutPage() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="font-serif text-3xl font-bold text-maroon-950 mb-6">Checkout</h1>
 
-          <form onSubmit={placeOrder}>
+          <form onSubmit={submit}>
             <div className="grid lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 space-y-4">
                 {/* Shipping */}
@@ -133,7 +176,10 @@ export default function CheckoutPage() {
                     {charges.enable_shipping_fee && shippingCost > 0 && charges.free_shipping_threshold > 0 && (
                       <p className="text-xs text-gray-400 -mt-1">Add {formatPrice(charges.free_shipping_threshold - subtotal)} more for free delivery</p>
                     )}
-                    {discount > 0 && <div className="flex justify-between text-green-600"><span>Discount</span><span>-{formatPrice(discount)}</span></div>}
+                    {discount > 0 && <div className="flex justify-between text-green-600"><span>Discount{coupon?.code ? ` (${coupon.code})` : ''}</span><span>-{formatPrice(discount)}</span></div>}
+                    {coupon && couponShortfall > 0 && (
+                      <p className="text-xs text-amber-700">Add {formatPrice(couponShortfall)} more to use {coupon.code}</p>
+                    )}
                     {loyaltyEnabled && loyalty.points >= 50 && loyaltyDiscount === 0 && (
                       <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2">
                         <div className="flex items-center justify-between mb-1">
@@ -159,8 +205,11 @@ export default function CheckoutPage() {
                       <span>Total</span><span>{formatPrice(payableTotal)}</span>
                     </div>
                   </div>
-                  <button type="submit" disabled={loading} className="w-full mt-4 py-3 bg-maroon-950 text-white font-bold rounded-xl hover:bg-maroon-900 disabled:opacity-60 transition flex items-center justify-center gap-2">
-                    {loading ? <><LoadingSpinner size="sm" /> Processing...</> : `Place Order · ${formatPrice(payableTotal)}`}
+                  <button type="submit" disabled={loading || placed || couponChecking} className="w-full mt-4 py-3 bg-maroon-950 text-white font-bold rounded-xl hover:bg-maroon-900 disabled:opacity-60 transition flex items-center justify-center gap-2">
+                    {placed ? 'Order placed — opening confirmation…'
+                      : loading ? <><LoadingSpinner size="sm" /> Processing...</>
+                        : couponChecking ? <><LoadingSpinner size="sm" /> Checking your coupon…</>
+                          : `Place Order · ${formatPrice(payableTotal)}`}
                   </button>
                 </div>
               </div>

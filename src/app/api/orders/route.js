@@ -12,7 +12,7 @@ import { canMatchGuestOrders } from '@/lib/orderOwnership';
 import { normalizeEmail, isValidEmail } from '@/lib/otp';
 import { computeCharges } from '@/lib/storeCharges';
 import { getStoreCharges } from '@/lib/storeChargesServer';
-import { hasPlacedOrder } from '@/lib/coupons';
+import { hasPlacedOrder, isPlacedOrder, couponDiscountFor, couponStateRefusal, couponUsesBy, couponRefusalMessage } from '@/lib/coupons';
 import crypto from 'crypto';
 import { vendorCanSell } from '@/lib/vendorStatus';
 import { analyticsVidFrom } from '@/lib/analytics/ingest';
@@ -30,18 +30,103 @@ const COD_MAX_ORDER_VALUE = 20000;
 
 const MAX_LINES = 50;
 
-class CheckoutError extends Error {}
+/* A coupon that can't be applied as the shopper was shown it, found inside
+   the order transaction (the coupon changed since the check before it). */
+class CouponChangedError extends Error {
+  constructor(reason, discount = 0) {
+    super(reason);
+    this.reason = reason;
+    this.discount = discount;
+  }
+}
 
-/* A coupon applies if it's active, unexpired, under its use limit (none
-   set = unlimited), this customer hasn't used it, and the order meets its
-   minimum. */
-function couponUsable(c, subtotal, userKey) {
-  const maxUses = Number(c.maxUses) || 0;
-  return !!c.isActive
-    && (!c.expiresAt || new Date(c.expiresAt) >= new Date())
-    && (maxUses <= 0 || (Number(c.usedCount) || 0) < maxUses)
-    && !(Array.isArray(c.usedBy) && c.usedBy.includes(userKey))
-    && subtotal >= (Number(c.minOrderAmount) || 0);
+/* An amount the checkout says it showed: null when not sent (an older page). */
+const shown = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
+const inr = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
+
+/**
+ * The coupon as checkout applies it — the same rules and discount formula
+ * as /api/coupons/validate. A coupon applies if it's active, started,
+ * unexpired, under its use limit (0 = unlimited), this customer hasn't
+ * spent their use, the order meets its minimum and — first-order-only
+ * codes — a signed-in customer has no placed order (by account, proven
+ * email or delivery phone).
+ *
+ * Once per customer: usedBy holds this customer's key from the moment an
+ * order with the code is created — also an online order whose payment is
+ * then abandoned. That use is spent only if one of their orders with the
+ * code was actually placed (isPlacedOrder); otherwise this order re-uses it
+ * (heldByMe) instead of losing the discount.
+ *
+ * @returns {{ code, reason: string|null, discount, id?, data?, minOrderAmount?, heldByMe? }}
+ */
+async function resolveCoupon(db, { couponCode, subtotal, couponUserKey, session, phone }) {
+  const code = String(couponCode).trim().toUpperCase();
+  const cSnap = await db.collection('coupons').where('code', '==', code).limit(1).get();
+  if (cSnap.empty) return { code, reason: 'not_found', discount: 0 };
+  const id = cSnap.docs[0].id;
+  const c = cSnap.docs[0].data();
+  const base = { id, data: c, code: c.code || code, minOrderAmount: Number(c.minOrderAmount) || 0, discount: 0 };
+  const heldByMe = Array.isArray(c.usedBy) && c.usedBy.includes(couponUserKey);
+
+  const state = couponStateRefusal(c, { ownUseCounted: heldByMe });
+  if (state) return { ...base, reason: state };
+  /* Order-history lookups (before the minimum, as /api/coupons/validate:
+     a returning customer isn't told to add more for a code they can't use).
+     If one fails the code isn't applied (the order still goes through for
+     an older page; a current one is asked to retry). */
+  try {
+    if (c.firstOrderOnly === true) {
+      /* Never without a signed-in account: a sessionless API order could
+         otherwise be a "first order" with every new email. */
+      if (!session?.user?.id) return { ...base, reason: 'sign_in_required' };
+      const email = canMatchGuestOrders(session.user) ? session.user.email : null;
+      if (await hasPlacedOrder(db, { userId: session.user.id, email, phone })) return { ...base, reason: 'first_order_only' };
+    }
+    if (heldByMe && (await couponUsesBy(db, { couponId: id, userKey: couponUserKey })).placed) return { ...base, reason: 'used' };
+  } catch (e) {
+    console.error('[orders POST] coupon order-history check failed:', e?.message);
+    return { ...base, reason: 'check_failed' };
+  }
+  if (subtotal < base.minOrderAmount) return { ...base, reason: 'min_order' };
+  return { ...base, reason: null, heldByMe, discount: couponDiscountFor(c, subtotal) };
+}
+
+/* 409: the coupon discount the shopper was shown is not what this order
+   would get. Nothing is created; the checkout updates its total. */
+function couponChangedResponse({ code, reason, discount = 0, minOrderAmount = 0, shownDiscount }) {
+  const applied = reason === 'amount_changed';
+  let message;
+  if (applied) message = `${code} now takes ${inr(discount)} off this order${Number.isFinite(shownDiscount) ? ` (not ${inr(shownDiscount)})` : ''}. Please check your total and place the order again.`;
+  else if (reason === 'check_failed') message = couponRefusalMessage(reason, { code });
+  else message = `${couponRefusalMessage(reason, { code, minOrderAmount })} Please check your total and place the order again.`;
+  return NextResponse.json({
+    success: false,
+    code: 'COUPON_CHANGED',
+    couponApplied: applied,
+    discount: applied ? discount : 0,
+    reason,
+    message,
+  }, { status: 409 });
+}
+
+/* An online attempt that was never paid but spent the customer's parked
+   loyalty discount (loyaltyDiscount, not yet given back). */
+const holdsAbandonedLoyalty = (o) => !!o && o.status === 'pending' && !isPlacedOrder(o)
+  && (Number(o.loyaltyDiscount) || 0) > 0 && !o.loyaltyRestored;
+
+/* This customer's abandoned online attempts that still hold parked loyalty
+   discount. Equality filters only. A failed read just means no hand-over. */
+async function abandonedLoyaltyHolders(db, userId) {
+  try {
+    const snap = await db.collection('orders')
+      .where('userId', '==', String(userId)).where('status', '==', 'pending')
+      .limit(25).get();
+    return snap.docs.filter((d) => holdsAbandonedLoyalty(d.data())).map((d) => d.ref);
+  } catch (e) {
+    console.error('[orders POST] abandoned-attempt lookup failed:', e?.message);
+    return [];
+  }
 }
 
 const ADDRESS_FIELDS = { fullName: 80, name: 80, phone: 15, email: 254, street: 200, address: 200, landmark: 120, city: 60, state: 60, pincode: 6, country: 40 };
@@ -243,33 +328,28 @@ export async function POST(request) {
     const couponUserKey = session?.user?.id ? `u:${session.user.id}` : `e:${resolvedEmail}`;
 
     /* Re-validate the coupon against the server-computed subtotal */
-    let couponDiscount = 0;
-    let resolvedCouponId = null;
-    let resolvedCouponCode = null;
-    if (couponCode) {
-      const cSnap = await db.collection('coupons')
-        .where('code', '==', String(couponCode).toUpperCase()).limit(1).get();
-      if (!cSnap.empty) {
-        const c = cSnap.docs[0].data();
-        let usable = couponUsable(c, computedSubtotal, couponUserKey);
-        /* First-order-only codes (the welcome offer): not for a customer who
-           already has a placed order — treated like any unusable coupon. If
-           the lookup fails, the code isn't applied (the order still goes
-           through). */
-        if (usable && c.firstOrderOnly === true) {
-          usable = !(await hasPlacedOrder(db, { userId: session?.user?.id, email: resolvedEmail }).catch((e) => {
-            console.error('[orders POST] first-order check failed:', e?.message);
-            return true;
-          }));
-        }
-        if (usable) {
-          couponDiscount = c.type === 'percentage'
-            ? Math.round((computedSubtotal * Number(c.value)) / 100)
-            : Math.min(Number(c.value), computedSubtotal);
-          resolvedCouponId = cSnap.docs[0].id;
-          resolvedCouponCode = c.code;
-        }
-      }
+    const coupon = couponCode
+      ? await resolveCoupon(db, { couponCode, subtotal: computedSubtotal, couponUserKey, session, phone: addr.value.phone })
+      : null;
+    const couponApplies = !!coupon && !coupon.reason;
+    const couponDiscount = couponApplies ? coupon.discount : 0;
+    const resolvedCouponId = couponApplies ? coupon.id : null;
+    const resolvedCouponCode = couponApplies ? coupon.code : null;
+
+    /* The checkout sends the coupon discount it showed (couponDiscount). If
+       this order wouldn't get it — the code was refused, or its amount
+       differs by ₹1 or more — refuse rather than charge a surprise amount;
+       nothing is created and the checkout shows the right total. Without it
+       (an older page) a refused code is left off, as before. */
+    const shownCouponDiscount = coupon ? shown(body.couponDiscount) : null;
+    if (shownCouponDiscount !== null && !(Math.abs(couponDiscount - shownCouponDiscount) < 1)) {
+      return couponChangedResponse({
+        code: coupon.code,
+        reason: coupon.reason || 'amount_changed',
+        discount: couponDiscount,
+        minOrderAmount: coupon.minOrderAmount,
+        shownDiscount: shownCouponDiscount,
+      });
     }
 
     const resolvedPaymentMethod = PAYMENT_METHODS.includes(payment?.method) ? payment.method : 'razorpay';
@@ -294,7 +374,6 @@ export async function POST(request) {
        (a tampered request, or the admin changed the charges while the
        customer was on the page), refuse rather than charge a surprise
        amount — the checkout refreshes and shows the right total. */
-    const shown = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
     if ((shown(body.shippingCost) !== null && shown(body.shippingCost) !== computedShipping)
       || (shown(body.codFee) !== null && shown(body.codFee) !== codFee)) {
       const { updatedAt: _u, ...current } = charges;
@@ -372,41 +451,84 @@ export async function POST(request) {
     const userRef = session?.user?.id ? db.collection('users').doc(session.user.id) : null;
 
     const couponRef = resolvedCouponId ? db.collection('coupons').doc(resolvedCouponId) : null;
-    const orderData = await db.runTransaction(async (tx) => {
-      /* Coupon limits are enforced here, in the same commit as the order:
-         re-read it, re-check it, and count this use — so maxUses and
-         once-per-customer hold even for parallel checkouts. */
-      let appliedCoupon = couponDiscount;
-      if (couponRef) {
-        const cDoc = await tx.get(couponRef);
-        const c = cDoc.exists ? cDoc.data() : null;
-        if (!c || !couponUsable(c, computedSubtotal, couponUserKey)) {
-          throw new CheckoutError('This coupon is no longer available. Remove it and try again.');
+    /* An abandoned online attempt spent the parked loyalty discount: this
+       order takes it back (as cancelling that attempt would) — closing the
+       payment window must not cost the customer their points discount. */
+    const loyaltyHolders = userRef ? await abandonedLoyaltyHolders(db, session.user.id) : [];
+
+    let orderData;
+    try {
+      orderData = await db.runTransaction(async (tx) => {
+        /* Every read first (Firestore refuses a read after a write). */
+        /* Coupon limits are enforced here, in the same commit as the order:
+           re-read it, re-check it, and count this use — so maxUses and
+           once-per-customer hold even for parallel checkouts. */
+        const cDoc = couponRef ? await tx.get(couponRef) : null;
+        const c = cDoc?.exists ? cDoc.data() : null;
+        const heldByMe = !!c && Array.isArray(c.usedBy) && c.usedBy.includes(couponUserKey);
+        const uses = c && heldByMe ? await couponUsesBy(db, { couponId: resolvedCouponId, userKey: couponUserKey }, tx) : null;
+        const uDoc = userRef ? await tx.get(userRef) : null;
+        const holderDocs = uDoc?.exists && loyaltyHolders.length ? await Promise.all(loyaltyHolders.map((r) => tx.get(r))) : [];
+
+        let appliedCoupon = 0;
+        if (couponRef) {
+          const reason = !c ? 'not_found'
+            : couponStateRefusal(c, { ownUseCounted: heldByMe })
+              || (uses?.placed ? 'used' : null)
+              || (computedSubtotal < (Number(c.minOrderAmount) || 0) ? 'min_order' : null);
+          if (reason) throw new CouponChangedError(reason);
+          appliedCoupon = couponDiscountFor(c, computedSubtotal);
+          if (shownCouponDiscount !== null && !(Math.abs(appliedCoupon - shownCouponDiscount) < 1)) {
+            throw new CouponChangedError('amount_changed', appliedCoupon);
+          }
         }
-        tx.update(couponRef, {
-          usedCount: (Number(c.usedCount) || 0) + 1,
-          usedBy: [...(Array.isArray(c.usedBy) ? c.usedBy : []), couponUserKey],
-          updatedAt: new Date().toISOString(),
-        });
-      }
-      let loyaltyDiscount = 0;
-      if (userRef) {
-        const uDoc = await tx.get(userRef);
-        const parked = Math.max(0, Number(uDoc.exists ? uDoc.data().pendingLoyaltyDiscount : 0) || 0);
-        /* Cap the loyalty contribution so no single balance can zero an order */
-        loyaltyDiscount = Math.min(parked, Math.floor(computedSubtotal * MAX_LOYALTY_SHARE));
-      }
 
-      const discount = Math.min(appliedCoupon + loyaltyDiscount, computedSubtotal);
-      const total = Math.max(0, computedSubtotal - discount + computedShipping + codFee);
-      const data = { ...baseOrder, discount, loyaltyDiscount, total, ...(couponRef && { couponUserKey }) };
+        const moved = holderDocs.filter((d) => d.exists && holdsAbandonedLoyalty(d.data()));
+        const movedAmount = moved.reduce((sum, d) => sum + (Number(d.data().loyaltyDiscount) || 0), 0);
+        let loyaltyDiscount = 0;
+        if (userRef) {
+          const parked = Math.max(0, Number(uDoc.exists ? uDoc.data().pendingLoyaltyDiscount : 0) || 0) + movedAmount;
+          /* Cap the loyalty contribution so no single balance can zero an order */
+          loyaltyDiscount = Math.min(parked, Math.floor(computedSubtotal * MAX_LOYALTY_SHARE));
+        }
 
-      tx.set(orderRef, data);
-      if (userRef && loyaltyDiscount > 0) {
-        tx.update(userRef, { pendingLoyaltyDiscount: FieldValue.increment(-loyaltyDiscount) });
+        const discount = Math.min(appliedCoupon + loyaltyDiscount, computedSubtotal);
+        const total = Math.max(0, computedSubtotal - discount + computedShipping + codFee);
+        const data = { ...baseOrder, discount, loyaltyDiscount, total, ...(couponRef && { couponUserKey }) };
+        const now = new Date().toISOString();
+
+        if (couponRef && heldByMe) {
+          /* This customer's use is already counted — held by an attempt that
+             was never placed. This order takes it over: no second usedBy
+             entry, no second count. The old attempt stops holding it, so
+             cancelling it later doesn't give back the use this order holds. */
+          for (const ref of uses.holders) tx.update(ref, { couponReleased: true, couponMovedTo: orderRef.id, updatedAt: now });
+        } else if (couponRef) {
+          tx.update(couponRef, {
+            usedCount: (Number(c.usedCount) || 0) + 1,
+            usedBy: [...(Array.isArray(c.usedBy) ? c.usedBy : []), couponUserKey],
+            updatedAt: now,
+          });
+        }
+        tx.set(orderRef, data);
+        /* Loyalty handed over from abandoned attempts: marked restored there
+           (a later cancel doesn't hand it back twice); what this order
+           doesn't use stays parked for the next one. */
+        for (const d of moved) tx.update(d.ref, { loyaltyRestored: true, loyaltyMovedTo: orderRef.id, updatedAt: now });
+        const parkedChange = movedAmount - loyaltyDiscount;
+        if (userRef && parkedChange !== 0) {
+          tx.update(userRef, { pendingLoyaltyDiscount: FieldValue.increment(parkedChange) });
+        }
+        return data;
+      });
+    } catch (e) {
+      if (!(e instanceof CouponChangedError)) throw e;
+      /* The coupon changed between the check above and this commit. */
+      if (shownCouponDiscount === null) {
+        return NextResponse.json({ success: false, message: 'This coupon is no longer available. Remove it and try again.' }, { status: 400 });
       }
-      return data;
-    });
+      return couponChangedResponse({ code: coupon.code, reason: e.reason, discount: e.discount, minOrderAmount: coupon.minOrderAmount, shownDiscount: shownCouponDiscount });
+    }
 
     const computedTotal = orderData.total;
 
@@ -457,7 +579,6 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true, data: customerOrder }, { status: 201 });
   } catch (error) {
-    if (error instanceof CheckoutError) return NextResponse.json({ success: false, message: error.message }, { status: 400 });
     const message = error?.error?.description || error?.message || 'Could not place order. Please try again.';
     console.error('[orders POST] failed:', error?.error || error);
     return NextResponse.json({ success: false, message }, { status: 500 });

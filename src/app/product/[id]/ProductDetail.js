@@ -32,9 +32,19 @@ import useBuyNowReturn from '@/components/product/useBuyNowReturn';
 const TryOnModal = lazy(() => import('@/components/ar/TryOnModal'));
 
 /* The Buy Now checkout (form, payments) loads only when it's wanted —
-   fetched as the shopper reaches for the button, so it opens instantly. */
-const loadBuyNowDrawer = () => import('@/components/checkout/BuyNowDrawer');
-const BuyNowDrawer = lazy(loadBuyNowDrawer);
+   fetched as the shopper reaches for the button, so it opens instantly.
+   Not React.lazy: a chunk that fails to load (flaky data, or a tab left
+   open across a deploy) would throw during render and take the whole
+   product page down, and lazy keeps that failure for good. Here a failed
+   load is a toast, and the next tap simply tries again. */
+let loadedBuyNowDrawer = null;
+function loadBuyNowDrawer() {
+  if (loadedBuyNowDrawer) return Promise.resolve(loadedBuyNowDrawer);
+  return import('@/components/checkout/BuyNowDrawer').then((m) => {
+    loadedBuyNowDrawer = m.default;
+    return loadedBuyNowDrawer;
+  });
+}
 function preloadBuyNowDrawer() { loadBuyNowDrawer().catch(() => {}); }
 
 /* Shown for the moment the drawer's code is still arriving. */
@@ -234,9 +244,27 @@ export default function ProductDetail({ initialProduct = null }) {
   const [zoomOpen, setZoomOpen] = useState(false);
   const [zoomIndex, setZoomIndex] = useState(0);
   const [buyNowOpen, setBuyNowOpen] = useState(false);
+  /* The drawer component once its code has arrived (see loadBuyNowDrawer). */
+  const [BuyNowDrawer, setBuyNowDrawer] = useState(() => loadedBuyNowDrawer);
+  const [buyNowLoading, setBuyNowLoading] = useState(false);
+  const buyNowLoadingRef = useRef(false);
+  const showBuyNow = useCallback(() => {
+    if (loadedBuyNowDrawer) {
+      setBuyNowDrawer(() => loadedBuyNowDrawer);
+      setBuyNowOpen(true);
+      return;
+    }
+    if (buyNowLoadingRef.current) return;
+    buyNowLoadingRef.current = true;
+    setBuyNowLoading(true);
+    loadBuyNowDrawer()
+      .then((Drawer) => { setBuyNowDrawer(() => Drawer); setBuyNowOpen(true); })
+      .catch(() => { toast.error('Couldn’t open checkout — please try again'); })
+      .finally(() => { buyNowLoadingRef.current = false; setBuyNowLoading(false); });
+  }, []);
 
   /* Back from sign-in (?buynow=<qty>): reopen Buy Now for that quantity. */
-  const reopenBuyNow = useCallback((n) => { setQty(n); setBuyNowOpen(true); }, []);
+  const reopenBuyNow = useCallback((n) => { setQty(n); showBuyNow(); }, [showBuyNow]);
   const buyNowSoldOut = useCallback(() => toast.error('Sorry — this piece has just sold out.'), []);
   useBuyNowReturn({ product, ready: refreshed, router, onOpen: reopenBuyNow, onSoldOut: buyNowSoldOut });
 
@@ -336,7 +364,7 @@ export default function ProductDetail({ initialProduct = null }) {
      left alone. Sign-in (if needed) happens inside the drawer. */
   function openBuyNow() {
     if (soldOut) return;
-    setBuyNowOpen(true);
+    showBuyNow();
   }
 
   function share() {
@@ -393,10 +421,9 @@ export default function ProductDetail({ initialProduct = null }) {
           />
         </Suspense>
       )}
-      {buyNowOpen && (
-        <Suspense fallback={<BuyNowLoading />}>
-          <BuyNowDrawer open product={product} qty={qty} onClose={() => setBuyNowOpen(false)} />
-        </Suspense>
+      {buyNowLoading && <BuyNowLoading />}
+      {buyNowOpen && BuyNowDrawer && (
+        <BuyNowDrawer open product={product} qty={qty} onClose={() => setBuyNowOpen(false)} />
       )}
 
       {/* ── MOBILE FULL-WIDTH IMAGE GALLERY ── */}

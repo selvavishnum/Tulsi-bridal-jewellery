@@ -3,8 +3,20 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { getDB } from '@/lib/firebase';
 import { hit, clientIp, LIMITS, tooManyRequests } from '@/lib/rateLimit';
-import { hasPlacedOrder } from '@/lib/coupons';
+import { hasPlacedOrder, couponDiscountFor, couponStateRefusal, couponUsesBy } from '@/lib/coupons';
+import { canMatchGuestOrders } from '@/lib/orderOwnership';
 
+const STATE_MESSAGES = {
+  inactive: 'Coupon is inactive',
+  not_started: 'This coupon isn’t active yet',
+  expired: 'Coupon has expired',
+  limit: 'Coupon usage limit reached',
+};
+
+/* A preview of what checkout (POST /api/orders) will decide, with the same
+   rules and the same discount formula (couponDiscountFor). The answer's
+   coupon carries what a screen needs to recompute the discount when the
+   basket changes: type, value, minOrderAmount and maxDiscount. */
 export async function POST(request) {
   try {
     const { code, orderAmount: rawAmount } = await request.json();
@@ -20,42 +32,51 @@ export async function POST(request) {
     if (snap.empty) return NextResponse.json({ success: false, message: 'Invalid coupon code' }, { status: 404 });
 
     const coupon = { id: snap.docs[0].id, ...snap.docs[0].data() };
+    const firstOrderOnly = coupon.firstOrderOnly === true;
+    /* Only for the signed-in account (never another email's history). */
+    const user = (await getServerSession(authOptions).catch(() => null))?.user;
+    const userKey = user?.id ? `u:${user.id}` : null;
+    /* This account already holds a use: spent if any order with it was
+       placed; an abandoned online attempt doesn't spend it (checkout gives
+       it back on the retry), and doesn't count against the limit again. */
+    const heldByMe = !!userKey && Array.isArray(coupon.usedBy) && coupon.usedBy.includes(userKey);
 
-    if (!coupon.isActive) return NextResponse.json({ success: false, message: 'Coupon is inactive' }, { status: 400 });
-    if (coupon.expiresAt && new Date(coupon.expiresAt) < new Date()) {
-      return NextResponse.json({ success: false, message: 'Coupon has expired' }, { status: 400 });
-    }
-    if ((Number(coupon.maxUses) || 0) > 0 && (Number(coupon.usedCount) || 0) >= Number(coupon.maxUses)) {
-      return NextResponse.json({ success: false, message: 'Coupon usage limit reached' }, { status: 400 });
-    }
+    const state = couponStateRefusal(coupon, { ownUseCounted: heldByMe });
+    if (state) return NextResponse.json({ success: false, message: STATE_MESSAGES[state] }, { status: 400 });
 
     /* First-order-only codes (the welcome offer). Signed in: refuse it to a
-       customer who already has a placed order. Not signed in: show the
+       customer who already has a placed order — matched by account, and by
+       email only once they've proved it (an unverified registration must
+       not reveal another person's order history). Not signed in: show the
        discount, flagged firstOrderOnly — checkout requires sign-in and the
-       order endpoint checks again, so this is a preview, not the decision.
-       Checked before the minimum, so a returning customer isn't asked to
-       add more to the cart for a code they can't use. */
-    const firstOrderOnly = coupon.firstOrderOnly === true;
-    if (firstOrderOnly) {
-      const user = (await getServerSession(authOptions).catch(() => null))?.user;
-      if ((user?.id || user?.email) && await hasPlacedOrder(db, { userId: user.id, email: user.email })) {
+       order endpoint never applies it without one, so this is a preview,
+       not the decision. Checked before the minimum, so a returning customer
+       isn't asked to add more to the cart for a code they can't use. */
+    const provenEmail = canMatchGuestOrders(user) ? user.email : null;
+    if (firstOrderOnly && (user?.id || provenEmail)) {
+      if (await hasPlacedOrder(db, { userId: user.id, email: provenEmail })) {
         return NextResponse.json({ success: false, code: 'FIRST_ORDER_ONLY', message: 'This code is for your first order only.' }, { status: 400 });
       }
     }
-
-    if (orderAmount < coupon.minOrderAmount) {
-      return NextResponse.json({ success: false, message: `Minimum order amount is ₹${coupon.minOrderAmount}` }, { status: 400 });
+    if (heldByMe && (await couponUsesBy(db, { couponId: coupon.id, userKey })).placed) {
+      return NextResponse.json({ success: false, code: 'COUPON_USED', message: 'You have already used this coupon.' }, { status: 400 });
     }
 
-    const discount = coupon.type === 'percentage'
-      ? Math.round((orderAmount * coupon.value) / 100)
-      : Math.min(coupon.value, orderAmount);
+    const minOrderAmount = Number(coupon.minOrderAmount) || 0;
+    if (orderAmount < minOrderAmount) {
+      return NextResponse.json({ success: false, message: `Minimum order amount is ₹${minOrderAmount}` }, { status: 400 });
+    }
 
+    const maxDiscount = Number(coupon.maxDiscount) > 0 ? Number(coupon.maxDiscount) : null;
+    const publicCoupon = {
+      id: coupon.id, code: coupon.code, type: coupon.type, value: coupon.value,
+      minOrderAmount, maxDiscount, firstOrderOnly,
+    };
     return NextResponse.json({
       success: true,
       data: {
-        coupon: { id: coupon.id, code: coupon.code, type: coupon.type, value: coupon.value, firstOrderOnly },
-        discount,
+        coupon: publicCoupon,
+        discount: couponDiscountFor(publicCoupon, orderAmount),
         firstOrderOnly,
       },
     });

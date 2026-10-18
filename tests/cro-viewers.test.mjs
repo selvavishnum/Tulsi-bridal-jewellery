@@ -18,6 +18,7 @@ const { stockStatus } = await import(src('components/product/stockStatus.js'));
 
 const NOW = new Date('2026-10-16T08:00:00Z');
 const MIN = 60_000;
+const SEC = 1000;
 const iso = (ms) => new Date(NOW.getTime() + ms).toISOString();
 const vid = (c) => `tj_vid_${String(c).padEnd(22, 'x')}`;
 const sid = (c) => `tj_sid_${String(c).padEnd(22, 'y')}`;
@@ -29,15 +30,15 @@ function seed(rows) {
 
 beforeEach(() => { _resetViewersCache(); seed([]); });
 
-test('counts distinct other browsers on the page within 5 minutes', async () => {
+test('counts distinct other browsers on the page within the last 90 seconds', async () => {
   seed([
-    sess('a', 'A', '/product/p1', 1 * MIN),
-    sess('b', 'B', '/product/p1', 4 * MIN),
-    sess('b2', 'B', '/product/p1', 2 * MIN), // same browser, 2nd session
-    sess('c', 'C', '/product/p1', 6 * MIN), // too old
-    sess('d', 'D', '/product/p2', 1 * MIN), // other product
-    sess('e', 'E', '/product/p1/', 1 * MIN), // trailing slash
-    sess('f', 'F', '/product/p10', 1 * MIN), // prefix must not match
+    sess('a', 'A', '/product/p1', 30 * SEC),
+    sess('b', 'B', '/product/p1', 80 * SEC),
+    sess('b2', 'B', '/product/p1', 50 * SEC), // same browser, 2nd session
+    sess('c', 'C', '/product/p1', 100 * SEC), // too old
+    sess('d', 'D', '/product/p2', 30 * SEC), // other product
+    sess('e', 'E', '/product/p1/', 30 * SEC), // trailing slash
+    sess('f', 'F', '/product/p10', 30 * SEC), // prefix must not match
   ]);
   assert.equal(await viewersOnPage(db, '/product/p1', { now: NOW }), 3); // A, B, E
   assert.equal(await viewersOnPage(db, '/product/p2', { now: NOW }), 1);
@@ -45,11 +46,24 @@ test('counts distinct other browsers on the page within 5 minutes', async () => 
   assert.equal(await viewersOnPage(db, '', { now: NOW }), 0);
 });
 
+test('"right now": people who closed the tab minutes ago are not counted', async () => {
+  /* Two shoppers spent 40 s on the page and left 4.5 minutes ago; their
+     last beacon kept currentPath on the product. */
+  seed([sess('a', 'A', '/product/p1', 4.5 * MIN), sess('b', 'B', '/product/p1', 4.5 * MIN)]);
+  assert.equal(await viewersOnPage(db, '/product/p1', { now: NOW, excludeSid: sid('me') }), 0);
+  /* An active reader's heartbeat batch lands every 30–45 s: still counted
+     45 s after their last one, even from a 30 s old snapshot. */
+  _resetViewersCache();
+  seed([sess('c', 'C', '/product/p1', 45 * SEC)]);
+  assert.equal(await viewersOnPage(db, '/product/p1', { now: NOW }), 1);
+  assert.equal(await viewersOnPage(db, '/product/p1', { now: new Date(NOW.getTime() + 29 * SEC) }), 1);
+});
+
 test("excludes the requester's own session and browser", async () => {
   seed([
-    sess('a', 'A', '/product/p1', 1 * MIN),
-    sess('a2', 'A', '/product/p1', 2 * MIN), // requester's other session
-    sess('b', 'B', '/product/p1', 1 * MIN),
+    sess('a', 'A', '/product/p1', 30 * SEC),
+    sess('a2', 'A', '/product/p1', 60 * SEC), // requester's other session
+    sess('b', 'B', '/product/p1', 30 * SEC),
   ]);
   assert.equal(await viewersOnPage(db, '/product/p1', { now: NOW, excludeSid: sid('a') }), 1);
   assert.equal(await viewersOnPage(db, '/product/p1', { now: NOW, excludeVid: vid('B') }), 1);
@@ -58,20 +72,20 @@ test("excludes the requester's own session and browser", async () => {
 });
 
 test('one query per 30 s, shared across products; window re-applied from now', async () => {
-  seed([sess('a', 'A', '/product/p1', 4.5 * MIN), sess('b', 'B', '/product/p2', 1 * MIN)]);
+  seed([sess('a', 'A', '/product/p1', 60 * SEC), sess('b', 'B', '/product/p2', 30 * SEC)]);
   let queries = 0;
   const col = db.collection.bind(db);
   db.collection = (name) => { if (name === 'analytics_sessions') queries += 1; return col(name); };
   assert.equal(await viewersOnPage(db, '/product/p1', { now: NOW }), 1);
   assert.equal(await viewersOnPage(db, '/product/p2', { now: NOW }), 1);
-  /* 29 s later: cached — but A (now 4 m 59 s ago) still in window. */
+  /* 29 s later: cached — but A (now 89 s ago) still in window. */
   assert.equal(await viewersOnPage(db, '/product/p1', { now: new Date(NOW.getTime() + 29_000) }), 1);
   assert.equal(queries, 1);
   /* Concurrent calls share the in-flight read. */
   _resetViewersCache();
   await Promise.all([1, 2, 3].map(() => viewersOnPage(db, '/product/p1', { now: NOW })));
   assert.equal(queries, 2);
-  /* 31 s later: a fresh read, and A (5 m 1 s ago) has dropped out. */
+  /* 31 s later: a fresh read, and A (91 s ago) has dropped out. */
   assert.equal(await viewersOnPage(db, '/product/p1', { now: new Date(NOW.getTime() + 31_000) }), 0);
   assert.equal(queries, 3);
   /* Time going backwards (tests) re-reads. */
@@ -80,7 +94,7 @@ test('one query per 30 s, shared across products; window re-applied from now', a
 });
 
 test('cached snapshot still drops sessions that age out of the window', async () => {
-  seed([sess('a', 'A', '/product/p1', 4 * MIN + 50_000)]); // 4 m 50 s ago
+  seed([sess('a', 'A', '/product/p1', 80 * SEC)]); // 80 s ago
   assert.equal(await viewersOnPage(db, '/product/p1', { now: NOW }), 1);
   assert.equal(await viewersOnPage(db, '/product/p1', { now: new Date(NOW.getTime() + 20_000) }), 0);
 });
@@ -108,7 +122,7 @@ test('query: single-field range + order + limit, projection only', async () => {
   await viewersOnPage(fake, '/product/p1', { now: NOW });
   assert.deepEqual(calls, [
     ['collection', 'analytics_sessions'],
-    ['where', 'lastSeenAt', '>=', iso(-5 * MIN)],
+    ['where', 'lastSeenAt', '>=', iso(-90 * SEC)],
     ['orderBy', 'lastSeenAt', 'desc'],
     ['select', 'vid', 'sid', 'currentPath', 'lastSeenAt'],
     ['limit', VIEWERS_SCAN_LIMIT],

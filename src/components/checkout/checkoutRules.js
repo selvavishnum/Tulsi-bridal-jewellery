@@ -5,9 +5,11 @@
    every price, fee, coupon and limit, so these only decide what the
    customer sees before submitting.
 
-   Pure module (one import: the shared charges rule) — safe in tests.
+   Pure module (imports only the shared charges and coupon rules) — safe in
+   tests.
    ───────────────────────────────────────────── */
 import { computeCharges } from '../../lib/storeCharges.js';
+import { couponDiscountFor } from '../../lib/coupons.js';
 
 /* Mirrors the enforced limit in src/app/api/orders/route.js — shown here only
    for the customer's benefit before they submit. The server is authoritative. */
@@ -86,17 +88,37 @@ export function clampQty(qty, max) {
   return Math.max(1, Math.min(Math.max(1, max), q));
 }
 
+/* THE coupon formula (src/lib/coupons.js: minimum order, percentage or
+   fixed, optional cap) — the same one /api/coupons/validate and /api/orders
+   use, so changing the quantity updates the discount without another
+   (rate-limited) validation call. */
+export { couponDiscountFor };
+
 /**
- * The discount a validated coupon gives on this subtotal — the same formula
- * as /api/coupons/validate and /api/orders, so changing the quantity in the
- * drawer updates it without another (rate-limited) validation call.
+ * The coupon discount to show on this subtotal. `pin` is a figure the server
+ * gave for one exact subtotal ({ subtotal, discount }: the coupon check, or
+ * a 409 COUPON_CHANGED from the order endpoint); it is used while the
+ * subtotal is still that one, and the formula takes over once it changes.
  */
-export function couponDiscountFor(coupon, subtotal) {
+export function shownCouponDiscount(coupon, subtotal, pin) {
   if (!coupon) return 0;
   const sub = Math.max(0, Number(subtotal) || 0);
-  const value = Number(coupon.value) || 0;
-  if (coupon.type === 'percentage') return Math.round((sub * value) / 100);
-  return Math.min(value, sub);
+  const pinned = pin && pin.subtotal !== null && pin.subtotal !== undefined ? Number(pin.discount) : NaN;
+  if (Number.isFinite(pinned) && Number(pin.subtotal) === sub) return Math.max(0, Math.min(Math.round(pinned), sub));
+  return couponDiscountFor(coupon, sub);
+}
+
+/** How much more the order needs before the coupon's minimum is met (0 when it is). */
+export function couponShortfall(coupon, subtotal) {
+  const min = Number(coupon?.minOrderAmount) || 0;
+  const sub = Math.max(0, Number(subtotal) || 0);
+  return coupon && sub < min ? Math.ceil(min - sub) : 0;
+}
+
+/* "Minimum order amount is ₹5,000" → 5000 (0 when the message has none). */
+export function minimumFromMessage(message) {
+  const m = /minimum order[^\d]*(\d[\d,]*(?:\.\d+)?)/i.exec(String(message || ''));
+  return m ? Number(m[1].replace(/,/g, '')) || 0 : 0;
 }
 
 /* /api/coupons/validate answers 400 (inactive, expired, used up, first

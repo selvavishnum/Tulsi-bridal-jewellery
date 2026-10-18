@@ -14,8 +14,24 @@
    Messages go through notify(type, message, toastOptions), type 'error'
    or 'info'. The one exception is the "payment on hold" note, which is a
    toast either way: the customer is taken to My Orders with it.
+
+   What the customer is charged is what the button showed:
+   • the fees and the coupon discount shown are sent with the order; the
+     server answers 409 (CHARGES_CHANGED / COUPON_CHANGED) instead of
+     charging a different amount — the caller updates its coupon
+     (onCouponChanged) and the customer confirms the new total;
+   • an online order whose payment wasn't completed (Razorpay closed, or a
+     failed payment) is kept: retrying the same order pays THAT order
+     (create-order again), never a second one. If anything changed — the
+     lines, coupon, address, payment method, or the amount — the unpaid
+     order is cancelled first (which hands back its coupon use and parked
+     points), then the new one is placed. It is never cancelled when the
+     Razorpay window closes: a UPI payment can still land after that, and
+     an attempt that turns out paid goes to the confirmation page;
+   • once an order is placed, `placed` stays true until the page leaves —
+     a second tap can't place it twice.
    ───────────────────────────────────────────── */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
@@ -25,6 +41,55 @@ import { getPendingCoupon, clearPendingCoupon } from '@/lib/welcomeOffer';
 import { checkoutAmounts, correctedPaymentMethod, fillFromAddress, orderSuccessPath, PHONE_RE } from './checkoutRules';
 
 const toastNotify = (type, message, options) => (type === 'error' ? toast.error(message, options) : toast(message, options));
+
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
+const ADDRESS_KEYS = ['fullName', 'phone', 'email', 'street', 'city', 'state', 'pincode'];
+
+/* COUPON_CHANGED reasons that say nothing final about the code: below its
+   minimum (a bigger order can use it), not signed in, or the server
+   couldn't check it just now. */
+const KEEP_PENDING_REASONS = new Set(['min_order', 'sign_in_required', 'check_failed']);
+
+/* The remembered welcome code is forgotten once THIS code was spent or refused. */
+function forgetPendingCoupon(code) {
+  const pending = getPendingCoupon();
+  if (pending && code && String(code).toUpperCase() === pending) clearPendingCoupon();
+}
+
+async function readOrder(orderId) {
+  try {
+    const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`);
+    const data = await res.json();
+    return data?.success ? data.data : null;
+  } catch { return null; }
+}
+
+/**
+ * An earlier unpaid online order is being given up: paid meanwhile
+ * ('paid' — never cancel it), cancelled now or already ('cancelled'), or
+ * we couldn't tell ('failed' — place nothing new, it would hold the coupon
+ * twice).
+ */
+async function settleUnpaidOrder(orderId) {
+  const before = await readOrder(orderId);
+  if (before?.payment?.status === 'paid') return 'paid';
+  if (before?.status === 'cancelled') return 'cancelled';
+  try {
+    const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+      method: 'PUT',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ status: 'cancelled' }),
+    });
+    const data = await res.json().catch(() => null);
+    if (data?.success) return 'cancelled';
+    /* Razorpay has the money although we haven't heard yet (late UPI). */
+    if (data?.code === 'ALREADY_PAID') return 'paid';
+  } catch { /* offline — looked up below */ }
+  const after = await readOrder(orderId);
+  if (after?.payment?.status === 'paid') return 'paid';
+  if (after?.status === 'cancelled') return 'cancelled';
+  return 'failed';
+}
 
 /**
  * @param {object} p
@@ -38,6 +103,10 @@ const toastNotify = (type, message, options) => (type === 'error' ? toast.error(
  * @param {string} [p.emptyMessage] shown if there is nothing to order
  * @param {() => void} [p.onOrderPlaced] runs once the order is placed (COD,
  *   paid, or paid-and-held), just before leaving for the confirmation page
+ * @param {(c: { code: string, couponApplied: boolean, discount: number, reason: string|null }) => void} [p.onCouponChanged]
+ *   the server would apply the coupon differently from what was shown (409
+ *   COUPON_CHANGED): remove it (couponApplied false) or show `discount`
+ *   for the current subtotal. Nothing was ordered; the customer is told.
  */
 export default function useCheckoutFlow({
   lines,
@@ -49,6 +118,7 @@ export default function useCheckoutFlow({
   notify = toastNotify,
   emptyMessage = 'Your cart is empty',
   onOrderPlaced,
+  onCouponChanged,
 }) {
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -57,6 +127,13 @@ export default function useCheckoutFlow({
   const [loading, setLoading] = useState(false);
   /* Razorpay handed back a payment and we're confirming it with the server. */
   const [verifying, setVerifying] = useState(false);
+  /* The order is placed and the confirmation page is on its way. */
+  const [placed, setPlaced] = useState(false);
+  const placedRef = useRef(false);
+  const submitting = useRef(false);
+  /* The online order of an attempt whose payment wasn't completed:
+     { orderId, orderNumber, email, couponCode, signature, total }. */
+  const unpaid = useRef(null);
   const [loyalty, setLoyalty] = useState({ points: 0 });
   const [loyaltyEnabled, setLoyaltyEnabled] = useState(false);
   const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
@@ -184,68 +261,157 @@ export default function useCheckoutFlow({
     finally { setRedeeming(false); }
   }
 
-  /* The order is placed: a remembered welcome code it used is spent. */
-  function orderPlaced() {
-    const pending = getPendingCoupon();
-    if (pending && couponCode && String(couponCode).toUpperCase() === pending) clearPendingCoupon();
+  /* The order is placed: a remembered welcome code it used is spent, and
+     the button stays locked until the confirmation page takes over. */
+  function orderPlaced(usedCode = couponCode) {
+    placedRef.current = true;
+    unpaid.current = null;
+    setPlaced(true);
+    forgetPendingCoupon(usedCode);
     onOrderPlaced?.();
+  }
+
+  /* What this attempt is for — an unpaid order is re-used only for the same. */
+  function attemptSignature() {
+    return JSON.stringify({
+      lines: lines.map((l) => [String(l.product), Number(l.quantity)]),
+      coupon: couponCode ? String(couponCode).toUpperCase() : null,
+      couponDiscount: couponCode ? discount : 0,
+      loyaltyDiscount,
+      address: ADDRESS_KEYS.map((k) => String(form[k] ?? '').trim()),
+      method: paymentMethod,
+    });
+  }
+
+  /* An earlier attempt turned out paid: that's the order. */
+  function earlierAttemptPaid(prev) {
+    notify('info', 'Your earlier payment went through — opening your order.', { icon: '✅' });
+    orderPlaced(prev.couponCode);
+    router.push(orderSuccessPath(prev.orderNumber, prev.email));
   }
 
   async function placeOrder(e) {
     e?.preventDefault?.();
+    /* Placed already (the confirmation page is loading), or a tap that
+       landed before the button showed it's busy. */
+    if (placedRef.current || submitting.current) return;
     if (!lines.length) { notify('error', emptyMessage); return; }
     if (!PHONE_RE.test(form.phone)) {
       notify('error', 'Enter a valid 10-digit mobile number');
       return;
     }
+    submitting.current = true;
     setLoading(true);
 
     try {
-      /* Prices, discounts and the total are computed server-side from the
-         products collection — only the lines are sent. */
-      const orderRes = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: lines,
-          shippingAddress: { ...form },
-          payment: { method: paymentMethod },
-          couponCode,
-          guestEmail: !session ? form.email : undefined,
-          /* The fees shown to the customer: the server refuses the order if
-             they no longer match its own calculation (409 below). */
-          shippingCost,
-          codFee,
-        }),
-      });
-      const orderData = await orderRes.json();
-      if (orderRes.status === 409 && orderData.code === 'CHARGES_CHANGED') {
-        /* The admin changed the charges while this page was open: show the
-           new total and let the customer confirm again. */
-        await refreshCharges();
-        notify('info', orderData.message, { icon: 'ℹ️', duration: 10000 });
-        return;
+      const signature = attemptSignature();
+      const prev = unpaid.current;
+      let order = null;
+      if (prev) {
+        const sameAmount = !Number.isFinite(Number(prev.total)) || Math.abs(Number(prev.total) - amounts.payableTotal) < 1;
+        if (paymentMethod === 'razorpay' && prev.signature === signature && sameAmount) {
+          order = prev; // pay the order already created for exactly this
+        } else {
+          const outcome = await settleUnpaidOrder(prev.orderId);
+          if (outcome === 'paid') { earlierAttemptPaid(prev); return; }
+          if (outcome !== 'cancelled') {
+            throw new Error('We couldn’t update your earlier payment attempt. Please check your connection and try again.');
+          }
+          unpaid.current = null;
+        }
       }
-      if (!orderData.success) throw new Error(orderData.message || 'Could not place order. Please try again.');
-      const orderId = orderData.data.id || orderData.data._id;
-      const orderNumber = orderData.data.orderNumber;
 
-      if (paymentMethod === 'cod') {
-        orderPlaced();
-        router.push(orderSuccessPath(orderNumber, form.email));
-        return;
+      if (!order) {
+        /* Prices, discounts and the total are computed server-side from the
+           products collection — only the lines are sent. */
+        const orderRes = await fetch('/api/orders', {
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify({
+            items: lines,
+            shippingAddress: { ...form },
+            payment: { method: paymentMethod },
+            couponCode,
+            guestEmail: !session ? form.email : undefined,
+            /* The fees and coupon discount shown to the customer: the server
+               refuses the order if they no longer match its own
+               calculation (409 below). */
+            shippingCost,
+            codFee,
+            couponDiscount: couponCode ? discount : undefined,
+          }),
+        });
+        const orderData = await orderRes.json();
+        if (orderRes.status === 409 && orderData.code === 'CHARGES_CHANGED') {
+          /* The admin changed the charges while this page was open: show the
+             new total and let the customer confirm again. */
+          await refreshCharges();
+          notify('info', orderData.message, { icon: 'ℹ️', duration: 10000 });
+          return;
+        }
+        if (orderRes.status === 409 && orderData.code === 'COUPON_CHANGED') {
+          /* The coupon gives a different discount (or none) for this order:
+             nothing was ordered — show the new total and let the customer
+             confirm it. */
+          const couponApplied = orderData.couponApplied === true;
+          const serverDiscount = Math.max(0, Number(orderData.discount) || 0);
+          const reason = orderData.reason || null;
+          /* Refused for good → the remembered welcome code goes too; below
+             its minimum it stays for a bigger order. */
+          if (!couponApplied && !KEEP_PENDING_REASONS.has(reason)) forgetPendingCoupon(couponCode);
+          /* "Couldn't check it just now": nothing changed — the coupon stays
+             on and the next tap tries again. */
+          if (reason !== 'check_failed') onCouponChanged?.({ code: couponCode, couponApplied, discount: serverDiscount, reason });
+          notify('info', orderData.message || (couponApplied
+            ? `Your coupon now saves ₹${serverDiscount.toLocaleString('en-IN')} on this order. Please check your total and place the order again.`
+            : 'Your coupon can’t be used on this order, so it has been removed. Please check your total and place the order again.'), { icon: 'ℹ️', duration: 10000 });
+          return;
+        }
+        if (!orderData.success) throw new Error(orderData.message || 'Could not place order. Please try again.');
+        order = {
+          orderId: orderData.data.id || orderData.data._id,
+          orderNumber: orderData.data.orderNumber,
+          email: form.email,
+          couponCode,
+          signature,
+          total: orderData.data.total,
+        };
+
+        if (paymentMethod === 'cod') {
+          orderPlaced();
+          router.push(orderSuccessPath(order.orderNumber, order.email));
+          return;
+        }
+        /* Kept until it's paid: a retry pays this order instead of placing
+           another one. */
+        unpaid.current = order;
       }
+      const { orderId, orderNumber } = order;
 
       /* In case the earlier mount-time load hasn't finished (or failed) yet */
       await loadRazorpayScript();
 
       const payRes = await fetch('/api/payments/create-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: JSON_HEADERS,
         body: JSON.stringify({ orderId }),
       });
       const payData = await payRes.json();
-      if (!payData.success) throw new Error(payData.message || 'Payment setup failed. Please try again.');
+      if (!payData.success) {
+        /* The earlier attempt's payment came through (late UPI). */
+        if (payData.code === 'ALREADY_PAID') { earlierAttemptPaid(order); return; }
+        if (order === prev && payRes.status === 400) {
+          /* The earlier order can't be paid any more: paid meanwhile, or
+             cancelled (e.g. by the store). */
+          const outcome = await settleUnpaidOrder(orderId);
+          if (outcome === 'paid') { earlierAttemptPaid(order); return; }
+          if (outcome === 'cancelled') {
+            unpaid.current = null;
+            throw new Error('Your earlier payment attempt has expired. Please tap Place order again.');
+          }
+        }
+        throw new Error(payData.message || 'Payment setup failed. Please try again.');
+      }
 
       const options = {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
@@ -257,7 +423,8 @@ export default function useCheckoutFlow({
         prefill: { name: form.fullName, email: form.email, contact: form.phone },
         theme: { color: '#800020' },
         /* User closed the modal without paying — the order stays pending in
-           Firestore, but they need to know nothing was charged. */
+           Firestore (kept for a retry, never cancelled here: a UPI payment
+           can still land), but they need to know nothing was charged. */
         modal: {
           ondismiss: () => {
             notify('info', 'Payment cancelled. Your order was not placed.', { icon: 'ℹ️' });
@@ -268,7 +435,7 @@ export default function useCheckoutFlow({
           try {
             const verifyRes = await fetch('/api/payments/verify', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: JSON_HEADERS,
               body: JSON.stringify({
                 razorpayOrderId: response.razorpay_order_id,
                 razorpayPaymentId: response.razorpay_payment_id,
@@ -278,12 +445,12 @@ export default function useCheckoutFlow({
             });
             const verifyData = await verifyRes.json();
             if (verifyData.success) {
-              orderPlaced();
-              router.push(orderSuccessPath(orderNumber, form.email));
+              orderPlaced(order.couponCode);
+              router.push(orderSuccessPath(orderNumber, order.email));
             } else if (verifyRes.status === 202) {
               /* Money is on hold with the bank and is being captured — the
                  order confirms itself (webhook); don't make them pay again. */
-              orderPlaced();
+              orderPlaced(order.couponCode);
               toast(verifyData.message, { duration: 15000 });
               router.push('/account');
             } else {
@@ -311,6 +478,7 @@ export default function useCheckoutFlow({
          short to read on a phone, let alone screenshot. */
       notify('error', error.message || 'Checkout failed', { duration: 15000 });
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   }
@@ -338,6 +506,7 @@ export default function useCheckoutFlow({
     ...amounts,
     loading,
     verifying,
+    placed,
     placeOrder,
   };
 }

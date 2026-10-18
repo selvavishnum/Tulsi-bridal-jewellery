@@ -522,7 +522,7 @@ describe('useCheckoutFlow', { skip }, () => {
     assert.deepEqual(toast.error.mock.calls.map((c) => c.arguments), [['Your cart is empty', undefined]]);
   });
 
-  test('COD: sends only the lines and the fees shown, spends the welcome code, then the confirmation page', async () => {
+  test('COD: sends only the lines, the fees and coupon discount shown, spends the welcome code, then the confirmation page', async () => {
     remember('TULSI10');
     const { h, calls, onOrderPlaced, notify } = flowFor(
       { lines: [{ product: 'p1', quantity: 2 }], subtotal: 400, discount: 40, couponCode: 'TULSI10' },
@@ -544,6 +544,7 @@ describe('useCheckoutFlow', { skip }, () => {
       couponCode: 'TULSI10',
       shippingCost: 99,
       codFee: 49,
+      couponDiscount: 40, // the discount shown: the server answers 409 COUPON_CHANGED if its own differs
     });
     assert.equal(onOrderPlaced.mock.callCount(), 1);
     assert.deepEqual(router.push.mock.calls.map((c) => c.arguments), [['/order-success?orderNumber=TBJ1700000000000123&email=asha%40example.com']]);

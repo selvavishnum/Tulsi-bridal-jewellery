@@ -62,6 +62,28 @@ export async function POST(request) {
       key_secret: process.env.RAZORPAY_KEY_SECRET,
     });
 
+    /* Called again for the same unpaid order (the shopper closed the
+       payment window and taps Pay again): re-use its Razorpay order rather
+       than replace it. A UPI payment approved late on the first window then
+       still matches this order (verify and the webhook look the order up by
+       payment.razorpayOrderId), and Razorpay itself refuses a second payment
+       for an order already paid. */
+    const existingId = order.payment?.razorpayOrderId;
+    if (existingId && Number(order.payment?.amountDue) === amountPaise) {
+      let existing = null;
+      try {
+        existing = await razorpay.orders.fetch(existingId);
+      } catch (e) {
+        console.error('[create-order] could not re-read Razorpay order', existingId, e?.error?.description || e?.message);
+      }
+      if (existing?.status === 'paid') {
+        return NextResponse.json({ success: false, code: 'ALREADY_PAID', message: 'We have received the payment for this order. Please check My Orders.' }, { status: 409 });
+      }
+      if (!existing || Number(existing.amount) === amountPaise) {
+        return NextResponse.json({ success: true, data: existing || { id: existingId, entity: 'order', amount: amountPaise, currency: 'INR', receipt: String(orderId) } });
+      }
+    }
+
     const rzpOrder = await razorpay.orders.create({
       amount: amountPaise,
       currency: 'INR',

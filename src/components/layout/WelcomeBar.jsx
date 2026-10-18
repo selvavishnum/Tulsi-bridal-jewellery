@@ -11,8 +11,14 @@
 
    Dismissed (per message+code), switched off, or empty: the strip shows
    its usual tagline + delivery line + phone instead. Always one line at a
-   fixed height, so swapping offer ⇄ tagline after hydration changes text
-   only — never the header's height. The server render shows the offer.
+   fixed height, so swapping tagline → offer after hydration changes text
+   only — never the header's height.
+
+   Never advertises a code that doesn't work: the server render and first
+   paint show the tagline, and the offer appears only once GET
+   /api/announcement says it is switched on AND its code is a live coupon
+   (checked on the server). So a switched-off or changed offer never
+   flashes, and a code that doesn't exist (or expired) is never shown.
    ───────────────────────────────────────────── */
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import toast from 'react-hot-toast';
@@ -44,10 +50,11 @@ export function shortOffer(message) {
   return (colon > 0 && m.slice(colon + 1).trim()) || m;
 }
 
-/* Last settings this browser saw (phone + announcement), so a returning
-   visitor gets the current bar at once; the fresh copy from the Navbar's
-   fetch always wins and replaces it. Read with useSyncExternalStore:
-   hydration uses the server value (null) and swaps after — no mismatch. */
+/* Last phone number this browser saw, so a returning visitor gets it at
+   once; the fresh copy from the Navbar's settings fetch always wins and
+   replaces it. (The offer itself is never taken from here — only from a
+   fresh /api/announcement.) Read with useSyncExternalStore: hydration uses
+   the server value (null) and swaps after — no mismatch. */
 const CACHE_KEY = 'tj-welcome-bar';
 const CHANGE_EVENT = 'tj-welcome-bar-change';
 
@@ -90,21 +97,36 @@ export default function WelcomeBar({ settings, charges }) {
   const storedDismissal = useSyncExternalStore(subscribe, readDismissed, serverNull);
   /* Dismissed in this page view — also covers a browser that can't store it. */
   const [dismissedNow, setDismissedNow] = useState(null);
+  /* The offer as the server vouches for it — null until known (tagline). */
+  const [offer, setOffer] = useState(null);
+
+  useEffect(() => {
+    let live = true;
+    fetch('/api/announcement')
+      .then((r) => r.json())
+      .then((d) => { if (live && d?.success === true) setOffer(d); })
+      .catch(() => { /* offline: keep the tagline */ });
+    return () => { live = false; };
+  }, []);
 
   const source = settings || cached || {};
-  const a = normalizeAnnouncement(source);
+  /* Exactly what the server vouched for (never a default code). */
+  const a = offer
+    ? normalizeAnnouncement({ announcement: { enabled: offer.enabled === true, message: String(offer.message ?? ''), code: String(offer.code ?? '') } })
+    : null;
   const phone = (typeof source.phone === 'string' && source.phone.trim()) || DEFAULT_SITE_PHONE;
   const tel = `tel:${phone.replace(/[^\d+]/g, '')}`;
   const shippingLine = freeShippingLine(charges);
 
-  /* Remember what the fresh settings say, for the next page load. */
+  /* Remember the fresh phone number, for the next page load. */
   useEffect(() => {
     if (!settings) return;
-    writeKey(CACHE_KEY, JSON.stringify({ phone: settings.phone || null, announcement: settings.announcement ?? null }));
+    writeKey(CACHE_KEY, JSON.stringify({ phone: settings.phone || null }));
   }, [settings]);
 
-  const token = dismissToken(a);
-  const showOffer = a.enabled && !!(a.message || a.code) && dismissedNow !== token && storedDismissal !== token;
+  const token = a ? dismissToken(a) : null;
+  const showOffer = !!a && offer.active === true && a.enabled && !!(a.message || a.code)
+    && dismissedNow !== token && storedDismissal !== token;
 
   const applyCode = () => {
     const saved = setPendingCoupon(a.code);

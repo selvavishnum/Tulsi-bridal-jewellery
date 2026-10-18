@@ -6,6 +6,21 @@ import { ROLES, CAN, FULFILLMENT_STATUSES, toFulfillmentOrder } from '@/lib/acce
 import { ownsOrder } from '@/lib/orderOwnership';
 import { applyOrderUpdate, OrderStateError } from '@/lib/orderStatus';
 import { autoDispatchOnPacked } from '@/lib/shipmentDispatch';
+import Razorpay from 'razorpay';
+
+/* Has Razorpay been paid for this order although we haven't heard yet (a
+   UPI payment approved after the window was closed; the webhook follows)?
+   Unknown — not configured, or Razorpay unreachable — counts as no. */
+async function razorpayOrderPaid(razorpayOrderId) {
+  if (!razorpayOrderId || !process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) return false;
+  try {
+    const razorpay = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
+    return (await razorpay.orders.fetch(String(razorpayOrderId)))?.status === 'paid';
+  } catch (e) {
+    console.error('[orders PUT] Razorpay order check failed:', e?.error?.description || e?.message);
+    return false;
+  }
+}
 
 export async function GET(request, context) {
   try {
@@ -67,7 +82,10 @@ export async function PUT(request, context) {
       shippingCostPatch = n;
     }
 
-    /* Non-admin: can only cancel own pending/confirmed orders */
+    /* Non-admin: can only cancel own pending/confirmed orders — including an
+       online order whose payment was abandoned (checkout gives it up before
+       placing the shopper's retry): cancelling runs reverseOrderRewards,
+       which hands back its coupon use and the parked loyalty discount. */
     if (!isAdmin) {
       if (status !== 'cancelled') {
         return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
@@ -78,6 +96,10 @@ export async function PUT(request, context) {
       if (!ownsOrder(order, session.user)) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
       if (!['pending', 'confirmed'].includes(order.status)) {
         return NextResponse.json({ success: false, message: `Order cannot be cancelled — it is already ${order.status}` }, { status: 400 });
+      }
+      /* Never cancel an online order Razorpay has just been paid for. */
+      if (order.payment?.method === 'razorpay' && order.payment?.status !== 'paid' && await razorpayOrderPaid(order.payment?.razorpayOrderId)) {
+        return NextResponse.json({ success: false, code: 'ALREADY_PAID', message: 'Your payment for this order has just come through, so it has not been cancelled. Please check My Orders.' }, { status: 409 });
       }
     }
 

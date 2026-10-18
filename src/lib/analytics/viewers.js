@@ -4,22 +4,27 @@
    Honest social proof from our own visitor analytics, never a made-up or
    randomised figure: the number of OTHER browsers (distinct tj_vid) whose
    current page (analytics_sessions.currentPath, written by ingestBatch) is
-   this page and that were seen within the live window (the same 5 minutes
-   the admin dashboard's "live" view uses).
+   this page and that were seen in the last 90 seconds.
+
+   "Right now" is 90 s, not the dashboard's 5-minute live view. While a
+   shopper is active the tracker's heartbeats reach the server every 30–45 s
+   (a beat each 15 s, sent in 30 s batches), so an active reader is at most
+   ~45 s old in a snapshot that is itself at most 30 s old (the cache
+   below): 90 s keeps them counted. Someone who closed the tab — whose last
+   beacon left currentPath on this product — drops out within 90 s instead
+   of "viewing this right now" for another 5 minutes.
 
    Cost: one query per server instance every 30 s, shared by every product —
-     analytics_sessions where lastSeenAt >= now − 5 min
+     analytics_sessions where lastSeenAt >= now − 90 s
                         orderBy lastSeenAt desc · limit 500
    (single-field index, no composite needed; currentPath is not indexed, so
    it's matched here, in memory). Only vid / sid / currentPath / lastSeenAt
    are fetched. With more than 500 live sessions the least recent ones are
-   left out — the count can only come out low, never high.
+   left out — that cut can only make the count low, never high.
 
    Takes `db` (firebase-admin Firestore or the test fake).
    ───────────────────────────────────────────── */
-import { LIVE_WINDOW_MS } from './ingest.js';
-
-export const VIEWERS_WINDOW_MS = LIVE_WINDOW_MS;
+export const VIEWERS_WINDOW_MS = 90_000;
 export const VIEWERS_CACHE_MS = 30_000;
 export const VIEWERS_SCAN_LIMIT = 500;
 
