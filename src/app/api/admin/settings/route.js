@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDB, docToObj } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
+import { isUsableImageUrl } from '@/lib/avatar';
 
 export async function GET() {
   try {
@@ -32,6 +33,13 @@ export async function POST(request) {
        per-field changes): a full-page Save, sent with whatever this page
        loaded earlier, must never overwrite it. */
     const { categoryShowcase: _showcase, ...rest } = body || {};
+    /* Testimonial photos: only a usable https link is stored (a half-typed
+       or non-https link used to break the avatar on the homepage). */
+    if (Array.isArray(rest.testimonials)) {
+      rest.testimonials = rest.testimonials.slice(0, 50).map((t) => (
+        t && typeof t === 'object' ? { ...t, photo: isUsableImageUrl(t.photo) ? t.photo : '' } : t
+      ));
+    }
     await db.collection('settings').doc('site').set({ ...rest, updatedAt: new Date().toISOString() }, { merge: true });
     return NextResponse.json({ success: true, message: 'Settings saved' });
   } catch (e) { return NextResponse.json({ success: false, message: e.message }, { status: 500 }); }

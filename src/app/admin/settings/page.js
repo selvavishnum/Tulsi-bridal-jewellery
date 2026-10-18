@@ -5,6 +5,7 @@ import Image from 'next/image';
 import toast from 'react-hot-toast';
 import CategoryShowcaseManager from '@/components/admin/showcase/CategoryShowcaseManager';
 import AnnouncementSettingsPanel from '@/components/admin/AnnouncementSettingsPanel';
+import AvatarUploadField from '@/components/admin/AvatarUploadField';
 
 /* ─────────────────────────── Toggle component ─────────────────────────── */
 function Toggle({ value, onChange, label, description }) {
@@ -114,19 +115,9 @@ function TestimonialRow({ testimonial, index, onChange, onDelete }) {
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
         </div>
         <div className="md:col-span-2">
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Photo URL <span className="text-gray-400">(optional — circular avatar)</span></label>
-          <div className="flex gap-2 items-center">
-            <div className="relative flex-1">
-              <FiImage className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
-              <input type="url" value={testimonial.photo} onChange={(e) => onChange('photo', e.target.value)} placeholder="https://… paste image link here"
-                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-            </div>
-            {testimonial.photo && (
-              <div className="relative w-10 h-10 rounded-full overflow-hidden border border-gray-300 flex-shrink-0">
-                <Image src={testimonial.photo} alt="avatar" fill className="object-cover" />
-              </div>
-            )}
-          </div>
+          <p className="text-xs text-gray-500 mb-1.5 font-medium">Customer Photo <span className="text-gray-400">(optional — shown as a round avatar)</span></p>
+          {/* Uploaded straight to Cloudinary; no hand-typed links (they broke the avatar). */}
+          <AvatarUploadField value={testimonial.photo || ''} name={testimonial.name} onChange={(url) => onChange('photo', url)} />
         </div>
         <div>
           <label className="text-xs text-gray-500 mb-1 block font-medium">Star Rating</label>

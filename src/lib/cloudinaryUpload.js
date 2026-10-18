@@ -2,22 +2,28 @@ const CLOUD_NAME    = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'djolb5id
 const UPLOAD_PRESET = 'tulsi_products';
 const QUALITY = 0.82; // 82% JPEG = ~4–6MB at 6000×4000px, well under 10MB Cloudinary limit
 
-function compressFile(file) {
+/* Re-encodes to JPEG, optionally no larger than maxDimension px on the long
+   side. If the browser can't decode the file (e.g. HEIC from an iPhone in
+   some browsers) the original goes up unchanged — Cloudinary converts it —
+   instead of the upload waiting forever. */
+function compressFile(file, maxDimension = 0) {
   return new Promise((resolve) => {
     const img = new window.Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
+      const k = maxDimension > 0 ? Math.min(1, maxDimension / Math.max(img.naturalWidth, img.naturalHeight)) : 1;
       const canvas = document.createElement('canvas');
-      canvas.width  = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      canvas.getContext('2d').drawImage(img, 0, 0);
+      canvas.width  = Math.max(1, Math.round(img.naturalWidth * k));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * k));
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
       canvas.toBlob(
-        (blob) => resolve(new File([blob], file.name, { type: 'image/jpeg' })),
+        (blob) => resolve(blob ? new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }) : file),
         'image/jpeg',
         QUALITY
       );
     };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
     img.src = url;
   });
 }
@@ -27,8 +33,8 @@ function compressFile(file) {
  * Keeps full resolution (6000×4000px). Compresses to JPEG 82% = ~4–6MB,
  * under Cloudinary's 10MB free plan limit with full sharpness for zoom.
  */
-export async function uploadToCloudinary(file, folder = 'tulsi-bridal/products', onProgress) {
-  const resized = await compressFile(file);
+export async function uploadToCloudinary(file, folder = 'tulsi-bridal/products', onProgress, { maxDimension = 0 } = {}) {
+  const resized = await compressFile(file, maxDimension);
 
   const formData = new FormData();
   formData.append('file', resized);
