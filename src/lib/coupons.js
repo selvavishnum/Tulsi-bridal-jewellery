@@ -52,6 +52,24 @@ export function parseCouponInput(body, { partial = false } = {}) {
   return { data };
 }
 
+/**
+ * The discount a coupon gives on an order subtotal — THE formula, shared by
+ * the coupon check, the order endpoint and the shopper's screens, so what a
+ * customer is shown is what they are charged. 0 when the subtotal is below
+ * the coupon's minimum. Optional cap: maxDiscount (₹, > 0).
+ * @param {{ type: 'percentage'|'fixed', value: number, minOrderAmount?: number, maxDiscount?: number }} c
+ */
+export function couponDiscountFor(c, subtotal) {
+  const sub = Math.max(0, Number(subtotal) || 0);
+  if (!c || sub <= 0) return 0;
+  if (sub < (Number(c.minOrderAmount) || 0)) return 0;
+  const value = Math.max(0, Number(c.value) || 0);
+  let d = c.type === 'percentage' ? Math.round((sub * Math.min(100, value)) / 100) : Math.min(value, sub);
+  const cap = Number(c.maxDiscount) || 0;
+  if (cap > 0) d = Math.min(d, cap);
+  return Math.max(0, Math.min(d, sub));
+}
+
 /* Percentage coupons stay within 1–100% of the order. */
 export function checkCouponValue(merged) {
   if (merged.type === 'percentage' && (merged.value <= 0 || merged.value > 100)) return 'A percentage must be between 1 and 100.';
