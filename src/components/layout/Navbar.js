@@ -40,13 +40,15 @@ export default function Navbar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  /* Public site settings (phone, welcome offer) — null until loaded. */
+  /* Public site settings (the phone in the top strip) — null until loaded.
+     The strip's welcome offer comes from /api/announcement (WelcomeBar),
+     which also checks that its code is a live coupon. */
   const [siteSettings, setSiteSettings] = useState(null);
   const searchRef = useRef(null);
   const userMenuRef = useRef(null);
 
   /* Fresh on every page load (the endpoint is no-store): an admin's change
-     to the offer bar or phone shows on the visitor's next visit. */
+     to the phone shows on the visitor's next visit. */
   useEffect(() => {
     fetch('/api/admin/settings', { cache: 'no-store' })
       .then((r) => r.json())

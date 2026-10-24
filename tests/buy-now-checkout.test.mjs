@@ -259,9 +259,10 @@ test('amounts: same totals, COD fee and COD limit as the checkout page always sh
   const big = checkoutAmounts({ subtotal: 2500, discount: 250, paymentMethod: 'razorpay', charges: c });
   assert.equal(big.shippingCost, 0, 'free above the threshold');
   assert.equal(big.total, 2250);
-  /* The page's rule: (subtotal − coupon + shipping − loyalty) over ₹20,000 blocks COD. */
+  /* The server's rule (round 4): (subtotal − coupon + shipping + COD fee)
+     over ₹20,000 blocks COD — points don't count. */
   assert.equal(checkoutAmounts({ subtotal: 20500, discount: 0, paymentMethod: 'cod', charges: c }).codBlockedByValue, true);
-  assert.equal(checkoutAmounts({ subtotal: 20500, discount: 0, loyaltyDiscount: 600, paymentMethod: 'cod', charges: c }).codBlockedByValue, false);
+  assert.equal(checkoutAmounts({ subtotal: 20500, discount: 0, loyaltyDiscount: 600, paymentMethod: 'cod', charges: c }).codBlockedByValue, true, 'points don’t lift the limit');
   assert.equal(checkoutAmounts({ subtotal: 20500, discount: 600, paymentMethod: 'cod', charges: c }).codBlockedByValue, false);
   assert.equal(checkoutAmounts({ subtotal: 1000, paymentMethod: 'cod', charges: c, codAvailable: false }).codBlocked, true);
   assert.equal(COD_MAX_ORDER_VALUE, 20000);
@@ -522,7 +523,7 @@ describe('useCheckoutFlow', { skip }, () => {
     assert.deepEqual(toast.error.mock.calls.map((c) => c.arguments), [['Your cart is empty', undefined]]);
   });
 
-  test('COD: sends only the lines and the fees shown, spends the welcome code, then the confirmation page', async () => {
+  test('COD: sends only the lines, the fees and coupon discount shown, spends the welcome code, then the confirmation page', async () => {
     remember('TULSI10');
     const { h, calls, onOrderPlaced, notify } = flowFor(
       { lines: [{ product: 'p1', quantity: 2 }], subtotal: 400, discount: 40, couponCode: 'TULSI10' },
@@ -544,6 +545,7 @@ describe('useCheckoutFlow', { skip }, () => {
       couponCode: 'TULSI10',
       shippingCost: 99,
       codFee: 49,
+      couponDiscount: 40, // the discount shown: the server answers 409 COUPON_CHANGED if its own differs
     });
     assert.equal(onOrderPlaced.mock.callCount(), 1);
     assert.deepEqual(router.push.mock.calls.map((c) => c.arguments), [['/order-success?orderNumber=TBJ1700000000000123&email=asha%40example.com']]);
@@ -702,7 +704,7 @@ describe('useCheckoutFlow', { skip }, () => {
     assert.equal(h.result.loading, false);
   });
 
-  test('loyalty (the page only): points loaded, redeeming lowers the total and counts toward the COD limit', async () => {
+  test('loyalty (the page only): points loaded, redeeming lowers the total — but not the COD limit (the server’s rule: before points)', async () => {
     const { h, calls } = flowFor({ withLoyalty: true, subtotal: 20050 }, {
       '/api/admin/settings': SITE({ loyaltyEnabled: true }),
       '/api/loyalty': (u, init) => (init.method === 'POST'
@@ -719,7 +721,7 @@ describe('useCheckoutFlow', { skip }, () => {
     assert.equal(h.result.loyaltyDiscount, 100);
     assert.equal(h.result.loyalty.points, 50);
     assert.equal(h.result.payableTotal, 20050 - 100);
-    assert.equal(h.result.codBlockedByValue, false, 'now ₹19,950');
+    assert.equal(h.result.codBlockedByValue, true, '₹20,050 before points: the server refuses COD for it, so it isn’t offered');
     assert.deepEqual(toast.success.mock.calls.map((c) => c.arguments), [['₹100 discount applied!']]);
     await h.result.redeemLoyaltyPoints();
     await tick();

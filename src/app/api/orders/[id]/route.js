@@ -5,7 +5,26 @@ import { getAccess } from '@/lib/requireRole';
 import { ROLES, CAN, FULFILLMENT_STATUSES, toFulfillmentOrder } from '@/lib/access';
 import { ownsOrder } from '@/lib/orderOwnership';
 import { applyOrderUpdate, OrderStateError } from '@/lib/orderStatus';
+import { isAbandonedAttempt } from '@/lib/coupons';
 import { autoDispatchOnPacked } from '@/lib/shipmentDispatch';
+import { razorpayClient, settleIfPaid, PAYMENT_UNCHECKED_MESSAGE } from '@/lib/razorpayState';
+
+/* Has Razorpay been paid for this order although we haven't heard yet (a
+   UPI payment approved after the window was closed; the webhook follows)?
+   Then it is confirmed right here, as verify and the webhook do (stock,
+   points, the customer's "order confirmed"), and the caller answers 409.
+   → 'settled' (paid and confirmed now), 'unsure' (Razorpay says paid but the
+   payment can't be confirmed from here — the webhook will), or null: not
+   paid as far as can be told — not configured, Razorpay unreachable, or the
+   order was cancelled meanwhile (the money is being refunded) all count as
+   no, and the cancel goes ahead (or finds it already cancelled). */
+async function paidOnRazorpay(db, ref, order) {
+  const razorpay = order.payment?.razorpayOrderId ? razorpayClient() : null;
+  if (!razorpay) return null;
+  const { state, paidAfterCancel } = await settleIfPaid(db, ref, order, razorpay, { tag: '[orders PUT]' });
+  if (state === 'settled') return paidAfterCancel ? null : 'settled';
+  return state === 'unsure' ? 'unsure' : null;
+}
 
 export async function GET(request, context) {
   try {
@@ -38,6 +57,7 @@ export async function PUT(request, context) {
     const db = getDB();
     const body = await request.json();
     const { status, trackingNumber, courierName, notes, shippingCostActual } = body;
+    const unpaidOnly = body.unpaidOnly === true;
     /* Staff confirm they refunded a prepaid order the courier returned. */
     if (body.refundDone === true) {
       if (!CAN.manageOrders.includes(access.tier)) return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
@@ -67,7 +87,14 @@ export async function PUT(request, context) {
       shippingCostPatch = n;
     }
 
-    /* Non-admin: can only cancel own pending/confirmed orders */
+    /* Non-admin: can only cancel own pending/confirmed orders — including an
+       online order whose payment was abandoned (checkout gives it up before
+       placing the shopper's retry): cancelling runs reverseOrderRewards,
+       which hands back its coupon use and the parked loyalty discount. */
+    /* Checkout giving up its own unpaid online attempt (unpaidOnly) is
+       bookkeeping, not news: the customer gets no "order cancelled" email
+       or WhatsApp — they are about to place the order again. */
+    let quiet = false;
     if (!isAdmin) {
       if (status !== 'cancelled') {
         return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
@@ -79,11 +106,26 @@ export async function PUT(request, context) {
       if (!['pending', 'confirmed'].includes(order.status)) {
         return NextResponse.json({ success: false, message: `Order cannot be cancelled — it is already ${order.status}` }, { status: 400 });
       }
+      /* Never cancel an online order Razorpay has just been paid for. Checkout
+         giving up an unpaid attempt says so (unpaidOnly): a payment
+         confirmed since its page looked (the webhook) also stops it — the
+         shopper would otherwise pay twice, online and again on delivery. */
+      const paidOnline = order.payment?.method === 'razorpay' && order.payment?.status !== 'paid'
+        ? await paidOnRazorpay(db, ref, order)
+        : null;
+      if ((unpaidOnly && order.payment?.status === 'paid') || paidOnline === 'settled') {
+        return NextResponse.json({ success: false, code: 'ALREADY_PAID', message: 'Your payment for this order has just come through, so it has not been cancelled. Please check My Orders.' }, { status: 409 });
+      }
+      if (paidOnline === 'unsure') {
+        return NextResponse.json({ success: false, code: 'EARLIER_PAYMENT_PENDING', orderId: id, message: PAYMENT_UNCHECKED_MESSAGE }, { status: 409 });
+      }
+      quiet = unpaidOnly && isAbandonedAttempt(order);
     }
 
     const { after: updatedOrder, settlementError, settlementNote } = await applyOrderUpdate(db, id,
       { status, trackingNumber, courierName, notes, shippingCostPatch },
       {
+        notify: !quiet,
         /* Fulfilment fields are staff-only — a customer's cancel request
            used to be able to set its own tracking number, courier and notes. */
         writeFulfilmentFields: isAdmin,
@@ -92,6 +134,9 @@ export async function PUT(request, context) {
         check(currentOrder) {
           if (!isAdmin && !['pending', 'confirmed'].includes(currentOrder.status)) {
             throw new OrderStateError(`Order cannot be cancelled — it is already ${currentOrder.status}`);
+          }
+          if (!isAdmin && unpaidOnly && currentOrder.payment?.status === 'paid') {
+            throw new OrderStateError('This order has been paid, so it has not been cancelled.');
           }
           /* Fulfilment staff only touch orders inside the packing/shipping
              window — a pending COD order hasn't had its stock deducted. */

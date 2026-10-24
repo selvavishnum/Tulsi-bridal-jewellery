@@ -22,13 +22,14 @@ import Link from 'next/link';
 import { FiX, FiMinus, FiPlus, FiLock, FiTag, FiAlertCircle, FiInfo, FiShield } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
 import { cldThumb } from '@/lib/cloudinaryImage';
+import { getPendingCoupon, clearPendingCoupon } from '@/lib/welcomeOffer';
 import { track } from '@/lib/analytics/tracker';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import useCheckoutFlow from './useCheckoutFlow';
 import useAutoApplyPendingCoupon from './useAutoApplyPendingCoupon';
 import { validateCoupon } from './validateCoupon';
 import { AddressFields, PaymentMethodFields } from './CheckoutFields';
-import { buyNowSignInUrl, clampQty, couponDiscountFor, maxOrderQty, unitPriceOf } from './checkoutRules';
+import { buyNowSignInUrl, clampQty, couponShortfall, maxOrderQty, shownCouponDiscount, unitPriceOf } from './checkoutRules';
 
 /* Slide in from the bottom (phones) or the right (md+); only for people
    who haven't asked for reduced motion (Tailwind's motion-safe:). */
@@ -56,12 +57,20 @@ function BuyNowDialog({ onClose, product, initialQty }) {
   const [qty, setQty] = useState(() => clampQty(initialQty, maxQty));
   const subtotal = unitPrice * qty;
 
-  /* This order's own coupon — the cart's coupon is left alone. */
-  const [coupon, setCoupon] = useState(null);
+  /* This order's own coupon — the cart's coupon is left alone. The
+     discount is recomputed from it for every quantity (0 below its
+     minimum); `pin` is the server's own figure for one exact subtotal. */
+  const [coupon, setCouponState] = useState(null);
+  const [pin, setPin] = useState(null); // { subtotal, discount }
   const [couponInput, setCouponInput] = useState('');
   const [couponNote, setCouponNote] = useState(null); // { tone: 'error'|'info', text }
   const [couponBusy, setCouponBusy] = useState(false);
-  const discount = couponDiscountFor(coupon, subtotal);
+  const discount = shownCouponDiscount(coupon, subtotal, pin);
+  const shortfall = couponShortfall(coupon, subtotal);
+  function setCoupon(next, nextPin = null) {
+    setCouponState(next);
+    setPin(next ? nextPin : null);
+  }
 
   /* Inline message from the order flow (validation, server, payment). */
   const [feedback, setFeedback] = useState(null); // { type: 'error'|'info', message }
@@ -74,11 +83,21 @@ function BuyNowDialog({ onClose, product, initialQty }) {
     notify: (type, message) => setFeedback({ type, message }),
     emptyMessage: 'This piece is out of stock right now.',
     preloadPayment: !soldOut,
+    /* Points the customer already redeemed come off this order too. */
+    withParkedLoyalty: true,
+    /* 409 COUPON_CHANGED: off (back in the box when it may still work: a
+       bigger order, or a check that kept failing), or the server's figure. */
+    onCouponChanged: ({ code, couponApplied, discount: serverDiscount, reason }) => {
+      if (couponApplied && coupon) { setPin({ subtotal, discount: serverDiscount }); return; }
+      setCoupon(null);
+      setCouponInput(reason === 'min_order' || reason === 'check_failed' ? code || '' : '');
+    },
   });
   const { status } = flow;
   const signedIn = status === 'authenticated';
   const canOrder = signedIn && !soldOut;
-  const busy = flow.loading || flow.verifying;
+  /* Placed: locked until the confirmation page takes over. */
+  const busy = flow.loading || flow.verifying || flow.placed;
 
   /* Visitor analytics: a signed-in customer reaching checkout (once per open). */
   const tracked = useRef(false);
@@ -88,18 +107,25 @@ function BuyNowDialog({ onClose, product, initialQty }) {
     track('checkout_start');
   }, [signedIn]);
 
-  /* The welcome code tapped in the offer bar, applied on open. */
-  useAutoApplyPendingCoupon({
-    enabled: signedIn && !soldOut,
+  /* The welcome code tapped in the offer bar, applied on open (or when
+     it's tapped while the drawer is open). */
+  const autoApply = useAutoApplyPendingCoupon({
+    enabled: signedIn && !soldOut && !flow.placed,
     hasCoupon: !!coupon,
     orderAmount: subtotal,
-    onApplied: (r) => { setCoupon(r.coupon); setCouponNote(null); },
+    onApplied: (r) => { setCoupon(r.coupon, { subtotal: r.orderAmount, discount: r.discount }); setCouponNote(null); },
     onRejected: (r) => { setCouponNote({ tone: 'error', text: `${r.code}: ${r.message}` }); if (!r.definite) setCouponInput(r.code); },
     onUnavailable: (r) => {
       setCouponInput(r.code);
       setCouponNote({ tone: 'info', text: `Couldn’t check ${r.code} just now — tap Apply to try again.` });
     },
+    onKept: (code) => setCouponInput((c) => c || code),
   });
+  /* Hold "Place order" while a coupon is being checked, and for the moment
+     the points discount already on the account takes to load (the total
+     may still drop). Both give up after a few seconds. */
+  const couponChecking = autoApply.checking || couponBusy;
+  const holding = couponChecking || flow.loyaltyLoading;
 
   async function applyCoupon() {
     const code = couponInput.trim().toUpperCase();
@@ -109,15 +135,19 @@ function BuyNowDialog({ onClose, product, initialQty }) {
     const r = await validateCoupon(code, subtotal);
     setCouponBusy(false);
     if (r.ok) {
-      setCoupon(r.coupon);
+      setCoupon(r.coupon, { subtotal: r.orderAmount ?? subtotal, discount: r.discount });
       setCouponInput('');
     } else {
       setCouponNote({ tone: 'error', text: r.message });
     }
   }
 
+  /* Off this order — and the remembered welcome code is forgotten if it's
+     this one, so the next open doesn't put it straight back. */
   function removeCoupon() {
-    setCouponInput(coupon?.code || '');
+    const code = coupon?.code || '';
+    if (code && getPendingCoupon() === code.toUpperCase()) clearPendingCoupon();
+    setCouponInput(code);
     setCoupon(null);
     setCouponNote(null);
   }
@@ -172,6 +202,7 @@ function BuyNowDialog({ onClose, product, initialQty }) {
 
   function submit(e) {
     e.preventDefault();
+    if (holding || busy) return;
     setFeedback(null);
     flow.placeOrder(e);
   }
@@ -301,11 +332,17 @@ function BuyNowDialog({ onClose, product, initialQty }) {
                     <FiTag className="text-gold-600" aria-hidden="true" /> Coupon code
                   </label>
                   {coupon ? (
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-green-200 bg-green-50 px-3 py-2.5">
-                      <p className="min-w-0 text-sm text-green-800" role="status">
-                        <span className="font-bold">{coupon.code}</span> applied — you save {formatPrice(discount)}
-                        {coupon.firstOrderOnly && <span className="block text-2xs text-green-700/80">First-order offer · confirmed when you place the order</span>}
-                      </p>
+                    <div className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 ${shortfall > 0 ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'}`}>
+                      {shortfall > 0 ? (
+                        <p className="min-w-0 text-sm text-amber-800" role="status">
+                          Add {formatPrice(shortfall)} more to use <span className="font-bold">{coupon.code}</span>
+                        </p>
+                      ) : (
+                        <p className="min-w-0 text-sm text-green-800" role="status">
+                          <span className="font-bold">{coupon.code}</span> applied — you save {formatPrice(discount)}
+                          {coupon.firstOrderOnly && <span className="block text-2xs text-green-700/80">First-order offer · confirmed when you place the order</span>}
+                        </p>
+                      )}
                       <button type="button" onClick={removeCoupon} disabled={busy} className="flex-shrink-0 text-xs font-semibold text-stone-500 underline-offset-2 hover:text-red-600 hover:underline disabled:opacity-40">
                         Remove
                       </button>
@@ -358,6 +395,9 @@ function BuyNowDialog({ onClose, product, initialQty }) {
                     {discount > 0 && (
                       <div className="flex justify-between text-green-700"><span>Coupon {coupon?.code}</span><span>−{formatPrice(discount)}</span></div>
                     )}
+                    {flow.loyaltyDiscount > 0 && (
+                      <div className="flex justify-between text-amber-700"><span>Points discount</span><span>−{formatPrice(flow.loyaltyDiscount)}</span></div>
+                    )}
                     {flow.shippingCost > 0 && (
                       <div className="flex justify-between"><span>Shipping</span><span>{formatPrice(flow.shippingCost)}</span></div>
                     )}
@@ -392,10 +432,13 @@ function BuyNowDialog({ onClose, product, initialQty }) {
               )}
               <button
                 type="submit"
-                disabled={busy}
+                disabled={busy || holding}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-wine-700 py-4 text-base font-bold text-white shadow-luxury transition hover:bg-wine-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {flow.loading ? <><LoadingSpinner size="sm" /> Placing order…</> : `Place order · ${formatPrice(total)}`}
+                {flow.placed ? 'Order placed — opening confirmation…'
+                  : flow.loading ? <><LoadingSpinner size="sm" /> Placing order…</>
+                    : couponChecking ? <><LoadingSpinner size="sm" /> Checking coupon…</>
+                      : `Place order · ${formatPrice(total)}`}
               </button>
               <p className="mt-2 flex items-center justify-center gap-1.5 text-2xs text-stone-400">
                 <FiShield aria-hidden="true" />

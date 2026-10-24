@@ -3,7 +3,47 @@ import { getAccess, ROLES } from '@/lib/requireRole';
 import { ownsOrder } from '@/lib/orderOwnership';
 import Razorpay from 'razorpay';
 import { getDB } from '@/lib/firebase';
+import { settleIfPaid, PAYMENT_UNCHECKED_MESSAGE } from '@/lib/razorpayState';
 
+/* A pending attempt whose coupon use / points a newer order took over
+   (saved before replaced attempts were cancelled) is finished too. */
+const isReplaced = (order) => order.cancelReason === 'replaced'
+  || (order.status === 'pending' && !!(order.couponMovedTo || order.loyaltyMovedTo));
+const isFinished = (order) => order.status === 'cancelled' || isReplaced(order);
+
+const cancelledResponse = (order) => {
+  const replaced = isReplaced(order);
+  return NextResponse.json({
+    success: false,
+    code: 'ORDER_CANCELLED',
+    replaced,
+    message: replaced
+      ? 'This payment attempt was replaced by your newer order, so it can’t be paid. Please check My Orders.'
+      : 'This order was cancelled.',
+  }, { status: 409 });
+};
+
+/* POST /api/payments/create-order { orderId } — the Razorpay order to pay
+   this order with (the same one again for a retry at the same amount).
+
+   Answers:
+     200 { success: true, data: <Razorpay order> }
+     409 { code: 'ORDER_CANCELLED', replaced } this order can't be paid any
+         more: it was cancelled, or replaced by a newer order of the
+         customer's (replaced: true — the newer one holds its coupon use /
+         points discount). Place a new order; never pay this one.
+     409 { code: 'ALREADY_PAID' }  paid already — here, or on Razorpay and
+         we haven't heard yet (late UPI approval: it is confirmed right
+         here, as verify would, before this answer). Never pay it again;
+         open the order.
+     409 { code: 'EARLIER_PAYMENT_PENDING' }  Razorpay says it is paid but
+         the payment can't be confirmed from here (unreadable, or short of
+         the amount): nothing was paid again; the webhook settles it.
+     400 / 401 / 403 / 404 / 500 { message } (no code) — anything else, e.g.
+         online payment paused by the store, or Razorpay unreachable. Show
+         the message; the order itself is unchanged and stays payable.
+   Only ORDER_CANCELLED and ALREADY_PAID mean "this order is finished":
+   checkout gives up its unpaid attempt on those, never on a plain error. */
 export async function POST(request) {
   try {
     const access = await getAccess();
@@ -33,11 +73,11 @@ export async function POST(request) {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }
 
+    /* Cancelled first: money that arrived after a cancel is being refunded
+       (paidAfterCancel) — the shopper must not be sent to it as if placed. */
+    if (isFinished(order)) return cancelledResponse(order);
     if (order.payment?.status === 'paid') {
-      return NextResponse.json({ success: false, message: 'Order is already paid' }, { status: 400 });
-    }
-    if (order.status === 'cancelled') {
-      return NextResponse.json({ success: false, message: 'This order was cancelled.' }, { status: 400 });
+      return NextResponse.json({ success: false, code: 'ALREADY_PAID', message: 'This order is already paid. Please check My Orders.' }, { status: 409 });
     }
 
     /* Admin can pause online payment site-wide (e.g. while Razorpay KYC is
@@ -61,6 +101,40 @@ export async function POST(request) {
       key_id: process.env.RAZORPAY_KEY_ID,
       key_secret: process.env.RAZORPAY_KEY_SECRET,
     });
+
+    /* Called again for the same unpaid order (the shopper closed the
+       payment window and taps Pay again): re-use its Razorpay order rather
+       than replace it. A UPI payment approved late on the first window then
+       still matches this order (verify and the webhook look the order up by
+       payment.razorpayOrderId), and Razorpay itself refuses a second payment
+       for an order already paid. */
+    const existingId = order.payment?.razorpayOrderId;
+    if (existingId && Number(order.payment?.amountDue) === amountPaise) {
+      let existing = null;
+      try {
+        existing = await razorpay.orders.fetch(existingId);
+      } catch (e) {
+        console.error('[create-order] could not re-read Razorpay order', existingId, e?.error?.description || e?.message);
+      }
+      if (existing?.status === 'paid') {
+        /* Paid on Razorpay and we haven't heard (a late UPI approval): confirm
+           it now, as verify and the webhook do — the customer's "order
+           confirmed" goes out and the stock is taken — then say so. */
+        const paid = await settleIfPaid(db, orderRef, order, razorpay, { tag: '[create-order]' });
+        if (paid.state === 'settled' && paid.paidAfterCancel) {
+          /* Cancelled or replaced since this request read it: the money is
+             being refunded, it is not an order. */
+          return cancelledResponse((await orderRef.get()).data() || {});
+        }
+        if (paid.state !== 'settled') {
+          return NextResponse.json({ success: false, code: 'EARLIER_PAYMENT_PENDING', orderId: String(orderId), message: PAYMENT_UNCHECKED_MESSAGE }, { status: 409 });
+        }
+        return NextResponse.json({ success: false, code: 'ALREADY_PAID', message: 'We have received the payment for this order. Please check My Orders.' }, { status: 409 });
+      }
+      if (!existing || Number(existing.amount) === amountPaise) {
+        return NextResponse.json({ success: true, data: existing || { id: existingId, entity: 'order', amount: amountPaise, currency: 'INR', receipt: String(orderId) } });
+      }
+    }
 
     const rzpOrder = await razorpay.orders.create({
       amount: amountPaise,

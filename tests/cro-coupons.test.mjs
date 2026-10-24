@@ -118,7 +118,7 @@ describe('validate: first-order-only coupon', () => {
     assert.equal(r.json.success, true);
     assert.equal(r.json.data.discount, 200);
     assert.equal(r.json.data.firstOrderOnly, true);
-    assert.deepEqual(r.json.data.coupon, { id: 'welcome', code: 'TULSI10', type: 'percentage', value: 10, firstOrderOnly: true }, 'no usage bookkeeping leaks');
+    assert.deepEqual(r.json.data.coupon, { id: 'welcome', code: 'TULSI10', type: 'percentage', value: 10, minOrderAmount: 0, maxDiscount: null, firstOrderOnly: true }, 'no usage bookkeeping leaks');
   });
 
   test('a cancelled order or an abandoned online payment does not make a returning customer', async () => {
@@ -144,9 +144,11 @@ describe('validate: first-order-only coupon', () => {
     assert.equal(r.json.code, 'FIRST_ORDER_ONLY');
   });
 
-  test('signed in with only an email (no account id): still checked', async () => {
-    signInAs({ email: 'old@x.test' });
+  test('signed in with only an email (no account id): checked once the email is proven, never on an unverified one', async () => {
+    signInAs({ email: 'old@x.test', emailVerified: true });
     assert.equal((await check('TULSI10')).json.code, 'FIRST_ORDER_ONLY');
+    signInAs({ email: 'old@x.test' });
+    assert.equal((await check('TULSI10')).status, 200, 'no order-history oracle for an unproven email');
   });
 
   test('signed out: a preview of the discount, flagged firstOrderOnly (checkout signs in and decides)', async () => {
@@ -267,14 +269,16 @@ describe('orders: first-order-only coupon', () => {
     assert.equal(r.json.data.couponCode, 'FEST5');
   });
 
-  test('a guest is checked by email: an earlier guest order on it → no discount; a new email → discount', async () => {
+  test('a guest (no session) never gets a first-order code, whatever the email; an ordinary code still applies', async () => {
     signInAs(null);
     const repeat = await call(orders, buyNow({ guestEmail: 'GuestBuyer@x.test' }));
     assert.equal(repeat.status, 201);
     assert.equal(repeat.json.data.discount, 0);
     const first = await call(orders, buyNow({ guestEmail: 'brand.new@x.test' }));
     assert.equal(first.status, 201);
-    assert.equal(first.json.data.discount, 150);
+    assert.equal(first.json.data.discount, 0, 'a fresh email is not a first order without an account');
+    const fest = await call(orders, buyNow({ guestEmail: 'brand.new2@x.test', couponCode: 'FEST5' }));
+    assert.equal(fest.json.data.discount, 75);
   });
 
   test('if the first-order lookup fails, the code is not applied and the order still goes through', async () => {

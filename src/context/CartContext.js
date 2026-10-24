@@ -3,6 +3,7 @@
 import { createContext, useContext, useReducer, useEffect, useState, useCallback, useRef } from 'react';
 import { DEFAULT_CHARGES, computeCharges } from '@/lib/storeCharges';
 import { track } from '@/lib/analytics/tracker';
+import { shownCouponDiscount, couponShortfall } from '@/components/checkout/checkoutRules';
 
 /* How often an open page re-reads the shipping/COD settings, so an admin
    change reaches checkouts already in progress (the server recalculates
@@ -11,7 +12,16 @@ const CHARGES_REFRESH_MS = 60_000;
 
 const CartContext = createContext(null);
 
-const initialState = { items: [], coupon: null, discount: 0 };
+/* coupon — what /api/coupons/validate returned ({ id, code, type, value,
+   minOrderAmount, maxDiscount, firstOrderOnly }, plus checkedFor: the
+   account it was checked for, null when signed out). The discount shown is
+   always recomputed from it and the CURRENT subtotal (couponDiscountFor);
+   `discount`/`discountAt` only keep the server's own figure for the
+   subtotal it was given at (the coupon check, or a 409 COUPON_CHANGED). */
+const initialState = { items: [], coupon: null, discount: 0, discountAt: null };
+const NO_COUPON = { coupon: null, discount: 0, discountAt: null };
+
+const subtotalOf = (items) => (items || []).reduce((sum, i) => sum + (i.discountPrice || i.price) * i.quantity, 0);
 
 /* ADD_ITEM may carry `qty` (the product page's quantity picker); default 1.
    No upper cap here — the picker is bounded by stock and the order API
@@ -35,8 +45,11 @@ function cartReducer(state, action) {
       // Normalize: always set _id so downstream code (cart page, checkout) works reliably
       return { ...state, items: [...state.items, { ...action.payload, _id: pid, quantity: add }] };
     }
-    case 'REMOVE_ITEM':
-      return { ...state, items: state.items.filter((i) => (i._id || i.id) !== action.payload) };
+    case 'REMOVE_ITEM': {
+      const items = state.items.filter((i) => (i._id || i.id) !== action.payload);
+      /* An empty bag keeps no coupon. */
+      return items.length ? { ...state, items } : { ...state, items, ...NO_COUPON };
+    }
     case 'UPDATE_QUANTITY':
       return {
         ...state,
@@ -44,10 +57,21 @@ function cartReducer(state, action) {
           (i._id || i.id) === action.payload.id ? { ...i, quantity: action.payload.quantity } : i
         ),
       };
-    case 'APPLY_COUPON':
-      return { ...state, coupon: action.payload.coupon, discount: action.payload.discount };
+    case 'APPLY_COUPON': {
+      /* Never into an empty bag — e.g. a coupon check answering after the
+         order was placed and the cart cleared. */
+      if (!state.items.length || !action.payload?.coupon) return state;
+      const d = Number(action.payload.discount);
+      const pinned = action.payload.discount !== undefined && action.payload.discount !== null && Number.isFinite(d);
+      /* `subtotal`: what the server's figure was computed for — the answer
+         can land after the quantity changed, and then it isn't this
+         basket's figure (the formula takes over). Default: the cart now. */
+      const at = Number(action.payload.subtotal);
+      const checkedAt = action.payload.subtotal !== undefined && action.payload.subtotal !== null && Number.isFinite(at) ? at : subtotalOf(state.items);
+      return { ...state, coupon: action.payload.coupon, discount: pinned ? d : 0, discountAt: pinned ? checkedAt : null };
+    }
     case 'REMOVE_COUPON':
-      return { ...state, coupon: null, discount: 0 };
+      return { ...state, ...NO_COUPON };
     case 'CLEAR_CART':
       return initialState;
     case 'HYDRATE': {
@@ -55,7 +79,8 @@ function cartReducer(state, action) {
         const pid = i._id || i.id;
         return { ...i, _id: pid };
       });
-      return { ...action.payload, items };
+      const restored = { ...initialState, ...action.payload, items };
+      return items.length ? restored : { ...restored, ...NO_COUPON };
     }
     default:
       return state;
@@ -122,17 +147,24 @@ export function CartProvider({ children }) {
     return () => { clearInterval(tick); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
   }, [refreshCharges]);
 
-  const subtotal = state.items.reduce((sum, i) => sum + (i.discountPrice || i.price) * i.quantity, 0);
+  const subtotal = subtotalOf(state.items);
+  /* From the coupon and today's subtotal — never a figure frozen at the
+     quantity it was applied at. 0 below the coupon's minimum. */
+  const discount = shownCouponDiscount(state.coupon, subtotal, state.discountAt === null || state.discountAt === undefined ? null : { subtotal: state.discountAt, discount: state.discount });
+  const couponShort = couponShortfall(state.coupon, subtotal);
   const { shipping: shippingCost } = computeCharges({ subtotal, paymentMethod: null, charges });
-  const total = subtotal - state.discount + shippingCost;
+  const total = subtotal - discount + shippingCost;
   const itemCount = state.items.reduce((sum, i) => sum + i.quantity, 0);
 
   return (
-    <CartContext.Provider value={{ ...state, dispatch, subtotal, shippingCost, total, itemCount, charges, refreshCharges }}>
+    <CartContext.Provider value={{ ...state, discount, couponShortfall: couponShort, dispatch, subtotal, shippingCost, total, itemCount, charges, refreshCharges }}>
       {children}
     </CartContext.Provider>
   );
 }
+
+/* For tests. */
+export { cartReducer };
 
 export function useCart() {
   const ctx = useContext(CartContext);

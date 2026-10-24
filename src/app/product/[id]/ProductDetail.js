@@ -28,13 +28,28 @@ import OrderOnWhatsApp from '@/components/product/OrderOnWhatsApp';
 import WhatsAppIcon from '@/components/product/WhatsAppIcon';
 import useStoreWhatsApp from '@/components/product/useStoreWhatsApp';
 import useBuyNowReturn from '@/components/product/useBuyNowReturn';
+import { buyNowLoadFailure } from '@/components/checkout/checkoutRules';
 
 const TryOnModal = lazy(() => import('@/components/ar/TryOnModal'));
 
 /* The Buy Now checkout (form, payments) loads only when it's wanted —
-   fetched as the shopper reaches for the button, so it opens instantly. */
-const loadBuyNowDrawer = () => import('@/components/checkout/BuyNowDrawer');
-const BuyNowDrawer = lazy(loadBuyNowDrawer);
+   fetched as the shopper reaches for the button, so it opens instantly.
+   Not React.lazy: a chunk that fails to load (flaky data, or a tab left
+   open across a deploy) would throw during render and take the whole
+   product page down. Trying import() again in the same page doesn't help
+   either — Turbopack's runtime keeps the failed chunk load and returns it
+   to every later import() — so a failed load reloads the page with Buy
+   Now reopened (?buynow=<qty>, the page's other parameters kept, see
+   buyNowLoadFailure); a page that was itself that reload asks for a
+   refresh instead of looping. */
+let loadedBuyNowDrawer = null;
+function loadBuyNowDrawer() {
+  if (loadedBuyNowDrawer) return Promise.resolve(loadedBuyNowDrawer);
+  return import('@/components/checkout/BuyNowDrawer').then((m) => {
+    loadedBuyNowDrawer = m.default;
+    return loadedBuyNowDrawer;
+  });
+}
 function preloadBuyNowDrawer() { loadBuyNowDrawer().catch(() => {}); }
 
 /* Shown for the moment the drawer's code is still arriving. */
@@ -234,9 +249,41 @@ export default function ProductDetail({ initialProduct = null }) {
   const [zoomOpen, setZoomOpen] = useState(false);
   const [zoomIndex, setZoomIndex] = useState(0);
   const [buyNowOpen, setBuyNowOpen] = useState(false);
+  /* The drawer component once its code has arrived (see loadBuyNowDrawer). */
+  const [BuyNowDrawer, setBuyNowDrawer] = useState(() => loadedBuyNowDrawer);
+  const [buyNowLoading, setBuyNowLoading] = useState(false);
+  const buyNowLoadingRef = useRef(false);
+  /* This page load came with ?buynow (back from sign-in, or the reload
+     after a failed load) — read before useBuyNowReturn drops it. */
+  const openedWithBuyNow = useRef(false);
+  useEffect(() => {
+    try { openedWithBuyNow.current = new URLSearchParams(window.location?.search || '').has('buynow'); } catch { /* no URL to read */ }
+  }, []);
+  const showBuyNow = useCallback((productId, wantedQty) => {
+    if (loadedBuyNowDrawer) {
+      setBuyNowDrawer(() => loadedBuyNowDrawer);
+      setBuyNowOpen(true);
+      return;
+    }
+    if (buyNowLoadingRef.current) return;
+    buyNowLoadingRef.current = true;
+    setBuyNowLoading(true);
+    loadBuyNowDrawer()
+      .then((Drawer) => { setBuyNowDrawer(() => Drawer); setBuyNowOpen(true); })
+      .catch(() => {
+        const next = buyNowLoadFailure({ productId, qty: wantedQty, openedWithBuyNow: openedWithBuyNow.current, search: window.location.search });
+        if (next.reloadTo) {
+          toast(next.message);
+          window.location.assign(next.reloadTo);
+        } else {
+          toast.error(next.message);
+        }
+      })
+      .finally(() => { buyNowLoadingRef.current = false; setBuyNowLoading(false); });
+  }, []);
 
   /* Back from sign-in (?buynow=<qty>): reopen Buy Now for that quantity. */
-  const reopenBuyNow = useCallback((n) => { setQty(n); setBuyNowOpen(true); }, []);
+  const reopenBuyNow = useCallback((n) => { setQty(n); showBuyNow(id, n); }, [showBuyNow, id]);
   const buyNowSoldOut = useCallback(() => toast.error('Sorry — this piece has just sold out.'), []);
   useBuyNowReturn({ product, ready: refreshed, router, onOpen: reopenBuyNow, onSoldOut: buyNowSoldOut });
 
@@ -336,7 +383,7 @@ export default function ProductDetail({ initialProduct = null }) {
      left alone. Sign-in (if needed) happens inside the drawer. */
   function openBuyNow() {
     if (soldOut) return;
-    setBuyNowOpen(true);
+    showBuyNow(id || product._id || product.id, qty); // this page's own URL
   }
 
   function share() {
@@ -393,10 +440,9 @@ export default function ProductDetail({ initialProduct = null }) {
           />
         </Suspense>
       )}
-      {buyNowOpen && (
-        <Suspense fallback={<BuyNowLoading />}>
-          <BuyNowDrawer open product={product} qty={qty} onClose={() => setBuyNowOpen(false)} />
-        </Suspense>
+      {buyNowLoading && <BuyNowLoading />}
+      {buyNowOpen && BuyNowDrawer && (
+        <BuyNowDrawer open product={product} qty={qty} onClose={() => setBuyNowOpen(false)} />
       )}
 
       {/* ── MOBILE FULL-WIDTH IMAGE GALLERY ── */}

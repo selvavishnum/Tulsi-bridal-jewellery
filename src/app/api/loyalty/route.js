@@ -1,22 +1,39 @@
 import { NextResponse } from 'next/server';
 import { getDB } from '@/lib/firebase';
-import { redeemLoyaltyPoints } from '@/lib/loyalty';
+import { redeemLoyaltyPoints, parkedLoyaltyDiscount } from '@/lib/loyalty';
 import { getEffectiveSession } from '@/lib/adminCollection';
 
+/* GET /api/loyalty → { points, transactions, parkedDiscount }
+     points          spendable loyalty points
+     transactions    the latest 10 loyalty transactions
+     parkedDiscount  ₹ of loyalty discount the customer's NEXT order gets
+                     automatically: redeemed points not yet spent
+                     (pendingLoyaltyDiscount) plus what their unpaid,
+                     abandoned online attempts hold — a new order takes that
+                     over (POST /api/orders). Before the order's caps — 20%
+                     of its subtotal, and no more than the coupon discount
+                     leaves of it — so a page shows
+                     loyaltyDiscountFor(parkedDiscount, subtotal, couponDiscount)
+                     (checkoutRules), and sends that as the order's
+                     loyaltyDiscount. */
 export async function GET() {
   try {
     const session = await getEffectiveSession();
     if (!session) return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
     const db = getDB();
     const userDoc = await db.collection('users').doc(session.user.id).get();
-    const points = userDoc.exists ? (userDoc.data().loyaltyPoints || 0) : 0;
-    const txSnap = await db.collection('loyaltyTransactions')
-      .where('userId', '==', session.user.id)
-      .orderBy('createdAt', 'desc')
-      .limit(10)
-      .get();
+    const user = userDoc.exists ? userDoc.data() : {};
+    const points = user.loyaltyPoints || 0;
+    const [txSnap, parkedDiscount] = await Promise.all([
+      db.collection('loyaltyTransactions')
+        .where('userId', '==', session.user.id)
+        .orderBy('createdAt', 'desc')
+        .limit(10)
+        .get(),
+      parkedLoyaltyDiscount(db, session.user.id, user),
+    ]);
     const transactions = txSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    return NextResponse.json({ success: true, data: { points, transactions } });
+    return NextResponse.json({ success: true, data: { points, transactions, parkedDiscount } });
   } catch (e) {
     return NextResponse.json({ success: false, message: e.message }, { status: 500 });
   }

@@ -14,9 +14,19 @@ const EMPTY = {
   validFrom: '', validUntil: '', isActive: true, firstOrderOnly: false,
 };
 
+/* The start date in India (stored as the instant midnight IST begins). */
+const IST_MS = 330 * 60_000;
+function istDate(iso) {
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? '' : new Date(t + IST_MS).toISOString().slice(0, 10);
+}
+const startsLater = (c) => !!c.startsAt && new Date(c.startsAt) > new Date();
+const isLive = (c) => c.isActive && (!c.expiresAt || new Date(c.expiresAt) > new Date()) && !startsLater(c);
+
 /* A stored coupon → the form (edit). */
 function toForm(c) {
   const until = c.expiresAt || c.validUntil;
+  const limit = Number(c.maxUses ?? c.usageLimit) || 0;
   return {
     ...EMPTY,
     code: c.code || '',
@@ -24,10 +34,29 @@ function toForm(c) {
     type: c.type || 'percentage',
     value: c.value ?? '',
     minOrderAmount: c.minOrderAmount ? String(c.minOrderAmount) : '',
-    usageLimit: c.maxUses ?? c.usageLimit ?? '',
+    maxDiscount: Number(c.maxDiscount) > 0 ? String(c.maxDiscount) : '',
+    usageLimit: limit > 0 ? String(limit) : '', // 0 = unlimited
+    validFrom: c.startsAt ? istDate(c.startsAt) : '',
     validUntil: until ? String(until).slice(0, 10) : '',
     isActive: c.isActive !== false,
     firstOrderOnly: c.firstOrderOnly === true,
+  };
+}
+
+/* The form → the API. A cleared field is sent as '' (JSON drops undefined,
+   so an edit could never clear it): blank limit = unlimited, blank cap =
+   none, blank start = straight away, blank expiry = never. */
+function toPayload(form) {
+  const num = (v) => (String(v ?? '').trim() === '' ? '' : Number(v));
+  return {
+    ...form,
+    value: parseFloat(form.value),
+    minOrderAmount: form.minOrderAmount ? parseFloat(form.minOrderAmount) : 0,
+    maxDiscount: num(form.maxDiscount),
+    usageLimit: num(form.usageLimit),
+    validFrom: form.validFrom || '',
+    validUntil: form.validUntil || '',
+    firstOrderOnly: form.firstOrderOnly === true,
   };
 }
 
@@ -57,7 +86,7 @@ export default function AdminCouponsPage() {
   async function handleSave() {
     setSaving(true);
     try {
-      const payload = { ...form, value: parseFloat(form.value), minOrderAmount: form.minOrderAmount ? parseFloat(form.minOrderAmount) : 0, maxDiscount: form.maxDiscount ? parseFloat(form.maxDiscount) : undefined, usageLimit: form.usageLimit ? parseInt(form.usageLimit) : undefined, firstOrderOnly: form.firstOrderOnly === true };
+      const payload = toPayload(form);
       const res = editingId
         ? await fetch(`/api/coupons/${editingId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         : await fetch('/api/coupons', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -112,11 +141,23 @@ export default function AdminCouponsPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 capitalize text-gray-600">{c.type}</td>
-                    <td className="px-4 py-3 font-semibold">{c.type === 'percentage' ? `${c.value}%` : formatPrice(c.value)}</td>
+                    <td className="px-4 py-3">
+                      <span className="font-semibold">{c.type === 'percentage' ? `${c.value}%` : formatPrice(c.value)}</span>
+                      {Number(c.maxDiscount) > 0 && (
+                        <span className="block text-xs text-gray-500 whitespace-nowrap">max {formatPrice(c.maxDiscount)}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-gray-500">{formatPrice(c.minOrderAmount || 0)}</td>
-                    <td className="px-4 py-3 text-gray-500">{c.usedCount || 0}/{c.maxUses || c.usageLimit || '∞'}</td>
-                    <td className="px-4 py-3 text-xs text-gray-400">{(c.expiresAt || c.validUntil) ? format(new Date(c.expiresAt || c.validUntil), 'dd MMM yyyy') : '—'}</td>
-                    <td className="px-4 py-3"><Badge variant={c.isActive && (!c.expiresAt || new Date(c.expiresAt) > new Date()) ? 'success' : 'danger'}>{c.isActive && (!c.expiresAt || new Date(c.expiresAt) > new Date()) ? 'Active' : 'Inactive'}</Badge></td>
+                    <td className="px-4 py-3 text-gray-500">{c.usedCount || 0}/{Number(c.maxUses) > 0 ? c.maxUses : '∞'}</td>
+                    <td className="px-4 py-3 text-xs text-gray-400">
+                      {(c.expiresAt || c.validUntil) ? format(new Date(c.expiresAt || c.validUntil), 'dd MMM yyyy') : '—'}
+                      {startsLater(c) && <span className="block whitespace-nowrap text-amber-700">from {format(new Date(c.startsAt), 'dd MMM yyyy')}</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {c.isActive && startsLater(c) && !(c.expiresAt && new Date(c.expiresAt) <= new Date())
+                        ? <Badge variant="warning">Scheduled</Badge>
+                        : <Badge variant={isLive(c) ? 'success' : 'danger'}>{isLive(c) ? 'Active' : 'Inactive'}</Badge>}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
                         <button onClick={() => openEdit(c)} aria-label={`Edit ${c.code}`} className="p-1.5 text-gray-500 hover:text-maroon-950 hover:bg-gray-100 rounded-lg transition"><FiEdit2 /></button>
@@ -161,18 +202,18 @@ export default function AdminCouponsPage() {
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Max Discount (₹)</label>
-                  <input type="number" value={form.maxDiscount} onChange={(e) => setForm({ ...form, maxDiscount: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
+                  <input type="number" min="0" value={form.maxDiscount} onChange={(e) => setForm({ ...form, maxDiscount: e.target.value })} placeholder="No cap" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Usage Limit</label>
-                  <input type="number" value={form.usageLimit} onChange={(e) => setForm({ ...form, usageLimit: e.target.value })} placeholder="Unlimited" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
+                  <input type="number" min="0" step="1" value={form.usageLimit} onChange={(e) => setForm({ ...form, usageLimit: e.target.value })} placeholder="Unlimited" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Valid From *</label>
+                  <label className="text-xs text-gray-500 mb-1 block">Valid From <span className="text-gray-400">(blank = now)</span></label>
                   <input type="date" value={form.validFrom} onChange={(e) => setForm({ ...form, validFrom: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Valid Until *</label>
+                  <label className="text-xs text-gray-500 mb-1 block">Valid Until <span className="text-gray-400">(blank = no expiry)</span></label>
                   <input type="date" value={form.validUntil} onChange={(e) => setForm({ ...form, validUntil: e.target.value })} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500" />
                 </div>
                 <label className="col-span-2 flex items-start gap-3 p-3 rounded-lg border border-amber-100 bg-amber-50 cursor-pointer">

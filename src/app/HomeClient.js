@@ -11,6 +11,7 @@ import { useCart } from '@/context/CartContext';
 import { cacheGet, cacheSet } from '@/lib/clientCache';
 import ProductCard from '@/components/shop/ProductCard';
 import CategoryShowcase from '@/components/home/CategoryShowcase';
+import CustomerAvatar from '@/components/ui/CustomerAvatar';
 import { normalizeShowcase } from '@/lib/categoryShowcase';
 
 function getCookie(name) {
@@ -560,15 +561,9 @@ export default function HomeClient() {
               <div key={i} className="bg-white border border-stone-100 shadow-sm rounded-2xl p-6 flex-shrink-0 w-[80vw] max-w-xs md:w-auto md:max-w-none snap-start flex flex-col hover:border-gold-300 transition-colors duration-300">
                 {/* Customer photo + info at top */}
                 <div className="flex items-center gap-3 mb-4">
-                  {t.photo ? (
-                    <div className="relative w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border-2 border-gold-500/60 shadow-sm">
-                      <Image src={t.photo} alt={t.name} fill className="object-cover" />
-                    </div>
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-wine-50 flex items-center justify-center flex-shrink-0 border-2 border-gold-300">
-                      <span className="text-wine-700 font-serif font-bold text-lg">{(t.name || 'C')[0].toUpperCase()}</span>
-                    </div>
-                  )}
+                  {/* Face-centred round Cloudinary photo; the initial badge if there's
+                      no photo or it fails to load — never a broken image. */}
+                  <CustomerAvatar name={t.name} photo={t.photo} size={56} className="border-2 border-gold-500/60 shadow-sm" />
                   <div>
                     <p className="font-semibold text-stone-900 text-sm">{t.name}</p>
                     {t.location && <p className="text-gold-700 text-xs font-medium">{t.location}</p>}

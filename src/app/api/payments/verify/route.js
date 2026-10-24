@@ -6,6 +6,14 @@ import Razorpay from 'razorpay';
 import { getDB } from '@/lib/firebase';
 import { settlePaidOrder } from '@/lib/settlePayment';
 
+/* 409: the money arrived for an order that had already been replaced or
+   cancelled — recorded for a refund (settlePaidOrder), never placed. */
+const paidAfterCancelResponse = () => NextResponse.json({
+  success: false,
+  code: 'PAID_AFTER_CANCEL',
+  message: 'This payment was for an order that had already been replaced or cancelled, so it was not placed. We will refund it to your original payment method.',
+}, { status: 409 });
+
 /* Timing-safe hex digest comparison */
 function signatureMatches(expected, received) {
   if (typeof received !== 'string' || expected.length !== received.length) return false;
@@ -50,8 +58,15 @@ export async function POST(request) {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }
 
-    /* Already settled — nothing to do, and never deduct stock twice */
+    /* Already settled — nothing to do, and never deduct stock twice. Paid
+       after a cancel (the webhook got there first): the same answer as
+       below, never "verified". */
     if (order.payment?.status === 'paid') {
+      if (order.paidAfterCancel === true) return paidAfterCancelResponse();
+      /* Nothing is applied twice, but an "order confirmed" that never went
+         out (the send failed earlier) is sent now — settlePaidOrder does
+         only that, after the response. */
+      await settlePaidOrder(db, orderRef, { razorpayPaymentId }).catch((e) => console.error('[verify] customer confirmation retry failed:', e?.message));
       return NextResponse.json({ success: true, message: 'Payment already verified' });
     }
 
@@ -112,7 +127,8 @@ export async function POST(request) {
        path that ever applies these side effects, no matter which of the two
        entry points gets there first; its own transaction handles the race
        between them. */
-    await settlePaidOrder(db, orderRef, { razorpayPaymentId, razorpaySignature });
+    const { paidAfterCancel } = await settlePaidOrder(db, orderRef, { razorpayPaymentId, razorpaySignature });
+    if (paidAfterCancel) return paidAfterCancelResponse();
 
     return NextResponse.json({ success: true, message: 'Payment verified successfully' });
   } catch (error) {

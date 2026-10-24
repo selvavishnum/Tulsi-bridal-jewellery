@@ -1,5 +1,5 @@
 /* In-memory stand-in for the slice of the Firestore Admin API the server
-   code uses: doc refs, equality/range queries with orderBy/limit/count(),
+   code uses: doc refs, equality/range queries with orderBy/startAfter/limit/count(),
    set(merge) deep merges, increments, batches and runTransaction with
    writes buffered until commit (as Firestore does). Not a general emulator. */
 /* FieldValue.increment stand-in for tests that need real counters: mock
@@ -62,18 +62,24 @@ export function fakeFirestore(seed = {}) {
     }
   }
 
-  function query(col, filters = [], order = null, max = Infinity) {
+  /* orderBy('__name__') orders by document id (Firestore's FieldPath.documentId());
+     startAfter(value) takes the orderBy field's value (the id for '__name__'). */
+  function query(col, filters = [], order = null, max = Infinity, after = undefined) {
     return {
       kind: 'query',
       where: (f, op, v) => {
         if (!['==', 'array-contains', '>', '>=', '<', '<='].includes(op)) throw new Error(`fake: unsupported op ${op}`);
-        return query(col, [...filters, [f, op, v]], order, max);
+        return query(col, [...filters, [f, op, v]], order, max, after);
       },
-      orderBy: (field, dir = 'asc') => query(col, filters, [field, dir], max),
-      select: () => query(col, filters, order, max),
-      limit: (n) => query(col, filters, order, Number.isFinite(n) ? n : max),
-      count: () => ({ get: async () => { const { size } = runQuery(col, filters, order, max); return { data: () => ({ count: size }) }; } }),
-      get: async () => runQuery(col, filters, order, max),
+      orderBy: (field, dir = 'asc') => query(col, filters, [field, dir], max, after),
+      startAfter: (value) => {
+        if (!order) throw new Error('fake: startAfter needs an orderBy');
+        return query(col, filters, order, max, value);
+      },
+      select: () => query(col, filters, order, max, after),
+      limit: (n) => query(col, filters, order, Number.isFinite(n) ? n : max, after),
+      count: () => ({ get: async () => { const { size } = runQuery(col, filters, order, max, after); return { data: () => ({ count: size }) }; } }),
+      get: async () => runQuery(col, filters, order, max, after),
     };
   }
 
@@ -86,11 +92,19 @@ export function fakeFirestore(seed = {}) {
     return d[f] <= v;
   };
 
-  function runQuery(col, filters, order, max = Infinity) {
+  function runQuery(col, filters, order, max = Infinity, after = undefined) {
     let entries = [...colMap(col).entries()].filter(([, d]) => filters.every((flt) => matches(d, flt)));
-    if (order) {
+    if (order && order[0] === '__name__') {
+      const desc = order[1] === 'desc';
+      entries = entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0) * (desc ? -1 : 1));
+      if (after !== undefined) entries = entries.filter(([id]) => (desc ? id < String(after) : id > String(after)));
+    } else if (order) {
       const [field, dir] = order;
       entries = entries.sort(([, a], [, b]) => (String(a[field] ?? '') < String(b[field] ?? '') ? -1 : 1) * (dir === 'desc' ? -1 : 1));
+      if (after !== undefined) {
+        const past = (v) => (dir === 'desc' ? String(v ?? '') < String(after) : String(v ?? '') > String(after));
+        entries = entries.filter(([, d]) => past(d[field]));
+      }
     }
     const docs = entries.slice(0, max).map(([id]) => snapOf(col, id));
     return { docs, empty: docs.length === 0, size: docs.length };

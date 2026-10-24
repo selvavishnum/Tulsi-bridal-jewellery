@@ -18,6 +18,11 @@ function safeImg(url) {
 }
 
 /* ── SMTP Transporter ── */
+/* nodemailer waits forever by default: a mail server that never answers
+   would hold the request (or the work queued after it) until the platform
+   kills it. */
+const SMTP_TIMEOUT_MS = 10_000;
+
 function createTransporter() {
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -27,6 +32,9 @@ function createTransporter() {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
+    connectionTimeout: SMTP_TIMEOUT_MS,
+    greetingTimeout: SMTP_TIMEOUT_MS,
+    socketTimeout: SMTP_TIMEOUT_MS,
   });
 }
 
@@ -126,10 +134,13 @@ function ctaBtn(text, url) {
 
 /* ═══════════════════════════════════════════
    1. CUSTOMER ORDER CONFIRMATION
+   Never throws. Resolves false when the mail server refused or timed out
+   (settlePaidOrder then sends it again later), otherwise true — also
+   when there is nothing to send to (no recipient, SMTP not configured).
    ═══════════════════════════════════════════ */
 export async function sendOrderConfirmation(order) {
   const to = order.guestEmail || order.shippingAddress?.email || order.shippingAddress?.email;
-  if (!to || !process.env.SMTP_USER) return;
+  if (!to || !process.env.SMTP_USER) return true;
 
   const addr = order.shippingAddress || {};
   /* Support both fullName (checkout form) and name (normalized) */
@@ -194,8 +205,10 @@ export async function sendOrderConfirmation(order) {
       subject: `Order Confirmed #${esc(order.orderNumber)} | ${BRAND.name}`,
       html,
     });
+    return true;
   } catch (err) {
     console.error('[Email] Order confirmation failed:', err.message);
+    return false;
   }
 }
 
