@@ -7,6 +7,8 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { FiArrowLeft, FiSend, FiMessageCircle, FiShield } from 'react-icons/fi';
 import { MAX_MESSAGE } from '@/lib/chat';
+import CatalogImage from '@/components/ui/CatalogImage';
+import { THUMB_WIDTHS } from '@/lib/catalogImages';
 
 const LIST_POLL_MS = 30_000;
 const THREAD_POLL_MS = 8_000;
@@ -105,7 +107,7 @@ export default function ChatInbox({ apiBase, side, initialId = null, emptyHint }
                 <button onClick={() => open(c.id)} aria-current={c.id === activeId ? 'true' : undefined}
                   className={`w-full text-left px-4 py-3 flex gap-3 items-start border-b border-stone-50 hover:bg-stone-50 ${c.id === activeId ? 'bg-stone-50' : ''}`}>
                   {c.product?.image
-                    ? <img src={c.product.image} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                    ? <CatalogImage src={c.product.image} alt="" widths={THUMB_WIDTHS} sizes="40px" width={40} height={40} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
                     : <span className="w-10 h-10 rounded-lg bg-stone-100 flex-shrink-0" />}
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center justify-between gap-2">

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';import Link from 'next/link';
-import Image from 'next/image';
 import {
   FiShoppingCart, FiShield, FiRefreshCw,
   FiLock, FiStar, FiCalendar, FiArrowRight, FiChevronLeft, FiChevronRight,
@@ -12,7 +11,12 @@ import { cacheGet, cacheSet } from '@/lib/clientCache';
 import ProductCard from '@/components/shop/ProductCard';
 import CategoryShowcase from '@/components/home/CategoryShowcase';
 import CustomerAvatar from '@/components/ui/CustomerAvatar';
+import CloudinaryPicture from '@/components/ui/CloudinaryPicture';
+import { IMAGE_SIZES, IMAGE_WIDTHS } from '@/lib/cloudinaryImage';
 import { normalizeShowcase } from '@/lib/categoryShowcase';
+import CatalogImage from '@/components/ui/CatalogImage';
+import { GRID_SIZES, SECTION_CONTAINER, gridSizes } from '@/lib/catalogImages';
+import { nextHeroSlides, nextShowcase } from '@/lib/heroSlides';
 
 function getCookie(name) {
   if (typeof document === 'undefined') return '';
@@ -53,6 +57,30 @@ const DEFAULT_SLIDES = [
   },
 ];
 
+/* Hero photo on a phone. The hero box is `calc(100dvh - 88px)` tall
+   (.hero-viewport in globals.css): on a 390×844 phone that is 390×756, a
+   0.52 portrait. A landscape photo covering it would be scaled up to 756px of
+   height and show only its middle third, so a tall phone gets its own
+   portrait crop instead (Cloudinary's g_auto keeps the jewellery in frame) at
+   phone-sized widths — a fraction of the bytes, and sharper, because nothing
+   is stretched.
+   The crop is a little WIDER (0.66) than the usual box, so the photo covers by
+   height and only the sides are trimmed; a shorter phone (360×640 → a 0.65
+   box) then shows the whole crop instead of losing its bottom — where the
+   pendant is — as a narrower crop would. `sizes` says so: the photo is drawn
+   0.66 ÷ 0.52 ≈ 1.28× the viewport width. 'good' quality: it is shown at
+   ≤ 500 CSS px, where it is indistinguishable from 'best' at half the bytes
+   (the desktop photo keeps 'best').
+   Only tall phones (viewport ≤ 3:4): a landscape-ish window or a portrait
+   tablet (768px and up, Tailwind `md`) keeps the full photo. */
+const HERO_ART = Object.freeze({
+  media: '(max-width: 767px) and (max-aspect-ratio: 3/4)',
+  ratio: 0.66,
+  sizes: '128vw',
+  quality: 'good',
+  widths: Object.freeze([480, 640, 828, 1080, 1280]),
+});
+
 const BROWSE_CATS = [
   { key: '',              label: 'All' },
   { key: 'necklace',     label: 'Necklace' },
@@ -77,6 +105,9 @@ const SORT_OPTIONS = [
 ];
 
 const BROWSE_LIMIT = 12;
+
+/* The Instagram strip: `grid-cols-3 gap-2 md:gap-3` inside section-container. */
+const INSTAGRAM_SIZES = gridSizes({ cols: [[0, 3]], gap: [[0, 8], [768, 12]], ...SECTION_CONTAINER });
 
 const TRUST = [
   { icon: FiShield,    title: '100% Authentic',       desc: 'Certified genuine pieces' },
@@ -144,8 +175,31 @@ function HeroParticles() {
   return <canvas ref={canvasRef} className="hero-canvas" />;
 }
 
+/* The photo of one slide. Only the first slide is the LCP element: with
+   seeded slides it is in the first HTML, so its preload (AVIF) goes out from
+   <head> before any script runs. The others appear after the 5 s timer, so
+   they load as soon as they render (eager, no lazy-load wait) at normal
+   priority and are never preloaded — they must not compete with the page's own
+   CSS and JS. quality "best": a full-bleed hero is where compression shows. */
+export function HeroPhoto({ slide, priority }) {
+  return (
+    <CloudinaryPicture
+      src={slide.imageUrl}
+      alt={slide.title || 'Bridal jewellery'}
+      fill
+      priority={priority}
+      loading="eager"
+      sizes={IMAGE_SIZES.hero}
+      widths={IMAGE_WIDTHS.hero}
+      quality="best"
+      art={HERO_ART}
+      className="object-cover object-top"
+    />
+  );
+}
+
 /* ── Hero Slider ── */
-function HeroSlider({ slides }) {
+export function HeroSlider({ slides }) {
   const [current, setCurrent] = useState(0);
   const [transitioning, setTransitioning] = useState(false);
   const timerRef = useRef(null);
@@ -164,27 +218,24 @@ function HeroSlider({ slides }) {
   const prev = useCallback(() => goTo((current - 1 + displaySlides.length) % displaySlides.length), [current, displaySlides.length, goTo]);
 
   useEffect(() => {
+    /* One slide has nothing to rotate to: don't fade it out and back in. */
+    if (displaySlides.length < 2) return undefined;
     timerRef.current = setInterval(next, 5000);
     return () => clearInterval(timerRef.current);
-  }, [next]);
+  }, [next, displaySlides.length]);
 
-  const slide = displaySlides[current];
+  /* A refresh can shorten the list while a later slide is on screen. */
+  const index = current < displaySlides.length ? current : 0;
+  const slide = displaySlides[index];
 
   return (
     <section className="relative w-full overflow-hidden bg-stone-100 hero-viewport">
       {/* Slide image / gradient background */}
       <div className={`absolute inset-0 transition-opacity duration-500 ${transitioning ? 'opacity-0' : 'opacity-100'}`}>
         {slide.imageUrl ? (
-          <Image
-            src={slide.imageUrl}
-            alt={slide.title || 'Bridal jewellery'}
-            fill
-            priority
-            className="object-cover object-top"
-            sizes="100vw"
-          />
+          <HeroPhoto slide={slide} priority={index === 0} />
         ) : (
-          <div className={`w-full h-full bg-gradient-to-br ${slide.bg}`}>
+          <div className={`w-full h-full bg-gradient-to-br ${slide.bg || DEFAULT_SLIDES[0].bg}`}>
             {/* Decorative texture */}
             <div className="absolute inset-0 opacity-[0.04]" style={{
               backgroundImage: 'repeating-linear-gradient(45deg, #c9973a 0, #c9973a 1px, transparent 0, transparent 40px)',
@@ -264,7 +315,7 @@ function HeroSlider({ slides }) {
             <button
               key={i}
               onClick={() => goTo(i)}
-              className={`transition-all duration-300 rounded-full ${i === current ? 'w-7 h-2.5 bg-gold-400' : 'w-2.5 h-2.5 bg-white/40 hover:bg-white/70'}`}
+              className={`transition-all duration-300 rounded-full ${i === index ? 'w-7 h-2.5 bg-gold-400' : 'w-2.5 h-2.5 bg-white/40 hover:bg-white/70'}`}
             />
           ))}
         </div>
@@ -283,14 +334,23 @@ export function instagramHandle(value, fallback = 'tulsibridal') {
   return /^[A-Za-z0-9._]{1,30}$/.test(h) ? h : fallback;
 }
 
-/* ── Main Page ── */
-export default function HomeClient() {
+/* ── Main Page ──
+   `heroSlides` is what the server rendered into the HTML (src/app/page.js):
+   an array (empty = none configured) when it could read the settings, null
+   when it could not. */
+export default function HomeClient({ heroSlides: serverSlides = null, showcase: serverShowcase = null }) {
   const { charges } = useCart();
   const deliveryStat = !charges.enable_shipping_fee
     ? ['Free', 'Delivery']
     : charges.free_shipping_threshold > 0 ? ['Free', `Above ₹${charges.free_shipping_threshold.toLocaleString('en-IN')}`] : [`₹${charges.shipping_fee_amount}`, 'Delivery'];
   const [siteSettings, setSiteSettings] = useState({});
-  const [heroSlides, setHeroSlides] = useState([]);
+  const seeded = Array.isArray(serverSlides);
+  const [heroSlides, setHeroSlides] = useState(seeded ? serverSlides : []);
+  /* The category showcase the server drew (null = it couldn't read the
+     settings). Seeded, it is in the first HTML, so it can't pop in later and
+     push the page down; unseeded, it waits for the settings as before. */
+  const showcaseSeeded = !!serverShowcase;
+  const [showcase, setShowcase] = useState(serverShowcase);
   const [testimonials, setTestimonials] = useState(DEFAULT_TESTIMONIALS);
   const [instagramFeed, setInstagramFeed] = useState([]);
   const [settingsReady, setSettingsReady] = useState(false);
@@ -309,9 +369,16 @@ export default function HomeClient() {
   const waNumber = (siteSettings.whatsapp || siteSettings.phone || DEFAULT_WA).replace(/\D/g, '');
 
   useEffect(() => {
-    function applySettings(d) {
+    function applySettings(d, { cached = false } = {}) {
       setSiteSettings(d);
-      if (Array.isArray(d.heroSlides)) setHeroSlides(d.heroSlides);
+      /* Seeded slides are already on screen and newer than a copy this browser
+         stored up to an hour ago, so only the fresh fetch may change them — and
+         only when it differs: an identical list keeps the very same state, so
+         the first photo is neither re-rendered nor re-fetched. */
+      setHeroSlides((prev) => nextHeroSlides(prev, d.heroSlides, { stale: cached && seeded }));
+      /* Same rule as the slides: a seeded showcase is newer than the copy this
+         browser stored, and an identical one keeps its state (no re-render). */
+      if (!(cached && showcaseSeeded)) setShowcase((prev) => nextShowcase(prev, normalizeShowcase(d)));
       if (Array.isArray(d.testimonials) && d.testimonials.length > 0) setTestimonials(d.testimonials);
       if (Array.isArray(d.instagramFeed)) setInstagramFeed(d.instagramFeed);
       setSettingsReady(true);
@@ -320,7 +387,7 @@ export default function HomeClient() {
        change (e.g. hiding a category) shows on the next visit, not an hour
        later. */
     const cached = cacheGet('settings', 60 * 60 * 1000);
-    if (cached) applySettings(cached);
+    if (cached) applySettings(cached, { cached: true });
     fetch('/api/admin/settings')
       .then((r) => r.json())
       .then((d) => {
@@ -328,7 +395,7 @@ export default function HomeClient() {
         else setSettingsReady(true);
       })
       .catch(() => setSettingsReady(true));
-  }, []);
+  }, [seeded, showcaseSeeded]);
 
   // Fetch a page of browse products
   const fetchBrowse = useCallback(async (page, cat, sort, reset = false) => {
@@ -404,7 +471,7 @@ export default function HomeClient() {
       {/* ── TOP CATEGORIES (Admin → Settings → Category Showcase) ──
           Rendered once the settings are known, so a hidden category never
           flashes up first. */}
-      {settingsReady && <CategoryShowcase showcase={normalizeShowcase(siteSettings)} />}
+      {showcase && <CategoryShowcase showcase={showcase} />}
 
       {/* ── BROWSE ALL PRODUCTS (Infinite Scroll) ── */}
       <section className="py-12 bg-white" id="shop">
@@ -468,7 +535,7 @@ export default function HomeClient() {
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
                 {browseProducts.map((p) => (
-                  <ProductCard key={(p._id || p.id) + browseCat} product={p} showCategory />
+                  <ProductCard key={(p._id || p.id) + browseCat} product={p} showCategory sizes={GRID_SIZES.home} />
                 ))}
               </div>
 
@@ -603,10 +670,12 @@ export default function HomeClient() {
                   className="group relative aspect-square overflow-hidden rounded-xl bg-stone-100 block"
                 >
                   {post.imageUrl && (
-                    <Image
+                    <CatalogImage
                       src={post.imageUrl}
                       alt={post.caption || 'Instagram post'}
                       fill
+                      widths={[240, 400, 640]}
+                      sizes={INSTAGRAM_SIZES}
                       className="object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                   )}

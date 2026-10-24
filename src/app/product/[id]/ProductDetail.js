@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import Image from 'next/image';
 import Link from 'next/link';
 import {
   FiShoppingCart, FiHeart, FiShare2, FiStar,
@@ -14,7 +13,8 @@ import { useCart } from '@/context/CartContext';
 import { freeShippingLine } from '@/lib/storeCharges';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
-import { cldBase, cldZoom, cldThumb } from '@/lib/cloudinaryImage';
+import { IMAGE_WIDTHS, cldBase, cldZoom } from '@/lib/cloudinaryImage';
+import CloudinaryPicture from '@/components/ui/CloudinaryPicture';
 import ImageZoomModal from '@/components/shop/ImageZoomModal';
 import { useProductTracking } from '@/hooks/useProductTracking';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -67,6 +67,111 @@ const TRUST_ITEMS = [
   { icon: FiRefreshCw,   label: '7-Day Returns' },
   { icon: FiCheckCircle, label: 'Secure Payment' },
 ];
+
+/* ── Gallery photos ──
+   The page draws the same photo twice: a full-width one for phones
+   (`lg:hidden`) and a half-width one beside the details on desktops
+   (`hidden lg:block`). CSS hides one copy, but a hidden <img> is still
+   downloaded — so the desktop copy says when it is visible (`showWhen`) and
+   the phone copy says when it is hidden (`hideWhen`), both with Tailwind's
+   own `lg` query. Everywhere the photo is hidden, a 1×1 pixel is fetched
+   instead. One query for both means the two are exact complements at every
+   width: a hand-written `max-width: 1023.99px` for the phone copy still
+   matches at exactly 1024px (browsers round fractional widths), where both
+   copies would download. */
+const LG_AND_UP = '(min-width: 1024px)';
+
+/* `sizes`: how wide each copy is drawn, which the browser needs before any
+   CSS has loaded to choose a file from the srcset. Measured from the layout,
+   not guessed:
+   - phone: the photo box spans the viewport;
+   - desktop: half of the page container (max-w-7xl = 1280px, px-8) minus the
+     gallery column's p-8 and the box's 1px border = 50vw − 98px, which stops
+     growing at 542px (a 1280px viewport and up — a 1920px screen still draws
+     542px). IMAGE_SIZES.gallery says 50vw, i.e. 960px at 1920 — about 1.8×
+     the pixels this box can show.
+   The two strings must differ: React merges preload hints that have the same
+   srcset AND sizes, which would leave one twin without its own preload. */
+const MAIN_SIZES_PHONE = '100vw';
+const MAIN_SIZES_DESKTOP = '(min-width: 1280px) 542px, calc(50vw - 98px)';
+/* Thumbnails: w-14 / w-16 minus their 2px borders. */
+const THUMB_SIZES_PHONE = '52px';
+const THUMB_SIZES_DESKTOP = '60px';
+
+/**
+ * The big photo, in one of the two layouts. Fills the aspect-square box its
+ * parent already reserves (so nothing moves when it arrives); object-contain
+ * keeps the whole piece in view whatever the photo's proportions.
+ * `first` = the photo the page opened on: the LCP element, so it is preloaded
+ * and fetched at high priority. A photo picked later is not preloaded (the
+ * shopper just asked for it, so it is simply eager + high priority — `loading`
+ * and `fetchPriority` here override the picture's lazy default).
+ * Quality stays 'best': this is the hero shot of a high-value piece.
+ * (width/height 1×1 only state the square ratio — `fill` sizes it to the box.)
+ * @param {{ url: string, name: string, phone?: boolean, first: boolean, imgRef?: import('react').Ref<HTMLImageElement> }} props
+ */
+function MainPhoto({ url, name, phone = false, first, imgRef }) {
+  return (
+    <CloudinaryPicture
+      ref={imgRef}
+      src={url}
+      alt={name}
+      width={1}
+      height={1}
+      fill
+      widths={IMAGE_WIDTHS.gallery}
+      sizes={phone ? MAIN_SIZES_PHONE : MAIN_SIZES_DESKTOP}
+      quality="best"
+      fallbackFormat="jpg"
+      {...(phone ? { hideWhen: LG_AND_UP } : { showWhen: LG_AND_UP })}
+      priority={first}
+      {...(!first && { loading: 'eager', fetchPriority: 'high' })}
+      className="object-contain"
+    />
+  );
+}
+
+/**
+ * A thumbnail in the selector strip: lazy and decoded off the main thread
+ * (the picture's defaults), a srcset that tops out at 320px (a 60px
+ * thumbnail at 3× needs 180), 'good' quality — perceptually lossless at this
+ * size. Fills its fixed w-14 / w-16 button, so the strip never shifts.
+ * @param {{ url: string, index: number, phone?: boolean }} props
+ */
+function ThumbPhoto({ url, index, phone = false }) {
+  return (
+    <CloudinaryPicture
+      src={url}
+      alt={`View ${index + 1}`}
+      width={1}
+      height={1}
+      fill
+      widths={IMAGE_WIDTHS.thumb}
+      sizes={phone ? THUMB_SIZES_PHONE : THUMB_SIZES_DESKTOP}
+      quality="good"
+      fallbackFormat="jpg"
+      {...(phone ? { hideWhen: LG_AND_UP } : { showWhen: LG_AND_UP })}
+      className="object-cover"
+    />
+  );
+}
+
+/* The file a gallery <img> has actually downloaded (the srcset pick for this
+   screen) — the loupe and the full-screen viewer start from it, so neither
+   has to fetch a second copy of a photo that is already on screen. null while
+   the img is not in the page yet, or is the hidden twin's 1×1 pixel. */
+function shownFile(img, index) {
+  const src = img?.currentSrc;
+  return src && !src.startsWith('data:') ? { index, src } : null;
+}
+
+/* The rating shown above the price. The review endpoint keeps product.ratings
+   in step with the reviews, so it is in the first HTML — otherwise the row
+   would appear after hydration and push the price and buttons down. */
+function ratingOf(product) {
+  const count = Math.max(0, Math.floor(Number(product?.ratings?.count) || 0));
+  return { average: count > 0 ? Number(product.ratings.average) || 0 : 0, count };
+}
 
 /* ── Star Picker ── */
 function StarPicker({ value, onChange }) {
@@ -248,6 +353,11 @@ export default function ProductDetail({ initialProduct = null }) {
   const [qty, setQty] = useState(1);
   const [zoomOpen, setZoomOpen] = useState(false);
   const [zoomIndex, setZoomIndex] = useState(0);
+  /* The file the gallery is showing when the full-screen viewer opens. */
+  const [zoomShown, setZoomShown] = useState(null);
+  /* The two layouts' main <img> elements: read for the file they loaded. */
+  const mobileImgRef = useRef(null);
+  const desktopImgRef = useRef(null);
   const [buyNowOpen, setBuyNowOpen] = useState(false);
   /* The drawer component once its code has arrived (see loadBuyNowDrawer). */
   const [BuyNowDrawer, setBuyNowDrawer] = useState(() => loadedBuyNowDrawer);
@@ -291,7 +401,7 @@ export default function ProductDetail({ initialProduct = null }) {
   function setSelectedImage(next) { recordCarouselClick(); setSelectedImageRaw(next); }
 
   const [reviews, setReviews] = useState([]);
-  const [reviewStats, setReviewStats] = useState({ average: 0, count: 0 });
+  const [reviewStats, setReviewStats] = useState(() => ratingOf(initialProduct));
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [tryOnOpen, setTryOnOpen] = useState(false);
@@ -302,6 +412,9 @@ export default function ProductDetail({ initialProduct = null }) {
      once the shopper actually hovers it (never on page load, never for the
      images they haven't looked at), and only once per image per visit. */
   const [loupeHover, setLoupeHover] = useState(false);
+  /* What the loupe shows before that sharper tier arrives: the file the
+     gallery already downloaded, captured as the cursor enters. */
+  const [loupeBase, setLoupeBase] = useState(null);
   const [loupePos, setLoupePos] = useState({ x: 50, y: 50 });
   const [loupeHiResLoaded, setLoupeHiResLoaded] = useState(() => new Set());
 
@@ -422,6 +535,7 @@ export default function ProductDetail({ initialProduct = null }) {
           images={product.images}
           startIndex={zoomIndex}
           productName={product.name}
+          shown={zoomShown}
           onClose={() => setZoomOpen(false)}
         />
       )}
@@ -450,19 +564,11 @@ export default function ProductDetail({ initialProduct = null }) {
         <div className="lg:hidden bg-white">
           <div
             className="relative w-full aspect-square overflow-hidden bg-white cursor-zoom-in"
-            onClick={() => { recordZoomInteraction(); setZoomIndex(selectedImage); setZoomOpen(true); }}
+            onClick={() => { recordZoomInteraction(); setZoomShown(shownFile(mobileImgRef.current, selectedImage)); setZoomIndex(selectedImage); setZoomOpen(true); }}
             onTouchStart={onMobileSwipeStart}
             onTouchEnd={onMobileSwipeEnd}
           >
-            <Image
-              src={cldBase(product.images[selectedImage])}
-              alt={product.name}
-              fill
-              priority
-              unoptimized
-              sizes="100vw"
-              className="object-contain"
-            />
+            <MainPhoto url={product.images[selectedImage]} name={product.name} phone first={selectedImage === 0} imgRef={mobileImgRef} />
             {discount > 0 && (
               <span className="absolute top-4 left-4 badge-sale text-sm px-3 py-1.5 z-10">-{discount}% OFF</span>
             )}
@@ -498,7 +604,7 @@ export default function ProductDetail({ initialProduct = null }) {
               {product.images.map((img, i) => (
                 <button key={i} onClick={() => setSelectedImage(i)}
                   className={`relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${selectedImage === i ? 'border-wine-600 shadow-sm' : 'border-transparent opacity-55 hover:opacity-90'}`}>
-                  <Image src={cldThumb(img, 64)} alt={`View ${i + 1}`} fill unoptimized sizes="56px" className="object-cover" />
+                  <ThumbPhoto url={img} index={i} phone />
                 </button>
               ))}
             </div>
@@ -516,34 +622,29 @@ export default function ProductDetail({ initialProduct = null }) {
               {/* Main image with slide arrows */}
               <div
                 className="relative aspect-square rounded-2xl overflow-hidden bg-white border border-stone-100 mb-3 group cursor-zoom-in"
-                onClick={() => { if (product.images?.[selectedImage]) { recordZoomInteraction(); setZoomIndex(selectedImage); setZoomOpen(true); } }}
-                onMouseEnter={() => { recordZoomInteraction(); setLoupeHover(true); }}
+                onClick={() => { if (product.images?.[selectedImage]) { recordZoomInteraction(); setZoomShown(shownFile(desktopImgRef.current, selectedImage)); setZoomIndex(selectedImage); setZoomOpen(true); } }}
+                onMouseEnter={() => { recordZoomInteraction(); setLoupeBase(shownFile(desktopImgRef.current, selectedImage)); setLoupeHover(true); }}
                 onMouseLeave={() => setLoupeHover(false)}
                 onMouseMove={onLoupeMove}
               >
                 {product.images?.[selectedImage] ? (
-                  <Image
-                    src={cldBase(product.images[selectedImage])}
-                    alt={product.name}
-                    fill
-                    priority
-                    unoptimized
-                    sizes="50vw"
-                    className="object-contain transition-opacity duration-300"
-                  />
+                  <MainPhoto url={product.images[selectedImage]} name={product.name} first={selectedImage === 0} imgRef={desktopImgRef} />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-8xl text-stone-200">💍</div>
                 )}
 
                 {/* Hover loupe — magnified, cursor-following crop. Starts
-                   from the already-loaded base tier the instant the cursor
-                   enters (no blank flash), then sharpens to the w_4000
-                   tier once that finishes loading in the background. */}
+                   from the file the gallery already loaded (captured as the
+                   cursor entered, so no blank flash and no second download),
+                   then sharpens to the w_3000 q_90 tier once that finishes
+                   loading in the background. If the photo was changed while
+                   hovering, there is no loaded file for the new one and the
+                   w_1400 tier stands in until the sharper one arrives. */}
                 {loupeHover && product.images?.[selectedImage] && (
                   <div
                     className="absolute inset-0 pointer-events-none bg-white"
                     style={{
-                      backgroundImage: `url(${loupeHiResLoaded.has(selectedImage) ? cldZoom(product.images[selectedImage]) : cldBase(product.images[selectedImage])})`,
+                      backgroundImage: `url(${loupeHiResLoaded.has(selectedImage) ? cldZoom(product.images[selectedImage]) : (loupeBase?.index === selectedImage ? loupeBase.src : cldBase(product.images[selectedImage]))})`,
                       backgroundPosition: `${loupePos.x}% ${loupePos.y}%`,
                       backgroundSize: '220%',
                       backgroundRepeat: 'no-repeat',
@@ -598,7 +699,7 @@ export default function ProductDetail({ initialProduct = null }) {
                   {product.images.map((img, i) => (
                     <button key={i} onClick={() => setSelectedImage(i)}
                       className={`relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${selectedImage === i ? 'border-wine-600 shadow-sm scale-105' : 'border-transparent opacity-60 hover:opacity-100 hover:border-stone-200'}`}>
-                      <Image src={cldThumb(img, 64)} alt={`View ${i + 1}`} fill unoptimized className="object-cover" />
+                      <ThumbPhoto url={img} index={i} />
                     </button>
                   ))}
                 </div>
@@ -813,8 +914,9 @@ export default function ProductDetail({ initialProduct = null }) {
             </button>
           </div>
 
-          {/* Rating summary */}
-          {reviewStats.count > 0 && (
+          {/* Rating summary — the breakdown is counted from the reviews, so it
+             waits for them (the average above the price does not). */}
+          {reviewStats.count > 0 && reviews.length > 0 && (
             <div className="flex flex-col sm:flex-row gap-6 mb-8 p-6 bg-stone-50 rounded-2xl">
               <div className="text-center sm:w-36 flex-shrink-0">
                 <p className="font-serif text-6xl font-bold text-stone-800">{reviewStats.average}</p>

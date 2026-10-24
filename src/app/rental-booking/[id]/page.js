@@ -3,7 +3,8 @@
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import Image from 'next/image';
+import CatalogImage from '@/components/ui/CatalogImage';
+import { THUMB_WIDTHS } from '@/lib/catalogImages';
 import Link from 'next/link';
 import {
   FiCalendar, FiTruck, FiPackage, FiMapPin, FiPhone, FiUser, FiMail,
@@ -147,7 +148,7 @@ export default function RentalBookingPage({ params }) {
               {/* Product preview */}
               <div className="bg-white rounded-xl p-4 shadow-sm flex gap-4 items-center">
                 <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                  {product.images?.[0] && <Image src={product.images[0]} alt={product.name} fill className="object-cover" />}
+                  {product.images?.[0] && <CatalogImage src={product.images[0]} alt={product.name} fill widths={THUMB_WIDTHS} sizes="80px" className="object-cover" />}
                 </div>
                 <div>
                   <p className="text-xs text-gold-600 uppercase tracking-wider capitalize">{product.category}</p>

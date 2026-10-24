@@ -1118,6 +1118,7 @@ describe('product page: the Buy Now code fails to load (flaky data, or a tab ope
       'react-hot-toast': esm(toast),
       'next/image': esm(function Image() { return null; }),
       'next/link': esm(function Link() { return null; }),
+      'react-dom': { preconnect() {}, preload() {} }, // CloudinaryPicture's hints
       'react-icons/fi': icons,
       '@/context/CartContext': { useCart: () => ({ dispatch() {}, charges: DEFAULT_CHARGES }) },
       '@/context/WishlistContext': { useWishlist: () => ({ toggle() {}, isWishlisted: () => false }) },

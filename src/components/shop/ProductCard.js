@@ -8,46 +8,56 @@
    category, a one-line title, the price and a small cart button. The
    discount pill and wishlist heart float over the photo.
 
-   Images: Cloudinary srcset 400–2000px (a 1000px tile at 2×), so each
-   device gets retina-sharp pixels from the 8000px masters without
-   over-fetching. Shimmer + blurred preview while the sharp tile streams
-   in. Off-screen cards skip rendering (content-visibility: auto) for
-   smooth scrolling on phones. Desktop hover: gentle zoom and the second
-   photo fades in. Touch: swipe between photos. */
-import Image from 'next/image';
+   Images: one f_auto Cloudinary srcset (320–800px at CARD_QUALITY — see
+   src/lib/catalogImages.js), so each device gets the pixels its tile really
+   has from the 8000px masters, and not one more. The grid passes `sizes`
+   (how wide its tile is) and `priority` (cardPriority(index): the first row
+   loads first, the rest lazily). Shimmer + blurred preview while the sharp
+   tile streams in. Off-screen cards skip rendering (content-visibility:
+   auto) for smooth scrolling on phones. Desktop hover: gentle zoom and the
+   second photo fades in. Touch: swipe between photos. */
 import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { FiHeart, FiShoppingBag, FiCalendar } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
-import { cldCard, cldPlaceholder, isCloudinary } from '@/lib/cloudinaryImage';
+import { IMAGE_SIZES, cldPlaceholder } from '@/lib/cloudinaryImage';
+import { CARD_TILE } from '@/lib/catalogImages';
+import CatalogImage from '@/components/ui/CatalogImage';
 import toast from 'react-hot-toast';
 
-const SIZES = '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw';
-/* next/image asks the loader for each srcset width; cap at 2000 (1000px @2×). */
-const cloudinaryLoader = ({ src, width }) => cldCard(src, Math.min(width, 2000));
-
-function CardImage({ src, alt, priority, className = '', onLoad }) {
-  const cld = isCloudinary(src);
+/* The photo fills the 3:4 frame its parent reserves. Loading is decided by
+   `priority` (see cardLoading): a first-row card is eager + fetchpriority
+   high, the next two eager, the rest lazy. */
+function CardImage({ src, alt, priority = false, sizes, className = '', onLoad }) {
   return (
-    <Image
+    <CatalogImage
+      {...CARD_TILE}
       src={src}
       alt={alt}
       fill
-      sizes={SIZES}
-      /* Top-fold cards load first; the rest wait until scrolled near. */
-      loading={priority ? 'eager' : 'lazy'}
-      fetchPriority={priority ? 'high' : 'auto'}
-      {...(cld ? { loader: cloudinaryLoader } : { unoptimized: true })}
+      sizes={sizes}
+      priority={priority}
       onLoad={onLoad}
+      /* A photo that finished before React attached onLoad (a cached one, or a
+         card rendered on the server) never reports in; without this the card
+         would stay invisible (opacity-0) for good. */
+      ref={onLoad && ((img) => { if (img?.complete && img.naturalWidth > 0) onLoad(); })}
       draggable={false}
       className={`object-cover will-change-transform ${className}`}
     />
   );
 }
 
-export default function ProductCard({ product, priority = false, showCategory = true }) {
+/**
+ * @param {object} props
+ * @param {object} props.product
+ * @param {false|true|'high'|'eager'} [props.priority=false]  cardPriority(index) for a grid at the top of a page; false = lazy
+ * @param {string} [props.sizes]  how wide the tile is (GRID_SIZES); default: a generic full-width 2/3/4-up grid
+ * @param {boolean} [props.showCategory=true]
+ */
+export default function ProductCard({ product, priority = false, sizes = IMAGE_SIZES.card, showCategory = true }) {
   const { dispatch } = useCart();
   const { toggle, isWishlisted } = useWishlist();
   const [imgIdx, setImgIdx] = useState(0);
@@ -58,7 +68,10 @@ export default function ProductCard({ product, priority = false, showCategory = 
   const href = `/product/${id}`;
   const images = product.images?.filter(Boolean) || [];
   const main = images[imgIdx];
-  const hoverImg = imgIdx === 0 ? images[1] : null;
+  /* The second photo (desktop hover; it also warms the cache for a swipe) is
+     fetched only once the first is on screen, and last in the queue — on a
+     phone it would otherwise compete with the very photo being waited for. */
+  const hoverImg = imgIdx === 0 && loaded ? images[1] : null;
   const discount = getDiscountPercentage(product.price, product.discountPrice);
   const displayPrice = product.discountPrice || product.price;
   const wishlisted = isWishlisted(id);
@@ -103,10 +116,10 @@ export default function ProductCard({ product, priority = false, showCategory = 
                 <div className="absolute inset-0 skeleton opacity-50" />
               </div>
             )}
-            <CardImage key={main} src={main} alt={product.name} priority={priority} onLoad={() => setLoaded(true)}
+            <CardImage key={main} src={main} alt={product.name} priority={priority} sizes={sizes} onLoad={() => setLoaded(true)}
               className={`transition-[transform,opacity] duration-300 ease-out ${loaded ? 'opacity-100' : 'opacity-0'} [@media(hover:hover)]:group-hover:scale-105 ${hoverImg ? '[@media(hover:hover)]:group-hover:opacity-0' : ''}`} />
             {hoverImg && (
-              <CardImage src={hoverImg} alt="" className="opacity-0 transition-[transform,opacity] duration-300 ease-out [@media(hover:hover)]:group-hover:scale-105 [@media(hover:hover)]:group-hover:opacity-100" />
+              <CardImage src={hoverImg} alt="" priority="low" sizes={sizes} className="opacity-0 transition-[transform,opacity] duration-300 ease-out [@media(hover:hover)]:group-hover:scale-105 [@media(hover:hover)]:group-hover:opacity-100" />
             )}
           </>
         ) : (

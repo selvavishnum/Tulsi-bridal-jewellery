@@ -72,7 +72,7 @@ export function cldThumb(url, w = 160) {
    the transformation off when the add-on isn't active — otherwise every
    tile URL would fail. */
 export const CARD_WIDTHS = Object.freeze([400, 600, 800, 1000, 1400, 2000]);
-const WHITE_BG = process.env.NEXT_PUBLIC_CLOUDINARY_BG_REMOVAL === 'true';
+export const WHITE_BG = process.env.NEXT_PUBLIC_CLOUDINARY_BG_REMOVAL === 'true';
 
 /**
  * Grid tile, edge-to-edge: a 3:4 crop that fills the card, with
@@ -162,9 +162,11 @@ const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
  * @param {number} [o.ratio]   width ÷ height to crop to (e.g. 0.75 for 3:4); smart-crops with g_auto
  * @param {number} [o.height]  explicit crop height (alternative to ratio)
  * @param {boolean} [o.progressive]  jpg only: fl_progressive, so the old-browser fallback paints coarse-to-fine
+ * @param {boolean} [o.whiteBg]  AI Background Removal first, then flatten onto white (what cldCard does when
+ *   NEXT_PUBLIC_CLOUDINARY_BG_REMOVAL is on; needs the paid add-on, so it is opt-in per call, never a default)
  * @returns {string}
  */
-export function cldUrl(url, { format = 'auto', quality = 'good', width, ratio, height, progressive = false } = {}) {
+export function cldUrl(url, { format = 'auto', quality = 'good', width, ratio, height, progressive = false, whiteBg = false } = {}) {
   if (!isImageUpload(url)) return url;
   const parts = [FORMAT[format] || FORMAT.auto];
   parts.push(typeof quality === 'number' ? `q_${clamp(Math.round(quality), 1, 100)}` : (QUALITY[quality] || QUALITY.good));
@@ -180,7 +182,8 @@ export function cldUrl(url, { format = 'auto', quality = 'good', width, ratio, h
   }
   if (w) parts.push(`w_${w}`);
   if (progressive && format === 'jpg') parts.push('fl_progressive');
-  return withTransform(url, parts.join(','));
+  /* Background removal is its own transformation step (a "/"), then the rest. */
+  return withTransform(url, `${whiteBg ? 'e_background_removal/b_rgb:FFFFFF,' : ''}${parts.join(',')}`);
 }
 
 /** "<url> 320w, <url> 480w, …" — undefined for a non-Cloudinary URL. */

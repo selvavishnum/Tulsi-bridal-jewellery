@@ -18,12 +18,6 @@ const GRID_COLS = {
   king_size: { small: 'grid-cols-3 md:grid-cols-6', medium: 'grid-cols-2 md:grid-cols-4', large: 'grid-cols-2 md:grid-cols-3' },
   wide: { small: 'grid-cols-2 md:grid-cols-3', medium: 'grid-cols-1 md:grid-cols-2', large: 'grid-cols-1 md:grid-cols-2' },
 };
-/* Approximate rendered width, for srcset `sizes`. */
-const GRID_SIZES = {
-  square: { small: '(min-width: 768px) 16vw, 33vw', medium: '(min-width: 768px) 25vw, 50vw', large: '(min-width: 768px) 33vw, 50vw' },
-  king_size: { small: '(min-width: 768px) 16vw, 33vw', medium: '(min-width: 768px) 25vw, 50vw', large: '(min-width: 768px) 33vw, 50vw' },
-  wide: { small: '(min-width: 768px) 33vw, 50vw', medium: '(min-width: 768px) 50vw, 100vw', large: '(min-width: 768px) 50vw, 100vw' },
-};
 const ASPECT = { circle: 'aspect-square', square: 'aspect-square', king_size: 'aspect-[4/5]', wide: 'aspect-video' };
 const FEATURED_SPAN = { square: 'col-span-2 row-span-2', king_size: 'col-span-2 row-span-2', wide: 'col-span-full' };
 
@@ -37,7 +31,6 @@ const CIRCLE_FEATURED = {
   medium: 'w-32 h-32 md:w-44 md:h-44',
   large: 'w-36 h-36 md:w-52 md:h-52',
 };
-const CIRCLE_PX = { small: 112, medium: 128, large: 160 };
 
 const SLIDE = {
   circle: 'w-24 md:w-36',
@@ -51,12 +44,39 @@ const SLIDE_FEATURED = {
   king_size: 'w-[70vw] max-w-[440px] md:w-[400px]',
   wide: 'w-[90vw] max-w-[760px] md:w-[720px]',
 };
-const SLIDE_SIZES = {
-  circle: '(min-width: 768px) 192px, 128px',
-  square: '(min-width: 768px) 384px, 68vw',
-  king_size: '(min-width: 768px) 400px, 70vw',
-  wide: '(min-width: 768px) 720px, 90vw',
-};
+
+/* `sizes` — how wide each photo is drawn, before layout, so the browser downloads
+   the right file: too big and a phone fetches desktop pixels; too small and a
+   "king" card is blurry. They are worked out from the class strings above (the
+   columns, the widths) and from section-container, never typed in twice, so
+   they can't drift from the layout. (tests/perf-catalog.test.mjs checks them
+   against the rendered CSS.) */
+const colsOf = (classes) => [Number(/(?:^|\s)grid-cols-(\d+)/.exec(classes)?.[1]) || 1, Number(/md:grid-cols-(\d+)/.exec(classes)?.[1]) || 1];
+const num = (n) => Number(n.toFixed(4));
+/** `sizes` for one tile of the grid: exactly its CSS width. A tile that spans columns (a "king" card: two, or the whole row on a Wide banner) is that much wider. Same arithmetic as gridSizes() in src/lib/catalogImages.js (this file is loaded on its own by its test, so it can't import it; the perf test checks the two agree). */
+function gridTileSizes(variant, size, featured) {
+  const [phone, wide] = colsOf(GRID_COLS[variant][size]);
+  const full = FEATURED_SPAN[variant] === 'col-span-full';
+  /* Where the layout changes: padding at 640 (sm) and 1024 (lg), columns and gap at 768 (md), the 1280px container cap (max-w-7xl). */
+  const tiles = [0, 640, 768, 1024, 1280].map((from) => {
+    const cols = from >= 768 ? wide : phone;
+    const gap = from >= 768 ? 16 : 12; // gap-3 md:gap-4
+    const pad = from >= 1024 ? 32 : from >= 640 ? 24 : 16; // px-4 sm:px-6 lg:px-8
+    const share = Math.min(featured ? (full ? cols : 2) : 1, cols) / cols;
+    return [from, from === 1280 ? `${num(share * (1280 - 2 * pad + gap) - gap)}px` : `calc(${num(100 * share)}vw - ${num(share * (2 * pad - gap) + gap)}px)`];
+  });
+  return tiles.filter(([, v], i) => i === 0 || v !== tiles[i - 1][1]).reverse().map(([from, v]) => (from ? `(min-width: ${from}px) ${v}` : v)).join(', ');
+}
+/** `sizes` for a box whose width classes are `w-24 md:w-36` or `w-[42vw] max-w-[260px] md:w-60` (md = 768px; Tailwind's w-N is N × 4px). */
+function widthSizes(classes) {
+  const px = (v) => (v.startsWith('[') ? parseFloat(v.slice(1)) : Number(v) * 4);
+  const wide = /md:w-(\[\d+px\]|\d+)/.exec(classes)?.[1];
+  const vw = /(?:^|\s)w-\[(\d+)vw\]/.exec(classes)?.[1];
+  const cap = /max-w-\[(\d+)px\]/.exec(classes)?.[1];
+  const base = /(?:^|\s)w-(\d+)(?:\s|$)/.exec(classes)?.[1];
+  const phone = vw ? (cap ? `min(${vw}vw, ${cap}px)` : `${vw}vw`) : base ? `${px(base)}px` : '100vw';
+  return wide ? `(min-width: 768px) ${px(wide)}px, ${phone}` : phone;
+}
 
 function Photo({ item, variant, sizes }) {
   if (!item.image) {
@@ -88,7 +108,7 @@ function Photo({ item, variant, sizes }) {
 
 function TileCard({ item, variant, size, slide = false }) {
   const featured = item.isFeatured;
-  const sizes = slide ? SLIDE_SIZES[variant] : featured ? GRID_SIZES[variant].medium : GRID_SIZES[variant][size];
+  const sizes = slide ? widthSizes(featured ? SLIDE_FEATURED[variant] : SLIDE[variant]) : gridTileSizes(variant, size, featured);
   return (
     <Link
       href={item.href}
@@ -112,7 +132,7 @@ function CircleCard({ item, size, slide = false }) {
       <span
         className={`relative block overflow-hidden rounded-full border-2 transition-shadow duration-300 group-hover:shadow-gold group-focus-visible:ring-2 group-focus-visible:ring-gold-400 ${frame} ${featured ? 'border-gold-400' : 'border-gold-200 group-hover:border-gold-400'}`}
       >
-        <Photo item={item} variant="circle" sizes={`${Math.round(CIRCLE_PX[size] * (featured ? 1.4 : 1))}px`} />
+        <Photo item={item} variant="circle" sizes={widthSizes(slide ? (featured ? SLIDE_FEATURED : SLIDE).circle : frame)} />
       </span>
       <span className={`text-center font-semibold leading-tight text-stone-700 transition-colors group-hover:text-wine-700 ${featured ? 'text-sm md:text-base' : 'text-xs md:text-sm'}`}>
         {item.label}

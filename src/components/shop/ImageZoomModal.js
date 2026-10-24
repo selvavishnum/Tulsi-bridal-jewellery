@@ -4,10 +4,12 @@
      • blurred dark backdrop; tap outside the photo, ✕ or Esc closes
      • pinch zooms toward your fingers, one finger pans while zoomed,
        double-tap toggles 2.5×; desktop: wheel, drag, double-click
-     • sharper Cloudinary tiers load on demand: base (w_1400) shows
+     • sharper Cloudinary tiers load on demand: the base layer shows
        instantly, w_3000 q_90 on open, w_5000 once zoomed past 2×
      • page scroll locked while open
-   Props: images (urls), startIndex, productName, caption (e.g. SKU · order), onClose */
+   Props: images (urls), startIndex, productName, caption (e.g. SKU · order),
+   shown ({ index, src } — the file the page is already showing for photo
+   `index`; see the base layer below), onClose */
 import { useEffect, useRef, useState } from 'react';
 import { cldBase, cldZoom, cldDeepZoom, cldThumb } from '@/lib/cloudinaryImage';
 
@@ -23,7 +25,7 @@ import { cldBase, cldZoom, cldDeepZoom, cldThumb } from '@/lib/cloudinaryImage';
 const MAX_ZOOM = 5;
 const DEEP_AT = 2;
 
-export default function ImageZoomModal({ images, startIndex = 0, productName, caption = '', onClose }) {
+export default function ImageZoomModal({ images, startIndex = 0, productName, caption = '', shown = null, onClose }) {
   const [current, setCurrent] = useState(startIndex);
   const [view, setView] = useState({ s: 1, x: 0, y: 0 });
   const [loadedTier, setLoadedTier] = useState({}); // `${i}:zoom` / `${i}:deep` → true
@@ -147,6 +149,14 @@ export default function ImageZoomModal({ images, startIndex = 0, productName, ca
   function onDoubleClick(e) { setView(view.s > 1 ? { s: 1, x: 0, y: 0 } : zoomAt(2.5, e.clientX, e.clientY)); }
 
   const transform = { transform: `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.s})` };
+  /* Base layer: the file the gallery already downloaded for this photo, when
+     the page says which (`shown`) — it is in the browser cache, so the viewer
+     opens on the picture instantly with no second download of a 1400px copy.
+     That file is sized for the gallery slot (the srcset pick for this screen),
+     so for a moment it is a little softer than the w_1400 tier used to be; the
+     w_3000 q_90 layer then crossfades over it exactly as before. Any other
+     photo, or a caller that doesn't say (the admin order view), gets w_1400. */
+  const baseSrc = shown?.src && shown.index === current ? shown.src : cldBase(images[current]);
   const zoomReady = loadedTier[`${current}:zoom`];
   const deepReady = loadedTier[`${current}:deep`];
   const layer = 'absolute inset-0 m-auto max-w-full max-h-full object-contain select-none will-change-transform';
@@ -181,7 +191,7 @@ export default function ImageZoomModal({ images, startIndex = 0, productName, ca
         onClick={(e) => { if (e.target === e.currentTarget && view.s === 1) onClose(); }}
       >
         {/* Base tier — instant (already cached from the gallery). */}
-        <img src={cldBase(images[current])} alt={`${productName} — ${current + 1}`} className={`${layer} ${animate}`} style={transform} draggable={false} decoding="async" />
+        <img src={baseSrc} alt={`${productName} — ${current + 1}`} className={`${layer} ${animate}`} style={transform} draggable={false} decoding="async" />
         {/* w_3000 q_90 — crossfades in once loaded. */}
         <img key={`z${current}`} src={cldZoom(images[current])} alt="" aria-hidden="true"
           className={`${layer} ${animate} transition-opacity ${zoomReady ? 'opacity-100' : 'opacity-0'}`} style={transform} draggable={false} decoding="async" />

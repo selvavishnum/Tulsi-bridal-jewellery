@@ -15,9 +15,10 @@ import assert from 'node:assert/strict';
 import {
   SHOWCASE_VERSION, PREVIEW_MSG, SHOWCASE_CARDS, LAYOUT_VARIANTS, DISPLAY_MODES, SIZES, GRAVITIES, ASPECTS,
   DEFAULT_FOCUS, DEFAULT_LAYOUT, ZOOM_RANGE,
-  normalizeShowcase, toStored, visibleItems, ShowcasePatch, applyShowcasePatch,
+  normalizeShowcase, toStored, visibleItems, applyShowcasePatch,
   isCloudinary, showcaseImageUrl, showcaseSrcSet, focusStyle,
 } from '../src/lib/categoryShowcase.js';
+import { ShowcasePatch } from '../src/lib/categoryShowcaseSchema.js';
 
 const KEYS = SHOWCASE_CARDS.map((c) => c.key);
 const CARD = Object.fromEntries(SHOWCASE_CARDS.map((c) => [c.key, c]));

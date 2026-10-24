@@ -2,7 +2,8 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import CatalogImage from '@/components/ui/CatalogImage';
+import { THUMB_WIDTHS } from '@/lib/catalogImages';
 import { useSearchParams } from 'next/navigation';
 import { FiCheckCircle, FiPackage, FiMapPin, FiMail, FiPhone, FiShoppingBag, FiArrowRight } from 'react-icons/fi';
 import { track } from '@/lib/analytics/tracker';
@@ -97,7 +98,7 @@ function OrderSuccessContent() {
                 <div key={i} className="flex items-center gap-4 py-3">
                   {item.image ? (
                     <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-stone-50 flex-shrink-0 border border-stone-100">
-                      <Image src={item.image} alt={item.name} fill className="object-cover" />
+                      <CatalogImage src={item.image} alt={item.name} fill widths={THUMB_WIDTHS} sizes="64px" className="object-cover" />
                     </div>
                   ) : (
                     <div className="w-16 h-16 rounded-xl bg-stone-50 flex items-center justify-center flex-shrink-0 border border-stone-100">
