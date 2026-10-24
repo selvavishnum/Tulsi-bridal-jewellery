@@ -259,9 +259,10 @@ test('amounts: same totals, COD fee and COD limit as the checkout page always sh
   const big = checkoutAmounts({ subtotal: 2500, discount: 250, paymentMethod: 'razorpay', charges: c });
   assert.equal(big.shippingCost, 0, 'free above the threshold');
   assert.equal(big.total, 2250);
-  /* The page's rule: (subtotal − coupon + shipping − loyalty) over ₹20,000 blocks COD. */
+  /* The server's rule (round 4): (subtotal − coupon + shipping + COD fee)
+     over ₹20,000 blocks COD — points don't count. */
   assert.equal(checkoutAmounts({ subtotal: 20500, discount: 0, paymentMethod: 'cod', charges: c }).codBlockedByValue, true);
-  assert.equal(checkoutAmounts({ subtotal: 20500, discount: 0, loyaltyDiscount: 600, paymentMethod: 'cod', charges: c }).codBlockedByValue, false);
+  assert.equal(checkoutAmounts({ subtotal: 20500, discount: 0, loyaltyDiscount: 600, paymentMethod: 'cod', charges: c }).codBlockedByValue, true, 'points don’t lift the limit');
   assert.equal(checkoutAmounts({ subtotal: 20500, discount: 600, paymentMethod: 'cod', charges: c }).codBlockedByValue, false);
   assert.equal(checkoutAmounts({ subtotal: 1000, paymentMethod: 'cod', charges: c, codAvailable: false }).codBlocked, true);
   assert.equal(COD_MAX_ORDER_VALUE, 20000);
@@ -703,7 +704,7 @@ describe('useCheckoutFlow', { skip }, () => {
     assert.equal(h.result.loading, false);
   });
 
-  test('loyalty (the page only): points loaded, redeeming lowers the total and counts toward the COD limit', async () => {
+  test('loyalty (the page only): points loaded, redeeming lowers the total — but not the COD limit (the server’s rule: before points)', async () => {
     const { h, calls } = flowFor({ withLoyalty: true, subtotal: 20050 }, {
       '/api/admin/settings': SITE({ loyaltyEnabled: true }),
       '/api/loyalty': (u, init) => (init.method === 'POST'
@@ -720,7 +721,7 @@ describe('useCheckoutFlow', { skip }, () => {
     assert.equal(h.result.loyaltyDiscount, 100);
     assert.equal(h.result.loyalty.points, 50);
     assert.equal(h.result.payableTotal, 20050 - 100);
-    assert.equal(h.result.codBlockedByValue, false, 'now ₹19,950');
+    assert.equal(h.result.codBlockedByValue, true, '₹20,050 before points: the server refuses COD for it, so it isn’t offered');
     assert.deepEqual(toast.success.mock.calls.map((c) => c.arguments), [['₹100 discount applied!']]);
     await h.result.redeemLoyaltyPoints();
     await tick();

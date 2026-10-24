@@ -54,6 +54,7 @@ class FakeRazorpay {
         return { ...order };
       },
       fetch: async (id) => ({ ...rzp.orders.get(id) }),
+      fetchPayments: async (id) => ({ items: [...rzp.payments.values()].filter((p) => p.order_id === id).map((p) => ({ ...p })) }),
     };
     this.payments = { fetch: async (id) => ({ ...rzp.payments.get(id) }) };
   }
@@ -624,13 +625,17 @@ describe('checkout-coupons B / verify-bn3: close Razorpay, then Place order agai
     await submit(page);
     const w = windows[0];
     closeWindow(w);
-    rzp.orders.get(w.options.order_id).status = 'paid'; // approved in the UPI app; no webhook yet
+    /* approved in the UPI app; no webhook yet */
+    const rzpOrder = rzp.orders.get(w.options.order_id);
+    rzpOrder.status = 'paid';
+    rzp.payments.set('pay_late', { id: 'pay_late', order_id: rzpOrder.id, status: 'captured', amount: rzpOrder.amount, currency: 'INR' });
     flowOf(page.result).setPaymentMethod('cod');
     await settle();
     await submit(page);
     assert.equal(calls('PUT', /^\/api\/orders\//).at(-1)?.status, 409, 'the cancel is refused: ALREADY_PAID');
     assert.equal(newOrders().length, 1);
-    assert.equal(newOrders()[0].status, 'pending', 'not cancelled');
+    assert.equal(newOrders()[0].status, 'confirmed', 'not cancelled — confirmed by the refused cancel (R-B), as the webhook would have');
+    assert.equal(newOrders()[0].payment.razorpayPaymentId, 'pay_late');
     assert.equal(router.push.mock.calls.at(-1).arguments[0], `/order-success?orderNumber=${newOrders()[0].orderNumber}&email=new%40x.test`);
     assert.equal(couponDoc().usedCount, 1);
   });
@@ -1097,7 +1102,12 @@ describe('Buy Now drawer against the real server', { skip }, () => {
 /* ═════════════ BN-4: the drawer's code fails to load ═════════════ */
 
 describe('product page: the Buy Now code fails to load (flaky data, or a tab open across a deploy)', { skip }, () => {
-  test('a toast, the page stays up, and the next tap tries again (React.lazy kept the failure for good)', async () => {
+  /* The browser's address bar: reloading is a full page load (assign). */
+  afterEach(() => { delete globalThis.window.location; });
+
+  test('the page stays up and reloads itself with Buy Now reopened (?buynow), keeping its other parameters (React.lazy kept the failure for good)', async () => {
+    globalThis.window.location = { search: '?utm_source=instagram&utm_campaign=bridal', pathname: '/product/p1', hash: '', assign: mock.fn() };
+    const { assign } = globalThis.window.location;
     const Drawer = function BuyNowDrawerStub() { return null; };
     let chunk = 'fail';
     const imports = [];
@@ -1135,10 +1145,14 @@ describe('product page: the Buy Now code fails to load (flaky data, or a tab ope
 
     buyNow().props.onClick();
     await settle();
-    assert.deepEqual(toast.error.mock.calls.map((c) => c.arguments[0]), ['Couldn’t open checkout — please try again']);
+    assert.deepEqual(toast.mock.calls.map((c) => c.arguments[0]), ['Opening checkout…']);
+    assert.deepEqual(assign.mock.calls.map((c) => c.arguments[0]), ['/product/p1?utm_source=instagram&utm_campaign=bridal&buynow=1'],
+      'a fresh page load (a retry in the same page gets the same failure back); the visit’s utm_* parameters are kept');
+    assert.equal(toast.error.mock.callCount(), 0, 'not “please try again”');
     assert.ok(buyNow(), 'the product page is still there');
     assert.equal(drawerOpen(), false);
 
+    /* Before the reload lands, a chunk that does arrive still opens it. */
     chunk = 'ok';
     buyNow().props.onClick();
     await settle();

@@ -126,7 +126,13 @@ export function AddressFields({ flow }) {
 
 /** Pay online (Razorpay) / Cash on Delivery, with why COD is unavailable. */
 export function PaymentMethodFields({ flow }) {
-  const { paymentMethod, setPaymentMethod, onlinePaymentEnabled, codBlocked, codBlockedByValue, codAvailable, codFeeIfSelected, charges } = flow;
+  const { paymentMethod, setPaymentMethod, onlinePaymentEnabled, codBlocked, codBlockedByValue, codAvailable, codFeeIfSelected, charges, total, loyaltyDiscount } = flow;
+  /* The COD limit counts the order before points, with the COD fee
+     (checkoutAmounts): spelled out when the total shown is under it. */
+  const codOrderValue = total + codFeeIfSelected;
+  const codLimitWhy = codBlockedByValue && total - loyaltyDiscount <= COD_MAX_ORDER_VALUE
+    ? ` — ${formatPrice(codOrderValue)} ${[codFeeIfSelected > 0 && 'with the COD fee', loyaltyDiscount > 0 && 'before points'].filter(Boolean).join(', ')}`
+    : '';
 
   return (
     <div className="space-y-3">
@@ -153,7 +159,7 @@ export function PaymentMethodFields({ flow }) {
         <div>
           <p className="font-semibold text-sm text-gray-800">Cash on Delivery</p>
           {codBlockedByValue ? (
-            <p className="text-xs text-red-500">Not available above {formatPrice(COD_MAX_ORDER_VALUE)}</p>
+            <p className="text-xs text-red-500">Not available above {formatPrice(COD_MAX_ORDER_VALUE)}{codLimitWhy}</p>
           ) : !codAvailable ? (
             <p className="text-xs text-red-500">Not available for this pincode</p>
           ) : codFeeIfSelected > 0 ? (

@@ -18,6 +18,13 @@ export async function POST(request, context) {
     if (!order || !Array.isArray(order.vendorIds) || !order.vendorIds.includes(ctx.vendorId) || !vendorFulfils(order, ctx.vendorId, ctx.vendor)) {
       return NextResponse.json({ success: false, message: 'Forbidden' }, { status: 403 });
     }
+    /* An online order whose payment never went through is not an order:
+       the customer was never told it was confirmed (settlePaidOrder does
+       that once it is paid), nor that it was given up (replaced or
+       expired quietly) — there is nothing to resend. */
+    if (order.payment?.method !== 'cod' && order.payment?.status !== 'paid') {
+      return NextResponse.json({ success: false, message: 'This order hasn’t been paid, so there is no email to resend.' }, { status: 409 });
+    }
     const limited = await hit(ctx.db, `vendor-resend:${order.id}`, { limit: 3, windowMs: 60 * 60_000 });
     if (!limited.allowed) return NextResponse.json({ success: false, message: 'Already sent 3 times this hour. Try again later.' }, { status: 429 });
     /* A pending order hasn't had a status change yet: resend the order confirmation. */

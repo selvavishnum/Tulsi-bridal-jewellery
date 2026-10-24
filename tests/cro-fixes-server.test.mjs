@@ -60,6 +60,7 @@ class FakeRazorpay {
         if (!rzp.orders.has(id)) throw Object.assign(new Error('not found'), { error: { description: 'The id provided does not exist' } });
         return { ...rzp.orders.get(id) };
       },
+      fetchPayments: async (id) => ({ items: [...rzp.payments.values()].filter((p) => p.order_id === id).map((p) => ({ ...p })) }),
     };
     this.payments = {
       fetch: async (id) => ({ ...rzp.payments.get(id) }),
@@ -638,12 +639,14 @@ describe('PUT /api/orders/[id] { status: "cancelled" } by the customer', () => {
   test('a paid order is not given up: Razorpay already has the money → 409 ALREADY_PAID; packed → 400', async () => {
     const id = await unpaidAttempt();
     const pay = await payFor(id);
-    payOnRazorpay(pay.json.data.id); // the UPI approval landed after the window closed; no webhook yet
-    const before = snapshot();
+    const paid = payOnRazorpay(pay.json.data.id); // the UPI approval landed after the window closed; no webhook yet
+    const held = JSON.stringify([[...db.store.get('coupons').entries()], userDoc('u-new').pendingLoyaltyDiscount]);
     const r = await cancel(id);
     assert.equal(r.status, 409);
     assert.equal(r.json.code, 'ALREADY_PAID');
-    assert.equal(snapshot(), before, 'the order, its coupon use and the points stay as they are');
+    /* Not cancelled — and the refused cancel confirms it, as the webhook would (R-B). */
+    assert.deepEqual([orderDoc(id).status, orderDoc(id).payment.status, orderDoc(id).payment.razorpayPaymentId], ['confirmed', 'paid', paid.razorpayPaymentId]);
+    assert.equal(JSON.stringify([[...db.store.get('coupons').entries()], userDoc('u-new').pendingLoyaltyDiscount]), held, 'its coupon use and the points stay as they are');
 
     db.store.get('orders').set('packed', { userId: 'u-new', status: 'processing', payment: { method: 'razorpay', status: 'paid' } });
     const packed = await cancel('packed');
@@ -727,6 +730,7 @@ describe('POST /api/payments/create-order twice for the same unpaid order', () =
     const again = await payFor(id);
     assert.equal(again.status, 409);
     assert.equal(again.json.code, 'ALREADY_PAID');
+    assert.equal(orderDoc(id).status, 'confirmed', 'confirmed on the way (R-B), as verify and the webhook would');
 
     const o2 = await post(online({ couponCode: undefined }));
     signInAs(customer('other'));

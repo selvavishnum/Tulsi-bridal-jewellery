@@ -13,6 +13,9 @@
 const INSTANCE = process.env.ULTRAMSG_INSTANCE_ID;
 const TOKEN    = process.env.ULTRAMSG_TOKEN;
 const BASE_URL = () => `https://api.ultramsg.com/${INSTANCE}/messages/chat`;
+/* fetch waits forever by default: a WhatsApp API that never answers would
+   hold the request (or the work queued after it) until the platform kills it. */
+const SEND_TIMEOUT_MS = 10_000;
 
 export function isConfigured() {
   return !!(INSTANCE && TOKEN);
@@ -38,6 +41,7 @@ async function sendMessage(to, body) {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ token: TOKEN, to: phone, body }).toString(),
+    signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
   });
   const data = await res.json();
   return data?.sent === 'true' ? { success: true } : { success: false, message: data?.message };

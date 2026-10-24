@@ -1,6 +1,6 @@
 {
   "crons": [
     { "path": "/api/cron/shipment-sync", "schedule": "30 3 * * *" },
-    { "path": "/api/cron/expire-unpaid-orders", "schedule": "0 21 * * *" }
+    { "path": "/api/cron/expire-unpaid-orders", "schedule": "30 4 * * *" }
   ]
 }

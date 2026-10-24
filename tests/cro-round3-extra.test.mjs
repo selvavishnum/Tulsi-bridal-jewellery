@@ -821,7 +821,9 @@ describe('R6: the kept attempt was replaced from another tab → no order at a p
     assert.equal(windows.length, 1, 'no payment window at a price the page didn’t show');
     assert.equal(buttonLabel(tabA.result), 'Place Order · ₹1,599', 'the points went with the other order: the new total is shown');
     assert.doesNotMatch(textOf(tabA.result), /Points Discount/);
-    assert.match(told(), /points discount has changed/i);
+    /* Round 4 (F): replaced by the newer order — that may be the one they
+       wanted, so nothing is placed until they tap again. */
+    assert.match(told(), /^This payment was replaced by your newer order\. Please check My Orders — tap the button again only if you want another order\.$/m);
 
     /* The next tap places it at what the button now says. */
     await submit(tabA);
@@ -840,7 +842,7 @@ describe('R6: the kept attempt was replaced from another tab → no order at a p
     assert.deepEqual(placed.map((o) => o.total), [], `a COD order at ₹${placed.map((o) => o.total)} under a ${shown} button`);
     assert.equal(calls('PUT', /^\/api\/orders\//).length, 0, 'already cancelled: nothing to cancel');
     assert.equal(buttonLabel(tabA.result), 'Place Order · ₹1,599');
-    assert.match(told(), /points discount has changed/i);
+    assert.match(told(), /replaced by your newer order/, 'the look-up says replaced: told so, as create-order’s answer is (round 4, F)');
 
     await submit(tabA);
     const [fresh] = newest([first.id, other.id]);

@@ -7,20 +7,23 @@ import { ownsOrder } from '@/lib/orderOwnership';
 import { applyOrderUpdate, OrderStateError } from '@/lib/orderStatus';
 import { isAbandonedAttempt } from '@/lib/coupons';
 import { autoDispatchOnPacked } from '@/lib/shipmentDispatch';
-import Razorpay from 'razorpay';
+import { razorpayClient, settleIfPaid, PAYMENT_UNCHECKED_MESSAGE } from '@/lib/razorpayState';
 
 /* Has Razorpay been paid for this order although we haven't heard yet (a
    UPI payment approved after the window was closed; the webhook follows)?
-   Unknown — not configured, or Razorpay unreachable — counts as no. */
-async function razorpayOrderPaid(razorpayOrderId) {
-  if (!razorpayOrderId || !process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) return false;
-  try {
-    const razorpay = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
-    return (await razorpay.orders.fetch(String(razorpayOrderId)))?.status === 'paid';
-  } catch (e) {
-    console.error('[orders PUT] Razorpay order check failed:', e?.error?.description || e?.message);
-    return false;
-  }
+   Then it is confirmed right here, as verify and the webhook do (stock,
+   points, the customer's "order confirmed"), and the caller answers 409.
+   → 'settled' (paid and confirmed now), 'unsure' (Razorpay says paid but the
+   payment can't be confirmed from here — the webhook will), or null: not
+   paid as far as can be told — not configured, Razorpay unreachable, or the
+   order was cancelled meanwhile (the money is being refunded) all count as
+   no, and the cancel goes ahead (or finds it already cancelled). */
+async function paidOnRazorpay(db, ref, order) {
+  const razorpay = order.payment?.razorpayOrderId ? razorpayClient() : null;
+  if (!razorpay) return null;
+  const { state, paidAfterCancel } = await settleIfPaid(db, ref, order, razorpay, { tag: '[orders PUT]' });
+  if (state === 'settled') return paidAfterCancel ? null : 'settled';
+  return state === 'unsure' ? 'unsure' : null;
 }
 
 export async function GET(request, context) {
@@ -107,9 +110,14 @@ export async function PUT(request, context) {
          giving up an unpaid attempt says so (unpaidOnly): a payment
          confirmed since its page looked (the webhook) also stops it — the
          shopper would otherwise pay twice, online and again on delivery. */
-      if ((unpaidOnly && order.payment?.status === 'paid')
-        || (order.payment?.method === 'razorpay' && order.payment?.status !== 'paid' && await razorpayOrderPaid(order.payment?.razorpayOrderId))) {
+      const paidOnline = order.payment?.method === 'razorpay' && order.payment?.status !== 'paid'
+        ? await paidOnRazorpay(db, ref, order)
+        : null;
+      if ((unpaidOnly && order.payment?.status === 'paid') || paidOnline === 'settled') {
         return NextResponse.json({ success: false, code: 'ALREADY_PAID', message: 'Your payment for this order has just come through, so it has not been cancelled. Please check My Orders.' }, { status: 409 });
+      }
+      if (paidOnline === 'unsure') {
+        return NextResponse.json({ success: false, code: 'EARLIER_PAYMENT_PENDING', orderId: id, message: PAYMENT_UNCHECKED_MESSAGE }, { status: 409 });
       }
       quiet = unpaidOnly && isAbandonedAttempt(order);
     }

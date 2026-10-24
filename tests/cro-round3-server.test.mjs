@@ -255,10 +255,12 @@ describe('R1 — a retry that takes over an abandoned attempt cancels it in the 
     const retry = await post(order({ couponCode: 'FEST100', couponDiscount: 100 }));
     assert.equal(retry.status, 201);
 
-    /* The UPI approval for #1 (verify; the webhook takes the same path). */
+    /* The UPI approval for #1 (verify; the webhook takes the same path).
+       Round 4: verify says so (409 PAID_AFTER_CANCEL), never "verified". */
     signInAs(NEW);
     const v = await quietly(() => call(verify, 'POST', { ...payOnRazorpay(first.rzpOrderId), orderId: first.id }));
-    assert.equal(v.status, 200, v.json.message);
+    assert.equal(v.status, 409, v.json.message);
+    assert.equal(v.json.code, 'PAID_AFTER_CANCEL');
     const A = orderDoc(first.id);
     assert.equal(A.status, 'cancelled', 'not confirmed');
     assert.equal(A.payment.status, 'paid');
@@ -542,7 +544,11 @@ describe('R3 — checkout giving up its unpaid online attempt sends the customer
     const r = await cancel(id, { unpaidOnly: true });
     assert.equal(r.status, 409);
     assert.equal(r.json.code, 'ALREADY_PAID');
-    assert.deepEqual(sent, []);
+    /* Nothing "cancelled" — but the refused cancel confirms the paid order
+       (R-B), so the customer is told it is confirmed, once. */
+    assert.deepEqual(statusMessages(), []);
+    assert.deepEqual(sent.map(([k]) => k).sort(), ['email:placed', 'wa:placed']);
+    assert.equal(orderDoc(id).status, 'confirmed');
   });
 });
 
@@ -720,7 +726,7 @@ describe('GET /api/cron/expire-unpaid-orders', () => {
     assert.equal(orderDoc('confirmed').status, 'confirmed');
   });
 
-  test('checked with Razorpay first: paid, a payment in progress, or unreachable → skipped (logged); only failed attempts → expired', async () => {
+  test('checked with Razorpay first: paid → confirmed (round 4), a payment in progress or unreachable → skipped (logged); only failed attempts → expired', async () => {
     const withRzp = (id, payment) => {
       const rzpId = `order_${id}`;
       rzp.orders.set(rzpId, { id: rzpId, amount: 144900, status: 'created' });
@@ -740,8 +746,11 @@ describe('GET /api/cron/expire-unpaid-orders', () => {
     let r;
     try { r = await runCron(); } finally { console.warn = warn; }
     assert.deepEqual([...r.json.expired].sort(), ['created', 'failed', 'never']);
-    assert.deepEqual(r.json.skipped.map((s) => [s.id, s.reason]).sort(), [['authorized', 'razorpay_attempted'], ['paid', 'razorpay_paid']]);
-    assert.equal(orderDoc('paid').status, 'pending', 'never cancel an order that has been paid');
+    assert.deepEqual(r.json.skipped.map((s) => [s.id, s.reason]).sort(), [['authorized', 'razorpay_attempted']]);
+    /* Round 4: a paid one is a missed webhook — confirmed now, never cancelled. */
+    assert.deepEqual(r.json.settled, ['paid']);
+    assert.equal(orderDoc('paid').status, 'confirmed', 'never cancel an order that has been paid');
+    assert.equal(orderDoc('paid').payment.status, 'paid');
     assert.equal(orderDoc('authorized').status, 'pending');
     assert.equal(logged.length, 2);
     assert.match(logged.join('\n'), /paid[\s\S]*attempted|attempted[\s\S]*paid/);

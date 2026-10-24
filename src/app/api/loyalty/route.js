@@ -10,9 +10,12 @@ import { getEffectiveSession } from '@/lib/adminCollection';
                      automatically: redeemed points not yet spent
                      (pendingLoyaltyDiscount) plus what their unpaid,
                      abandoned online attempts hold — a new order takes that
-                     over (POST /api/orders). Before the order's cap of 20%
-                     of its subtotal (checkoutRules.loyaltyDiscountFor), so
-                     a page shows loyaltyDiscountFor(parkedDiscount, subtotal). */
+                     over (POST /api/orders). Before the order's caps — 20%
+                     of its subtotal, and no more than the coupon discount
+                     leaves of it — so a page shows
+                     loyaltyDiscountFor(parkedDiscount, subtotal, couponDiscount)
+                     (checkoutRules), and sends that as the order's
+                     loyaltyDiscount. */
 export async function GET() {
   try {
     const session = await getEffectiveSession();

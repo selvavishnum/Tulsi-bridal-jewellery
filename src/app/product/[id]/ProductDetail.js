@@ -39,8 +39,9 @@ const TryOnModal = lazy(() => import('@/components/ar/TryOnModal'));
    product page down. Trying import() again in the same page doesn't help
    either — Turbopack's runtime keeps the failed chunk load and returns it
    to every later import() — so a failed load reloads the page with Buy
-   Now reopened (?buynow=<qty>, see buyNowLoadFailure); a page that was
-   itself that reload asks for a refresh instead of looping. */
+   Now reopened (?buynow=<qty>, the page's other parameters kept, see
+   buyNowLoadFailure); a page that was itself that reload asks for a
+   refresh instead of looping. */
 let loadedBuyNowDrawer = null;
 function loadBuyNowDrawer() {
   if (loadedBuyNowDrawer) return Promise.resolve(loadedBuyNowDrawer);
@@ -270,13 +271,12 @@ export default function ProductDetail({ initialProduct = null }) {
     loadBuyNowDrawer()
       .then((Drawer) => { setBuyNowDrawer(() => Drawer); setBuyNowOpen(true); })
       .catch(() => {
-        const next = buyNowLoadFailure({ productId, qty: wantedQty, openedWithBuyNow: openedWithBuyNow.current });
-        const nav = typeof window !== 'undefined' ? window.location : null;
-        if (next.reloadTo && typeof nav?.assign === 'function') {
+        const next = buyNowLoadFailure({ productId, qty: wantedQty, openedWithBuyNow: openedWithBuyNow.current, search: window.location.search });
+        if (next.reloadTo) {
           toast(next.message);
-          nav.assign(next.reloadTo);
+          window.location.assign(next.reloadTo);
         } else {
-          toast.error(next.reloadTo ? 'Couldn’t open checkout — please try again' : next.message);
+          toast.error(next.message);
         }
       })
       .finally(() => { buyNowLoadingRef.current = false; setBuyNowLoading(false); });

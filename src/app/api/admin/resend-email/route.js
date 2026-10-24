@@ -74,6 +74,12 @@ export async function POST(request) {
     if (type === 'customer' && !customerEmail) {
       return NextResponse.json({ success: false, message: 'No customer email on this order' });
     }
+    /* An online order whose payment never went through is not an order
+       yet: no "Order Confirmed" to the customer (settlePaidOrder sends it
+       once it is paid). */
+    if (type === 'customer' && order.payment?.method !== 'cod' && order.payment?.status !== 'paid') {
+      return NextResponse.json({ success: false, message: 'This order hasn’t been paid yet, so no confirmation was sent to the customer.' });
+    }
 
     /* Build a simple plain confirmation email for debugging */
     const to      = type === 'customer' ? customerEmail : adminEmails;

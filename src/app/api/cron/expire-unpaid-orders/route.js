@@ -1,55 +1,37 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import Razorpay from 'razorpay';
 import { getDB } from '@/lib/firebase';
 import { isAbandonedAttempt } from '@/lib/coupons';
 import { applyOrderUpdate, OrderStateError } from '@/lib/orderStatus';
+import { razorpayClient, razorpayState, paysInFull } from '@/lib/razorpayState';
+import { settlePaidOrder } from '@/lib/settlePayment';
 
 export const maxDuration = 60;
 
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // unpaid for a day → expired
 const MAX_PER_RUN = 200;
-const SCAN = 500; // pending online orders read per run
+const PAGE = 500; // pending online orders read per page
+const SCAN_BUDGET_MS = 15_000; // stop reading pages after this
 const PARALLEL = 5;
 const BUDGET_MS = 45_000; // stop starting new ones well inside maxDuration
 
-/* What Razorpay says about a Razorpay order: 'unpaid' (created, or only
-   failed payment attempts — safe to expire), 'paid', 'attempted' (a payment
-   is authorized / in progress, or the attempts can't be read) or 'unknown'
-   (Razorpay unreachable). Only 'unpaid' may be cancelled. */
-async function razorpayState(razorpay, razorpayOrderId) {
-  let rzpOrder;
-  try {
-    rzpOrder = await razorpay.orders.fetch(String(razorpayOrderId));
-  } catch (e) {
-    console.error('[cron expire-unpaid] Razorpay order check failed:', razorpayOrderId, e?.error?.description || e?.message);
-    return 'unknown';
-  }
-  if (rzpOrder?.status === 'paid') return 'paid';
-  if (rzpOrder?.status === 'created') return 'unpaid';
-  if (rzpOrder?.status !== 'attempted') return 'unknown';
-  /* Attempted: expired only when every attempt failed (a declined UPI,
-     then the shopper gave up). An authorized payment may still be
-     captured — never cancel it. */
-  try {
-    const items = (await razorpay.orders.fetchPayments(String(razorpayOrderId)))?.items;
-    return Array.isArray(items) && items.length > 0 && items.every((p) => p?.status === 'failed') ? 'unpaid' : 'attempted';
-  } catch {
-    return 'attempted';
-  }
-}
-
-/* GET /api/cron/expire-unpaid-orders — daily clean-up (vercel.json cron).
+/* GET /api/cron/expire-unpaid-orders — daily clean-up (vercel.json cron,
+   04:30 UTC = 10:00 IST: the customer may be messaged, so not at night).
    Cancels online orders that were never paid and are more than a day old,
-   at most MAX_PER_RUN a run, through the normal cancel path
+   oldest first, at most MAX_PER_RUN a run, through the normal cancel path
    (applyOrderUpdate → reverseOrderRewards), so the coupon use and the
-   parked loyalty discount they hold go back to the customer. Quietly: no
-   email or WhatsApp — the customer never placed these orders.
+   parked loyalty discount they hold go back to the customer. Those cancels
+   are quiet: no email or WhatsApp — the customer never placed these orders.
 
    Never one that may have been paid: when Razorpay is configured each is
-   checked there first; one Razorpay reports paid or with a payment in
-   progress (or can't be checked) is skipped and logged, and looked at
-   again tomorrow. Vercel calls it with "Authorization: Bearer <CRON_SECRET>". */
+   checked there first (razorpayState). One Razorpay reports paid is
+   confirmed now through settlePaidOrder (a missed webhook) — which is the
+   one thing here that is not quiet: it sends the customer their "order
+   confirmed" (email + WhatsApp, once, after the response) like the webhook
+   would have. If its payment can't be read, it is skipped and logged; one
+   with a payment in progress (or that can't be checked) is skipped and
+   logged, and looked at again tomorrow. Vercel calls it with
+   "Authorization: Bearer <CRON_SECRET>". */
 export async function GET(request) {
   const secret = process.env.CRON_SECRET;
   const got = request.headers.get('authorization') || '';
@@ -61,27 +43,57 @@ export async function GET(request) {
   const started = Date.now();
   const db = getDB();
   const cutoff = started - MAX_AGE_MS;
-  /* Equality filters only (no composite index). */
-  const snap = await db.collection('orders')
-    .where('status', '==', 'pending').where('payment.method', '==', 'razorpay')
-    .limit(SCAN).get();
-  const stale = snap.docs.filter((d) => {
-    const o = d.data();
-    const at = new Date(o.createdAt).getTime();
-    return isAbandonedAttempt(o) && Number.isFinite(at) && at < cutoff;
-  });
+  const ageOf = (d) => new Date(d.data().createdAt).getTime();
+
+  /* Every pending online order, a page at a time in document-id order —
+     equality filters and the id only (no composite index) — so newer ones
+     can't hide older stale ones behind a fixed limit. */
+  const stale = [];
+  let after = null;
+  let scanComplete = false;
+  while (Date.now() - started < SCAN_BUDGET_MS) {
+    let q = db.collection('orders')
+      .where('status', '==', 'pending').where('payment.method', '==', 'razorpay')
+      .orderBy('__name__');
+    if (after) q = q.startAfter(after);
+    const page = await q.limit(PAGE).get();
+    for (const d of page.docs) {
+      const at = ageOf(d);
+      if (isAbandonedAttempt(d.data()) && Number.isFinite(at) && at < cutoff) stale.push(d);
+    }
+    if (page.docs.length < PAGE) {
+      scanComplete = true;
+      break;
+    }
+    after = page.docs[page.docs.length - 1].id;
+  }
+  stale.sort((a, b) => ageOf(a) - ageOf(b));
   const due = stale.slice(0, MAX_PER_RUN);
 
-  const configured = !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
-  const razorpay = configured ? new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET }) : null;
+  const razorpay = razorpayClient();
 
   const expired = [];
+  const settled = [];
   const skipped = [];
   const failed = [];
   async function expire(d) {
     const rzpId = d.data().payment?.razorpayOrderId;
     if (razorpay && rzpId) {
-      const state = await razorpayState(razorpay, rzpId);
+      const { state, payment } = await razorpayState(razorpay, rzpId, { tag: '[cron expire-unpaid]' });
+      /* Paid and we never heard (the webhook was missed): confirm it now,
+         as the webhook would have — never cancel it. */
+      if (state === 'paid' && paysInFull(d.data(), payment)) {
+        try {
+          const { paidAfterCancel } = await settlePaidOrder(db, d.ref, { razorpayPaymentId: payment.id });
+          console.warn(`[cron expire-unpaid] order ${d.id}: Razorpay ${rzpId} was paid — ${paidAfterCancel ? 'recorded for a refund' : 'confirmed'}`);
+          if (paidAfterCancel) skipped.push({ id: d.id, reason: 'refund_due' });
+          else settled.push(d.id);
+        } catch (e) {
+          console.error('[cron expire-unpaid] settling order', d.id, 'failed:', e?.message);
+          failed.push({ id: d.id, reason: e?.message || 'failed' });
+        }
+        return;
+      }
       if (state !== 'unpaid') {
         console.warn(`[cron expire-unpaid] skipped order ${d.id}: Razorpay ${rzpId} is ${state}`);
         skipped.push({ id: d.id, reason: `razorpay_${state}` });
@@ -117,9 +129,13 @@ export async function GET(request) {
     success: true,
     checked: done,
     expired,
+    settled,
     skipped,
     failed,
-    /* Left for the next run: over this run's bound or time budget. */
+    /* Stale orders left for the next run: over this run's bound or time
+       budget. If the scan itself ran out of time (scanComplete false),
+       there may be more than this. */
     remaining: stale.length - done,
+    scanComplete,
   });
 }

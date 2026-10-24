@@ -55,13 +55,18 @@ export const MAX_LINE_QTY = 999;
  * Every amount the summary shows, from the admin's current charges.
  * Same rule the server applies (src/lib/storeCharges.js): switching the
  * payment method re-computes instantly.
+ *
+ * The COD limit is the server's (preliminaryTotal in
+ * src/app/api/orders/route.js): the order total before points, with
+ * shipping and the COD fee as if COD were chosen — so whether COD is
+ * offered doesn't depend on the method selected.
  */
 export function checkoutAmounts({ subtotal, discount = 0, loyaltyDiscount = 0, paymentMethod, charges, codAvailable = true }) {
   const { shipping: shippingCost } = computeCharges({ subtotal, paymentMethod: null, charges });
   const total = subtotal - discount + shippingCost;
   const codFeeIfSelected = computeCharges({ subtotal, paymentMethod: 'cod', charges }).codFee;
   const { codFee } = computeCharges({ subtotal, paymentMethod, charges });
-  const codBlockedByValue = (total - loyaltyDiscount) > COD_MAX_ORDER_VALUE;
+  const codBlockedByValue = (total + codFeeIfSelected) > COD_MAX_ORDER_VALUE;
   const codBlocked = codBlockedByValue || !codAvailable;
   const payableTotal = total - loyaltyDiscount + codFee;
   return { shippingCost, total, codFee, codFeeIfSelected, codBlockedByValue, codBlocked, payableTotal };
@@ -156,9 +161,13 @@ export function orderSuccessPath(orderNumber, email) {
 }
 
 /* The product page with Buy Now reopened for that quantity once it has
-   loaded (?buynow=<qty>, see src/components/product/useBuyNowReturn.js). */
-export function buyNowReturnPath(productId, qty) {
-  return `/product/${encodeURIComponent(String(productId || ''))}?buynow=${Math.max(1, Math.round(Number(qty) || 1))}`;
+   loaded (?buynow=<qty>, see src/components/product/useBuyNowReturn.js).
+   `search` is the page's own query string: its other parameters (utm_*…)
+   are kept, and a buynow already there is replaced. */
+export function buyNowReturnPath(productId, qty, search = '') {
+  const params = new URLSearchParams(search);
+  params.set('buynow', String(Math.max(1, Math.round(Number(qty) || 1))));
+  return `/product/${encodeURIComponent(String(productId || ''))}?${params.toString()}`;
 }
 
 /* Sign-in from the Buy Now drawer: come back to the product with the
@@ -176,11 +185,12 @@ export const BUY_NOW_REFRESH = 'Couldn’t open checkout — please refresh the 
  * chunk load and hands it back on every later import(). A fresh page load
  * does help (and fetches the current build's chunks after a deploy).
  *   → { reloadTo, message }: load `reloadTo` (the product with Buy Now
- *     reopened), saying `message`;
+ *     reopened, the page's other query parameters kept — `search`),
+ *     saying `message`;
  *   → { reloadTo: null, message } when this page load already came from
  *     ?buynow: loading it again would loop, so ask for a refresh and stop.
  */
-export function buyNowLoadFailure({ productId, qty, openedWithBuyNow }) {
+export function buyNowLoadFailure({ productId, qty, openedWithBuyNow, search = '' }) {
   if (openedWithBuyNow) return { reloadTo: null, message: BUY_NOW_REFRESH };
-  return { reloadTo: buyNowReturnPath(productId, qty), message: BUY_NOW_RELOADING };
+  return { reloadTo: buyNowReturnPath(productId, qty, search), message: BUY_NOW_RELOADING };
 }

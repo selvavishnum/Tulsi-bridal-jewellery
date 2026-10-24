@@ -30,12 +30,23 @@
      an attempt that turns out paid goes to the confirmation page;
    • the points discount shown includes what the customer redeemed on an
      earlier visit (parked on their account, GET /api/loyalty
-     parkedDiscount): the server takes it off whatever they order next;
+     parkedDiscount): the server takes it off whatever they order next.
+     It is sent with the order too (signed-in customers); the server
+     answers 409 LOYALTY_CHANGED with its own figure, which is shown for
+     the customer to confirm;
+   • a new order may find an earlier attempt paid on Razorpay after all
+     (409 EARLIER_ORDER_PAID → that order's confirmation page) or a payment
+     on it still going through (EARLIER_PAYMENT_PENDING → nothing placed;
+     the customer waits and checks My Orders);
    • paying the kept order again: create-order answers ALREADY_PAID (→ the
      confirmation page) or ORDER_CANCELLED (→ a fresh order for what is on
-     screen — unless the points discount changed meanwhile, e.g. an order
-     from another tab took it over: then the new total is shown first).
+     screen — unless the points discount changed meanwhile, or the attempt
+     was replaced by a newer order from another tab or window: then
+     nothing is placed in that tap, and the customer is told).
      Any other failure is shown as it is, and nothing is cancelled;
+   • money that lands on an attempt already replaced or cancelled is not
+     an order (verify 409 PAID_AFTER_CANCEL, or a look-up finding it
+     cancelled and paid): it is refunded — never the confirmation page;
    • once an order is placed, `placed` stays true until the page leaves —
      a second tap can't place it twice.
    ───────────────────────────────────────────── */
@@ -67,6 +78,14 @@ const KEEP_PENDING_REASONS = new Set(['min_order', 'sign_in_required', 'check_fa
    coupon comes off, so the customer isn't stuck retrying. */
 export const CHECK_FAILED_LIMIT = 2;
 
+/* The kept attempt was replaced by a newer order of the customer's
+   (another tab or window): that may be the order they wanted. */
+const REPLACED_MESSAGE = 'This payment was replaced by your newer order. Please check My Orders — tap the button again only if you want another order.';
+/* Paid for an attempt already replaced or cancelled: refunded, not placed
+   (verify's 409 PAID_AFTER_CANCEL; the same found by a look-up). */
+const PAID_AFTER_CANCEL_MESSAGE = 'This payment was for an order that had already been replaced or cancelled, so it was not placed. We will refund it to your original payment method.';
+const EARLIER_PAYMENT_REFUNDED = 'Your earlier payment was for an order that had already been replaced or cancelled, so it was not placed. We will refund it to your original payment method.';
+
 /* The remembered welcome code is forgotten once THIS code was spent or refused. */
 function forgetPendingCoupon(code) {
   const pending = getPendingCoupon();
@@ -92,17 +111,36 @@ async function readOrder(orderId) {
   } catch { return null; }
 }
 
+/* A looked-up order is for exactly these lines: the same pieces, the same
+   quantities (the server merges repeated pieces into one line). */
+function isOrderFor(order, lines) {
+  const count = (list) => (list || []).reduce((m, l) => m.set(String(l.product), (m.get(String(l.product)) || 0) + Number(l.quantity)), new Map());
+  const had = count(order?.items);
+  const want = count(lines);
+  return had.size > 0 && had.size === want.size && [...want].every(([p, q]) => had.get(p) === q);
+}
+
+/* A looked-up order → 'gone' (cancelled — checked first: money that
+   arrived after the cancel is being refunded, it is not an order), 'paid',
+   or null (still open, or not found). */
+function finishedAs(order) {
+  if (order?.status === 'cancelled') return 'gone';
+  if (order?.payment?.status === 'paid') return 'paid';
+  return null;
+}
+
 /**
- * An earlier unpaid online order is being given up: paid meanwhile
- * ('paid' — never cancel it), cancelled now ('cancelled'), found cancelled
- * by something else ('gone' — e.g. replaced by an order from another tab,
- * which took its points discount), or we couldn't tell ('failed' — place
- * nothing new, it would hold the coupon twice).
+ * An earlier unpaid online order is being given up → { outcome, seen }:
+ * paid meanwhile ('paid' — never cancel it), cancelled now ('cancelled'),
+ * found cancelled by something else ('gone' — e.g. replaced by an order
+ * from another tab, which took its points discount; `seen` is that order
+ * as looked up), or we couldn't tell ('failed' — place nothing new, it
+ * would hold the coupon twice).
  */
 async function settleUnpaidOrder(orderId) {
   const before = await readOrder(orderId);
-  if (before?.payment?.status === 'paid') return 'paid';
-  if (before?.status === 'cancelled') return 'gone';
+  const was = finishedAs(before);
+  if (was) return { outcome: was, seen: before };
   try {
     const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
       method: 'PUT',
@@ -111,14 +149,12 @@ async function settleUnpaidOrder(orderId) {
       body: JSON.stringify({ status: 'cancelled', unpaidOnly: true }),
     });
     const data = await res.json().catch(() => null);
-    if (data?.success) return 'cancelled';
+    if (data?.success) return { outcome: 'cancelled' };
     /* Razorpay has the money although we haven't heard yet (late UPI). */
-    if (data?.code === 'ALREADY_PAID') return 'paid';
+    if (data?.code === 'ALREADY_PAID') return { outcome: 'paid' };
   } catch { /* offline — looked up below */ }
   const after = await readOrder(orderId);
-  if (after?.payment?.status === 'paid') return 'paid';
-  if (after?.status === 'cancelled') return 'gone';
-  return 'failed';
+  return { outcome: finishedAs(after) || 'failed', seen: after };
 }
 
 /**
@@ -180,10 +216,13 @@ export default function useCheckoutFlow({
      on the account — including what an abandoned online attempt holds,
      which the next order takes over (GET /api/loyalty parkedDiscount). */
   const wantsParked = withLoyalty || withParkedLoyalty;
+  /* This checkout shows the points discount (a signed-in customer): it is
+     sent with the order, for the server to check. */
+  const knowsLoyalty = wantsParked && status === 'authenticated';
   const [parked, setParked] = useState(0);
   const [loyaltyLoaded, setLoyaltyLoaded] = useState(false);
   /* Place order waits for it: the server takes it off the order anyway. */
-  const loyaltyLoading = wantsParked && status === 'authenticated' && !loyaltyLoaded;
+  const loyaltyLoading = knowsLoyalty && !loyaltyLoaded;
   /* What was redeemed on this page (₹). The order takes at most 20% of the
      subtotal of parked + redeemed, and no more than the coupon leaves (the
      rest stays parked for a later order) — `loyaltyDiscount` below, the
@@ -332,13 +371,15 @@ export default function useCheckoutFlow({
   }
 
   /* The order is placed: a remembered welcome code it used is spent, and
-     the button stays locked until the confirmation page takes over. */
-  function orderPlaced(usedCode = couponCode) {
+     the button stays locked until the confirmation page takes over.
+     `ofScreen` false: the order placed is not what is on screen (an
+     earlier attempt, for other pieces) — the caller's basket is kept. */
+  function orderPlaced(usedCode = couponCode, ofScreen = true) {
     placedRef.current = true;
     unpaid.current = null;
     setPlaced(true);
     forgetPendingCoupon(usedCode);
-    onOrderPlaced?.();
+    if (ofScreen) onOrderPlaced?.();
   }
 
   /* What this attempt is for — an unpaid order is re-used only for the same. */
@@ -358,23 +399,79 @@ export default function useCheckoutFlow({
      customer's (another tab), which took its points discount — or
      expired / cancelled by the store, which gave it back. The points
      discount shown may no longer be what the fresh order gets: re-read it,
-     and if it changed show the new total instead of placing (false). */
-  async function parkedStillAsShown() {
-    if (!wantsParked || status !== 'authenticated') return true;
+     and if it changed show the new total instead of placing (false) —
+     saying so unless `tell` is false. */
+  async function parkedStillAsShown(tell = true) {
+    if (!knowsLoyalty) return true;
     const d = await loadLoyalty();
     if (!d || loyaltyDiscountFor(d.parked, subtotal, discount) === loyaltyDiscount) return true;
     setLoyalty(d.data);
     setParked(d.parked);
     setRedeemed(0);
-    notify('info', 'Your points discount has changed — an order placed in another tab or window used it. Please check your total and place the order again.', { icon: 'ℹ️', duration: 10000 });
+    if (tell) notify('info', 'Your points discount has changed — an order placed in another tab or window used it. Please check your total and place the order again.', { icon: 'ℹ️', duration: 10000 });
     return false;
   }
 
-  /* An earlier attempt turned out paid: that's the order. */
-  function earlierAttemptPaid(prev) {
-    notify('info', 'Your earlier payment went through — opening your order.', { icon: '✅' });
-    orderPlaced(prev.couponCode);
-    router.push(orderSuccessPath(prev.orderNumber, prev.email));
+  /**
+   * The kept attempt turned out cancelled (`seen`: as looked up, if it
+   * was; `replaced`: create-order said a newer order replaced it). Place a
+   * fresh order for what is on screen in this tap (true), or tell the
+   * customer and place nothing (false) — the next tap places it:
+   *   • it was paid after the cancel: that money is being refunded;
+   *   • a newer order of theirs replaced it (another tab or window): that
+   *     may be the order they wanted — the total shown is brought up to
+   *     date (the newer order may hold the points discount);
+   *   • the points discount changed (parkedStillAsShown).
+   */
+  async function freshOrderWanted(seen, replaced = false) {
+    if (seen?.status === 'cancelled' && seen.payment?.status === 'paid') {
+      notify('info', EARLIER_PAYMENT_REFUNDED, { icon: 'ℹ️', duration: 15000 });
+      return false;
+    }
+    if (replaced || seen?.cancelReason === 'replaced') {
+      await parkedStillAsShown(false);
+      notify('info', REPLACED_MESSAGE, { icon: 'ℹ️', duration: 15000 });
+      return false;
+    }
+    return parkedStillAsShown();
+  }
+
+  /* An earlier attempt turned out paid: that's the order. Without its
+     order number (a look-up that failed) My Orders has it — for a guest,
+     order tracking (the number is in their confirmation email). */
+  function earlierAttemptPaid(prev, message = 'Your earlier payment went through — opening your order.', ofScreen = true) {
+    notify('info', message, { icon: '✅' });
+    orderPlaced(prev.couponCode, ofScreen);
+    router.push(prev.orderNumber ? orderSuccessPath(prev.orderNumber, prev.email) : session ? '/account' : '/track-order');
+  }
+
+  /* 409 EARLIER_ORDER_PAID: placing this order found an earlier attempt of
+     the customer's paid on Razorpay, and the server confirmed it instead —
+     nothing new was placed. Opened as an earlier attempt that turned out
+     paid is (looked up for its order number). The basket (the cart) goes
+     only if that order is for exactly what is on screen: an earlier Buy
+     Now for another piece, or a look-up that failed, leaves it. */
+  async function earlierOrderConfirmed(answer) {
+    const o = answer.orderId ? await readOrder(String(answer.orderId)) : null;
+    earlierAttemptPaid({
+      orderNumber: o?.orderNumber,
+      email: o?.shippingAddress?.email || o?.guestEmail || form.email,
+      couponCode: o?.couponCode,
+    }, answer.message || 'Your earlier payment went through — we have confirmed that order.', isOrderFor(o, lines));
+  }
+
+  /* 409 LOYALTY_CHANGED: the server takes a different points discount
+     than shown (e.g. an order from another tab took it over, or it didn't
+     load here). Its parked amount (before the caps, as GET /api/loyalty
+     parkedDiscount) is shown instead, so the next tap matches. */
+  async function adoptServerParked(answer) {
+    if (typeof answer.parkedDiscount === 'number' && Number.isFinite(answer.parkedDiscount)) {
+      setParked(Math.max(0, Math.floor(answer.parkedDiscount)));
+      setRedeemed(0);
+      return;
+    }
+    const d = await loadLoyalty(); // an answer without it: read it
+    if (d) { setLoyalty(d.data); setParked(d.parked); setRedeemed(0); }
   }
 
   /* "Couldn't check the coupon just now" (409 COUPON_CHANGED check_failed):
@@ -397,7 +494,9 @@ export default function useCheckoutFlow({
 
   /* POST /api/orders for what is on screen → the new order, or null when
      the answer was handled here: a 409 (the new total is shown, nothing
-     was ordered) or a COD order placed. Throws on any other failure. */
+     was ordered; or an earlier attempt turned out paid, or its payment is
+     still going through) or a COD order placed. Throws on any other
+     failure. */
   async function submitOrder(signature) {
     /* Prices, discounts and the total are computed server-side from the
        products collection — only the lines are sent. */
@@ -416,16 +515,38 @@ export default function useCheckoutFlow({
         shippingCost,
         codFee,
         couponDiscount: couponCode ? discount : undefined,
+        /* The points discount shown — 0 too (e.g. the points didn't
+           load): a different figure on the server is 409 LOYALTY_CHANGED. */
+        loyaltyDiscount: knowsLoyalty ? loyaltyDiscount : undefined,
       }),
     });
     const orderData = await orderRes.json();
-    const couponChanged = orderRes.status === 409 && orderData.code === 'COUPON_CHANGED';
+    const conflict = orderRes.status === 409 ? orderData.code : null;
+    const couponChanged = conflict === 'COUPON_CHANGED';
     if (!(couponChanged && orderData.reason === 'check_failed')) checkFailed.current = { code: null, count: 0 };
-    if (orderRes.status === 409 && orderData.code === 'CHARGES_CHANGED') {
+    if (conflict === 'CHARGES_CHANGED') {
       /* The admin changed the charges while this page was open: show the
          new total and let the customer confirm again. */
       await refreshCharges();
       notify('info', orderData.message, { icon: 'ℹ️', duration: 10000 });
+      return null;
+    }
+    if (conflict === 'LOYALTY_CHANGED') {
+      /* Nothing was ordered: show the server's points discount and let the
+         customer confirm the new total. */
+      await adoptServerParked(orderData);
+      const now = Math.max(0, Number(orderData.loyaltyDiscount) || 0);
+      notify('info', orderData.message || `Your points discount is now ₹${now.toLocaleString('en-IN')}. Please check your total and place the order again.`, { icon: 'ℹ️', duration: 10000 });
+      return null;
+    }
+    if (conflict === 'EARLIER_ORDER_PAID') {
+      await earlierOrderConfirmed(orderData);
+      return null;
+    }
+    if (conflict === 'EARLIER_PAYMENT_PENDING') {
+      /* An earlier attempt's payment may still go through (or Razorpay
+         couldn't be asked just now): nothing was placed or cancelled. */
+      notify('info', orderData.message || 'Your earlier payment is still being processed. Please wait a few minutes and check My Orders before paying again.', { icon: 'ℹ️', duration: 15000 });
       return null;
     }
     if (couponChanged) {
@@ -484,13 +605,13 @@ export default function useCheckoutFlow({
         if (paymentMethod === 'razorpay' && prev.signature === signature && sameAmount) {
           order = prev; // pay the order already created for exactly this
         } else {
-          const outcome = await settleUnpaidOrder(prev.orderId);
+          const { outcome, seen } = await settleUnpaidOrder(prev.orderId);
           if (outcome === 'paid') { earlierAttemptPaid(prev); return; }
           if (outcome !== 'cancelled' && outcome !== 'gone') {
             throw new Error('We couldn’t update your earlier payment attempt. Please check your connection and try again.');
           }
           unpaid.current = null;
-          if (outcome === 'gone' && !(await parkedStillAsShown())) return;
+          if (outcome === 'gone' && !(await freshOrderWanted(seen))) return;
         }
       }
 
@@ -520,21 +641,27 @@ export default function useCheckoutFlow({
         /* The kept order's payment came through (late UPI). */
         if (answer?.code === 'ALREADY_PAID') { earlierAttemptPaid(order); return; }
         const retry = order === prev;
+        const replaced = answer?.code === 'ORDER_CANCELLED' && answer.replaced === true;
         let gone = answer?.code === 'ORDER_CANCELLED';
+        let seen = null;
         if (!gone && retry && !answer?.code) {
           /* No code (e.g. a proxy's error page): look the kept order up —
-             only a look-up, nothing is cancelled. */
-          const now = await readOrder(order.orderId);
-          if (now?.payment?.status === 'paid') { earlierAttemptPaid(order); return; }
-          gone = now?.status === 'cancelled';
+             only a look-up, nothing is cancelled. Cancelled is checked
+             first: paid after its cancel is a refund, not an order. */
+          seen = await readOrder(order.orderId);
+          const now = finishedAs(seen);
+          if (now === 'paid') { earlierAttemptPaid(order); return; }
+          gone = now === 'gone';
         }
         if (gone) {
           /* Cancelled (by the store or the daily clean-up — its coupon use
              and points went back — or replaced by a later order, which
-             took them over): it can't be paid. */
+             took them over): it can't be paid. A fresh order goes in the
+             same tap only for the kept order, and never when a newer order
+             replaced it. */
           if (unpaid.current === order) unpaid.current = null;
-          if (retry && round === 0) {
-            if (!(await parkedStillAsShown())) return;
+          if (replaced || (retry && round === 0)) {
+            if (!(await freshOrderWanted(seen, replaced))) return;
             order = null;
             continue;
           }
@@ -585,6 +712,13 @@ export default function useCheckoutFlow({
               orderPlaced(order.couponCode);
               toast(verifyData.message, { duration: 15000 });
               router.push('/account');
+            } else if (verifyRes.status === 409 && verifyData.code === 'PAID_AFTER_CANCEL') {
+              /* Paid for an attempt replaced or cancelled meanwhile (e.g.
+                 by an order from another tab): not an order — refunded.
+                 The next tap places a fresh one. */
+              setVerifying(false);
+              if (unpaid.current?.orderId === orderId) unpaid.current = null;
+              notify('info', verifyData.message || PAID_AFTER_CANCEL_MESSAGE, { icon: 'ℹ️', duration: 15000 });
             } else {
               setVerifying(false);
               notify('error', verifyData.message || 'Payment verification failed');

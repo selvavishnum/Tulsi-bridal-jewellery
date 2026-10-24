@@ -48,6 +48,7 @@ class FakeRazorpay {
     this.orders = {
       create: async (o) => { rzpCalls.push(['create', o]); return rzp.create(o); },
       fetch: async (id) => { rzpCalls.push(['fetch', id]); return rzp.fetch(id); },
+      fetchPayments: async (id) => rzp.fetchPayments(id),
     };
   }
 }
@@ -110,6 +111,8 @@ beforeEach(() => {
   rzp = {
     create: async (o) => ({ id: `order_rzp${rzpCalls.length}`, entity: 'order', amount: o.amount, currency: 'INR', receipt: o.receipt, status: 'created' }),
     fetch: async (id) => ({ id, entity: 'order', amount: 144900, currency: 'INR', status: 'attempted' }),
+    /* The payment behind a Razorpay order that says 'paid': captured, in full. */
+    fetchPayments: async (id) => ({ items: [{ id: 'pay_late', order_id: id, status: 'captured', amount: 144900, currency: 'INR' }] }),
   };
   db = fakeFirestore({
     products: {
@@ -510,7 +513,8 @@ describe('PUT /api/orders/[id] { status: "cancelled" } by the customer', () => {
     const c = await call(orderById, 'PUT', { status: 'cancelled' }, { id: first.json.data.id });
     assert.equal(c.status, 409);
     assert.equal(c.json.code, 'ALREADY_PAID');
-    assert.equal(orderDoc(first.json.data.id).status, 'pending');
+    assert.equal(orderDoc(first.json.data.id).status, 'confirmed', 'not cancelled — confirmed by the refused cancel (R-B), as the webhook would have');
+    assert.equal(orderDoc(first.json.data.id).payment.razorpayPaymentId, 'pay_late');
     assert.equal(coupon().usedCount, 1);
   });
 });
@@ -546,6 +550,7 @@ describe('POST /api/payments/create-order again for the same unpaid order', () =
     const d = await call(createOrder, 'POST', { orderId: id });
     assert.equal(d.status, 409);
     assert.equal(d.json.code, 'ALREADY_PAID');
+    assert.deepEqual([orderDoc(id).status, orderDoc(id).payment.status], ['confirmed', 'paid'], 'confirmed on the way (R-B), as verify and the webhook would');
   });
 });
 

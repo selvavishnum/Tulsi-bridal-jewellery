@@ -14,6 +14,7 @@ import { computeCharges } from '@/lib/storeCharges';
 import { getStoreCharges } from '@/lib/storeChargesServer';
 import { hasPlacedOrder, isAbandonedAttempt, couponDiscountFor, couponStateRefusal, couponUsesBy, couponRefusalMessage } from '@/lib/coupons';
 import { holdsParkedLoyalty, attemptsHoldingLoyalty } from '@/lib/loyalty';
+import { razorpayClient, settleIfPaid, PAYMENT_IN_PROGRESS_MESSAGE, PAYMENT_UNCHECKED_MESSAGE } from '@/lib/razorpayState';
 import crypto from 'crypto';
 import { vendorCanSell } from '@/lib/vendorStatus';
 import { analyticsVidFrom } from '@/lib/analytics/ingest';
@@ -30,6 +31,8 @@ const MAX_LOYALTY_SHARE = 0.2;
 const COD_MAX_ORDER_VALUE = 20000;
 
 const MAX_LINES = 50;
+/* How long checkout waits for Razorpay about an earlier attempt. */
+const RAZORPAY_CHECK_MS = 5000;
 
 /* A coupon that can't be applied as the shopper was shown it, found inside
    the order transaction (the coupon changed since the check before it). */
@@ -38,6 +41,16 @@ class CouponChangedError extends Error {
     super(reason);
     this.reason = reason;
     this.discount = discount;
+  }
+}
+
+/* The points discount this order would get is not the one the shopper was
+   shown (found inside the order transaction, before any write). */
+class LoyaltyChangedError extends Error {
+  constructor(loyaltyDiscount, parkedDiscount) {
+    super('loyalty_changed');
+    this.loyaltyDiscount = loyaltyDiscount;
+    this.parkedDiscount = parkedDiscount;
   }
 }
 
@@ -59,7 +72,9 @@ const inr = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
  * code was actually placed (isPlacedOrder); otherwise this order re-uses it
  * (heldByMe) instead of losing the discount.
  *
- * @returns {{ code, reason: string|null, discount, id?, data?, minOrderAmount?, heldByMe? }}
+ * @returns {{ code, reason: string|null, discount, id?, data?, minOrderAmount?, heldByMe?, holders? }}
+ *   holders — refs of the unplaced orders holding this customer's use
+ *             (couponUsesBy), which this order would take it over from
  */
 async function resolveCoupon(db, { couponCode, subtotal, couponUserKey, session }) {
   const code = String(couponCode).trim().toUpperCase();
@@ -76,6 +91,7 @@ async function resolveCoupon(db, { couponCode, subtotal, couponUserKey, session 
      a returning customer isn't told to add more for a code they can't use).
      If one fails the code isn't applied (the order still goes through for
      an older page; a current one is asked to retry). */
+  let uses = null;
   try {
     if (c.firstOrderOnly === true) {
       /* Never without a signed-in account: a sessionless API order could
@@ -84,13 +100,14 @@ async function resolveCoupon(db, { couponCode, subtotal, couponUserKey, session 
       const email = canMatchGuestOrders(session.user) ? session.user.email : null;
       if (await hasPlacedOrder(db, { userId: session.user.id, email })) return { ...base, reason: 'first_order_only' };
     }
-    if (heldByMe && (await couponUsesBy(db, { couponId: id, userKey: couponUserKey })).placed) return { ...base, reason: 'used' };
+    if (heldByMe) uses = await couponUsesBy(db, { couponId: id, userKey: couponUserKey });
+    if (uses?.placed) return { ...base, reason: 'used' };
   } catch (e) {
     console.error('[orders POST] coupon order-history check failed:', e?.message);
     return { ...base, reason: 'check_failed' };
   }
   if (subtotal < base.minOrderAmount) return { ...base, reason: 'min_order' };
-  return { ...base, reason: null, heldByMe, discount: couponDiscountFor(c, subtotal) };
+  return { ...base, reason: null, heldByMe, holders: uses?.holders || [], discount: couponDiscountFor(c, subtotal) };
 }
 
 /* 409: the coupon discount the shopper was shown is not what this order
@@ -121,6 +138,60 @@ async function abandonedLoyaltyHolders(db, userId) {
     console.error('[orders POST] abandoned-attempt lookup failed:', e?.message);
     return [];
   }
+}
+
+/* 409: an earlier attempt this order would take over may have been paid
+   after all (a UPI approval landing late). Nothing was created or cancelled. */
+function earlierPaymentResponse(code, orderId, message) {
+  return NextResponse.json({ success: false, code, orderId, message }, { status: 409 });
+}
+
+/**
+ * Before this order takes over earlier attempts (their coupon use or parked
+ * points), ask Razorpay about each one that opened a payment window — the
+ * same check as the daily clean-up (razorpayState):
+ *   paid        settled now through the normal path (confirmed as usual)
+ *               → 409 EARLIER_ORDER_PAID; nothing else is done
+ *   in progress → 409 EARLIER_PAYMENT_PENDING, nothing written
+ *   paid, but not confirmable from here (the payment can't be read, or
+ *               doesn't cover the order) → 409 EARLIER_PAYMENT_PENDING
+ *               ("couldn't check"); the webhook settles it
+ *   never paid  taken over as before. So is every attempt when Razorpay
+ *               isn't configured (as the clean-up).
+ *   Razorpay can't be asked (unreachable, too slow) → taken over as before.
+ *               A Razorpay outage must not stop the order (COD included), and
+ *               leaving the attempt alive could turn a late payment on it into
+ *               a second live order (paid online + COD) — or cost the customer
+ *               a first-order code behind a false "already used". Cancelled as
+ *               replaced, a payment that lands later is recorded for a refund
+ *               (settlePaidOrder) instead.
+ * A payment that settles as paid-after-cancel (the attempt was cancelled
+ * meanwhile) is being refunded: that attempt counts as never paid.
+ * @param {object[]} refs the attempts this order would take over
+ * @returns {Promise<Response|null>} the answer to send instead of placing the order
+ */
+async function checkEarlierAttempts(db, refs) {
+  const razorpay = refs.length ? razorpayClient() : null;
+  if (!razorpay) return null;
+  const docs = await Promise.all(refs.map((r) => r.get()));
+  const asked = docs.filter((d) => d.exists && isAbandonedAttempt(d.data()) && d.data().payment?.razorpayOrderId);
+  const answers = await Promise.all(asked.map(async (d) => ({
+    d,
+    ...(await settleIfPaid(db, d.ref, d.data(), razorpay, { timeoutMs: RAZORPAY_CHECK_MS, tag: '[orders POST]' })),
+  })));
+
+  let paidId = null;
+  let inProgress = null;
+  let unchecked = null;
+  for (const { d, state, paidAfterCancel } of answers) {
+    if (state === 'settled') { if (!paidAfterCancel) paidId = paidId || d.id; }
+    else if (state === 'attempted') inProgress = inProgress || d.id;
+    else if (state === 'unsure') unchecked = unchecked || d.id;
+  }
+  if (paidId) return earlierPaymentResponse('EARLIER_ORDER_PAID', paidId, 'Your earlier payment went through — we have confirmed that order.');
+  if (inProgress) return earlierPaymentResponse('EARLIER_PAYMENT_PENDING', inProgress, PAYMENT_IN_PROGRESS_MESSAGE);
+  if (unchecked) return earlierPaymentResponse('EARLIER_PAYMENT_PENDING', unchecked, PAYMENT_UNCHECKED_MESSAGE);
+  return null;
 }
 
 const ADDRESS_FIELDS = { fullName: 80, name: 80, phone: 15, email: 254, street: 200, address: 200, landmark: 120, city: 60, state: 60, pincode: 6, country: 40 };
@@ -449,7 +520,19 @@ export async function POST(request) {
        order takes it back (as cancelling that attempt would) — closing the
        payment window must not cost the customer their points discount. */
     const uid = session?.user?.id ? String(session.user.id) : null;
-    const loyaltyHolders = userRef ? await abandonedLoyaltyHolders(db, uid) : [];
+    const loyaltyCandidates = userRef ? await abandonedLoyaltyHolders(db, uid) : [];
+
+    /* Never take over an attempt that may have been paid: Razorpay is asked
+       first. Paid → it is confirmed and this order is not placed; still in
+       progress → nothing is placed or cancelled. An attempt Razorpay can't
+       be asked about is taken over as usual (a late payment becomes a refund). */
+    const takeoverRefs = new Map([...(couponApplies && coupon.heldByMe ? coupon.holders : []), ...loyaltyCandidates].map((r) => [r.id, r]));
+    const earlier = await checkEarlierAttempts(db, [...takeoverRefs.values()]);
+    if (earlier) return earlier;
+
+    /* The points discount the checkout says it showed (loyaltyDiscount):
+       checked in the transaction, once the parked amount is read. */
+    const shownLoyaltyDiscount = Number.isFinite(body.loyaltyDiscount) ? body.loyaltyDiscount : null;
 
     let orderData;
     try {
@@ -466,9 +549,10 @@ export async function POST(request) {
         /* The earlier attempts this order may take over, read in full: the
            holders of this customer's use of the code, and the attempts
            holding their parked loyalty discount. */
-        const attemptRefs = new Map([...(uses?.holders || []), ...loyaltyHolders].map((r) => [r.id, r]));
+        const useHolders = uses?.holders || [];
+        const attemptRefs = new Map([...useHolders, ...loyaltyCandidates].map((r) => [r.id, r]));
         const attempts = (await Promise.all([...attemptRefs.values()].map((r) => tx.get(r)))).filter((d) => d.exists);
-        const holderIds = new Set((uses?.holders || []).map((r) => r.id));
+        const holderIds = new Set(useHolders.map((r) => r.id));
         const couponHolders = attempts.filter((d) => holderIds.has(d.id));
 
         let appliedCoupon = 0;
@@ -512,14 +596,22 @@ export async function POST(request) {
         const moved = replaced.filter((d) => holdsParkedLoyalty(d.data()));
         const movedAmount = moved.reduce((sum, d) => sum + (Number(d.data().loyaltyDiscount) || 0), 0);
         let loyaltyDiscount = 0;
+        let parked = 0;
         if (userRef) {
-          const parked = Math.max(0, Number(uDoc.exists ? uDoc.data().pendingLoyaltyDiscount : 0) || 0) + movedAmount;
+          parked = Math.max(0, Number(uDoc.exists ? uDoc.data().pendingLoyaltyDiscount : 0) || 0) + movedAmount;
           /* Cap the loyalty contribution so no single balance can zero an
              order — and never more than the coupon leaves of the subtotal:
              points it can't use stay parked (parkedChange below) instead of
              being taken for nothing. checkoutRules.loyaltyDiscountFor shows
              the same figure. */
           loyaltyDiscount = Math.min(parked, Math.floor(computedSubtotal * MAX_LOYALTY_SHARE), Math.max(0, computedSubtotal - appliedCoupon));
+        }
+        /* Not the points discount the shopper was shown (₹1 or more off, as
+           the coupon check): refuse before any write — no order, no
+           take-over, no coupon use. `parked` is what GET /api/loyalty calls
+           parkedDiscount (parked + held by the attempts taken over). */
+        if (shownLoyaltyDiscount !== null && !(Math.abs(loyaltyDiscount - shownLoyaltyDiscount) < 1)) {
+          throw new LoyaltyChangedError(loyaltyDiscount, parked);
         }
 
         const discount = Math.min(appliedCoupon + loyaltyDiscount, computedSubtotal);
@@ -584,6 +676,15 @@ export async function POST(request) {
         return data;
       });
     } catch (e) {
+      if (e instanceof LoyaltyChangedError) {
+        return NextResponse.json({
+          success: false,
+          code: 'LOYALTY_CHANGED',
+          loyaltyDiscount: e.loyaltyDiscount,
+          parkedDiscount: e.parkedDiscount,
+          message: `Your points discount is now ${inr(e.loyaltyDiscount)}. Please check your total and place the order again.`,
+        }, { status: 409 });
+      }
       if (!(e instanceof CouponChangedError)) throw e;
       /* The coupon changed between the check above and this commit. */
       if (shownCouponDiscount === null) {
@@ -627,14 +728,19 @@ export async function POST(request) {
     const fullOrder = { id: orderRef.id, _id: orderRef.id, ...orderData };
     const customerOrder = toCustomerOrder(fullOrder);
 
-    /* Send emails + WhatsApp — await so they complete before response */
+    /* Send emails + WhatsApp — await so they complete before response.
+       The customer's "order confirmed" goes now for COD only: an online
+       order isn't placed until it is paid (settlePaidOrder sends it then). */
+    const isPlacedNow = fullOrder.payment.method === 'cod';
     await Promise.all([
-      sendOrderConfirmation(customerOrder).catch((e) => console.error('[Email] Customer confirmation failed:', e.message)),
+      ...(isPlacedNow ? [
+        sendOrderConfirmation(customerOrder).catch((e) => console.error('[Email] Customer confirmation failed:', e.message)),
+        sendOrderWhatsAppToCustomer(customerOrder).catch((e) => console.error('[WhatsApp] Customer alert failed:', e.message)),
+      ] : []),
       sendOrderNotificationToAdmin(fullOrder).catch((e) => console.error('[Email] Admin notification failed:', e.message)),
       sendOrderWhatsAppToAdmin(fullOrder).catch((e) => console.error('[WhatsApp] Admin alert failed:', e.message)),
-      sendOrderWhatsAppToCustomer(customerOrder).catch((e) => console.error('[WhatsApp] Customer alert failed:', e.message)),
       /* Vendors hear about a COD order now; an online one when it's paid (settlePayment). */
-      ...(fullOrder.payment.method === 'cod' && fullOrder.vendorIds.some((v) => v !== PLATFORM_VENDOR_ID)
+      ...(isPlacedNow && fullOrder.vendorIds.some((v) => v !== PLATFORM_VENDOR_ID)
         ? [notifyVendorsOfOrder(db, orderRef.id).catch((e) => console.error('[Email] Vendor notification failed:', e.message))]
         : []),
     ]);
