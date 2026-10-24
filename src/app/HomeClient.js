@@ -504,10 +504,10 @@ export default function HomeClient() {
               Crafted for Your Special Day
             </span>
             <h2 className="font-serif text-4xl md:text-5xl font-bold text-stone-900 mb-5 leading-tight">
-              Exquisite Bridal<br /><span className="text-wine-700">Jewellery Collection</span>
+              Exquisite<br /><span className="text-wine-700">Jewellery Collection</span>
             </h2>
             <p className="text-stone-500 text-sm leading-relaxed mb-10">
-              Discover our exclusive collection of handcrafted bridal jewellery — timeless designs for your most memorable moments.
+              Discover our exclusive collection of handcrafted jewellery — timeless designs for your most memorable moments.
             </p>
             <div className="grid grid-cols-3 gap-6 mb-10 max-w-xs mx-auto">
               {[['500+', 'Designs'], ['100%', 'Authentic'], deliveryStat].map(([val, label]) => (
