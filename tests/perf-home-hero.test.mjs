@@ -408,6 +408,14 @@ test('HomeClient: every control on the first screen has a name a screen reader c
   }
 });
 
+test('HomeClient: the gold "Shop Now" button has a dark label (white on #c9973a is 2.6:1; WCAG needs 4.5:1)', { skip }, () => {
+  const html = render(HomeClient, { heroSlides: [slide()] });
+  const shop = html.match(/<a [^>]*href="\/shop"[^>]*bg-gold-500[^>]*>/)?.[0] || '';
+  assert.ok(shop, 'the promo section\'s Shop Now button is there');
+  assert.match(shop, /\btext-stone-900\b/);
+  assert.doesNotMatch(shop, /\btext-white\b/);
+});
+
 test('HomeClient: the grids ask for the width they are drawn at, not the generic card sizes', { skip }, () => {
   const source = readFileSync(path.resolve('src/app/HomeClient.js'), 'utf8');
   assert.match(source, /<ProductCard [^>]*sizes=\{GRID_SIZES\.home\}/, 'the home grid is 2-up, then 4-up from 768px');

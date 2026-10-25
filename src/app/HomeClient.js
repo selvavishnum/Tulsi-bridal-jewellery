@@ -594,8 +594,9 @@ export default function HomeClient({ heroSlides: serverSlides = null, showcase: 
               ))}
             </div>
             <div className="flex gap-4 justify-center flex-wrap">
-              <Link href="/shop" className="inline-flex items-center gap-2 px-8 py-3.5 bg-gold-500 hover:bg-gold-400 text-white font-semibold text-sm tracking-luxury uppercase transition-all duration-300 shadow-gold">
-                <FiShoppingCart /> Shop Now
+              <Link href="/shop" className="inline-flex items-center gap-2 px-8 py-3.5 bg-gold-500 hover:bg-gold-400 text-stone-900 font-semibold text-sm tracking-luxury uppercase transition-all duration-300 shadow-gold">
+                {/* Dark label on the gold: 6.6:1 (white was 2.6:1; 4.5:1 is the minimum). */}
+                <FiShoppingCart aria-hidden="true" /> Shop Now
               </Link>
               <a href={`https://wa.me/${waNumber}?text=${encodeURIComponent("Hi! I'd like to enquire about your bridal jewellery collection.")}`} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-8 py-3.5 border border-stone-300 hover:border-wine-700 text-stone-800 hover:text-wine-700 font-semibold text-sm tracking-luxury uppercase transition-all duration-300">
