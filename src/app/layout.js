@@ -1,6 +1,7 @@
 import './globals.css';
 import { Cormorant_Garamond, Inter } from 'next/font/google';
 import Script from 'next/script';
+import { preload } from 'react-dom';
 import { Providers } from './providers';
 import { SITE_URL, SITE_NAME, JsonLd, buildStoreJsonLd, buildWebSiteJsonLd } from '@/lib/seo';
 
@@ -62,6 +63,9 @@ export const viewport = {
 const GA_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 
 export default async function RootLayout({ children }) {
+  /* The ₹ glyph (see globals.css): ~1 KB each, used by the offer bar and the prices —
+     fetched with the document instead of after the CSS. */
+  for (const file of ['inter-rupee', 'cormorant-rupee']) preload(`/fonts/${file}.woff2`, { as: 'font', type: 'font/woff2', crossOrigin: 'anonymous' });
   const storeJsonLd = await buildStoreJsonLd();
 
   return (

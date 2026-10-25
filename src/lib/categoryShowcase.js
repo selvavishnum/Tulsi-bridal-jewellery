@@ -213,7 +213,8 @@ export function showcaseImageUrl(url, { variant = 'square', focus = DEFAULT_FOCU
 }
 
 /** srcset across widths for a frame of `variant`. */
-export function showcaseSrcSet(url, opts, widths = [240, 400, 600, 900, 1200]) {
+/* 720 and 1600 fill gaps that cost bytes: a full-width tile on a phone needs ~660–720px (the next rung up was 900), a featured tile on a 2× desktop ~1600. */
+export function showcaseSrcSet(url, opts, widths = [240, 400, 600, 720, 900, 1200, 1600]) {
   if (!isCloudinary(url)) return undefined;
   return widths.map((w) => `${showcaseImageUrl(url, { ...opts, width: w })} ${w}w`).join(', ');
 }

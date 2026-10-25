@@ -68,7 +68,7 @@ const DEFAULT_SLIDES = [
    height and only the sides are trimmed; a shorter phone (360×640 → a 0.65
    box) then shows the whole crop instead of losing its bottom — where the
    pendant is — as a narrower crop would. `sizes` says so: the photo is drawn
-   0.66 ÷ 0.52 ≈ 1.28× the viewport width. 'good' quality: it is shown at
+   as wide as the box is tall × 0.66 (see `sizes`). 'good' quality: it is shown at
    ≤ 500 CSS px, where it is indistinguishable from 'best' at half the bytes
    (the desktop photo keeps 'best').
    Only tall phones (viewport ≤ 3:4): a landscape-ish window or a portrait
@@ -76,9 +76,11 @@ const DEFAULT_SLIDES = [
 const HERO_ART = Object.freeze({
   media: '(max-width: 767px) and (max-aspect-ratio: 3/4)',
   ratio: 0.66,
-  sizes: '128vw',
+  /* Drawn as tall as the hero box (clamp(520px, 100vh − 88px, 860px), see .hero-viewport),
+     0.66 as wide: exact on every phone, where a fixed "128vw" was right only for a 390×844 one. */
+  sizes: 'calc(clamp(520px, 100vh - 88px, 860px) * 0.66)',
   quality: 'good',
-  widths: Object.freeze([480, 640, 828, 1080, 1280]),
+  widths: Object.freeze([480, 640, 828, 960, 1080, 1280]),
 });
 
 const BROWSE_CATS = [

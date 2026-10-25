@@ -28,6 +28,14 @@ const nextConfig = {
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
         ],
       },
+      /* The ₹ glyph fonts (public/fonts, see globals.css) never change under
+         the same name — if one is ever re-cut, give it a new file name. Next
+         serves public/ files with max-age=0 otherwise, i.e. a re-check on every
+         visit. */
+      {
+        source: '/fonts/:file*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
     ];
   },
   images: {

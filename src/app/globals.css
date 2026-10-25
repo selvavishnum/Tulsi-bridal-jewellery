@@ -1,3 +1,35 @@
+/* The rupee sign ₹ is in neither font's main file: it lives in each one's
+   "latin-extended" file (Inter 83 KB, Cormorant 33 KB), which the browser
+   downloads in full — after the CSS, ahead of the hero photo — as soon as a
+   price is on the page. These carry only that one glyph (the same outlines,
+   cut out of those files, ~1 KB each, weight axis kept), listed first in the
+   font stacks (tailwind.config.js). unicode-range keeps every other character
+   on the real fonts. Both fonts are SIL OFL, which allows this. */
+@font-face {
+  font-family: 'Inter Rupee';
+  src: url('/fonts/inter-rupee.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+20B9;
+}
+@font-face {
+  font-family: 'Cormorant Rupee';
+  src: url('/fonts/cormorant-rupee.woff2') format('woff2');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+20B9;
+}
+@font-face {
+  font-family: 'Cormorant Rupee';
+  src: url('/fonts/cormorant-italic-rupee.woff2') format('woff2');
+  font-weight: 300 700;
+  font-style: italic;
+  font-display: swap;
+  unicode-range: U+20B9;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
