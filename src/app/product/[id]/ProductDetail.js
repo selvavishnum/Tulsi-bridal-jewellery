@@ -225,14 +225,14 @@ function ReviewCard({ review }) {
             <div className="flex items-center gap-2 mt-0.5">
               <Stars rating={review.rating} size="sm" />
               {review.status === 'approved' && (
-                <span className="text-[10px] text-green-600 font-semibold flex items-center gap-1">
+                <span className="text-[10px] text-green-700 font-semibold flex items-center gap-1">
                   <FiCheckCircle className="text-[10px]" /> Verified Purchase
                 </span>
               )}
             </div>
           </div>
         </div>
-        <span className="text-xs text-stone-400 flex-shrink-0">{date}</span>
+        <span className="text-xs text-stone-500 flex-shrink-0">{date}</span>
       </div>
       <p className="text-stone-500 text-sm leading-relaxed">{review.comment}</p>
     </div>
@@ -573,10 +573,12 @@ export default function ProductDetail({ initialProduct = null }) {
               <span className="absolute top-4 left-4 badge-sale text-sm px-3 py-1.5 z-10">-{discount}% OFF</span>
             )}
             <button
+              type="button"
               onClick={(e) => { e.stopPropagation(); share(); }}
+              aria-label="Share this product"
               className="absolute top-4 right-4 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-stone-500 hover:text-wine-700 shadow-sm transition z-10"
             >
-              <FiShare2 className="text-sm" />
+              <FiShare2 className="text-sm" aria-hidden="true" />
             </button>
             <span className="absolute bottom-3 right-3 bg-black/45 text-white text-[10px] px-2.5 py-1 rounded-full pointer-events-none z-10">
               Tap to zoom
@@ -590,10 +592,13 @@ export default function ProductDetail({ initialProduct = null }) {
           {/* Dot indicators */}
           {product.images.length > 1 && (
             <div className="flex items-center gap-3 px-4 py-3 bg-white">
-              <div className="flex gap-1.5 flex-1 justify-center">
+              <div className="flex flex-1 justify-center">
                 {product.images.map((_, i) => (
-                  <button key={i} onClick={() => setSelectedImage(i)}
-                    className={`rounded-full transition-all duration-300 ${i === selectedImage ? 'w-5 h-1.5 bg-wine-700' : 'w-1.5 h-1.5 bg-stone-300'}`} />
+                  <button key={i} type="button" onClick={() => setSelectedImage(i)}
+                    aria-label={`Show photo ${i + 1}`} aria-current={i === selectedImage ? 'true' : undefined}
+                    className="flex h-6 min-w-6 items-center justify-center">
+                    <span className={`block rounded-full transition-all duration-300 ${i === selectedImage ? 'w-5 h-1.5 bg-wine-700' : 'w-1.5 h-1.5 bg-stone-300'}`} />
+                  </button>
                 ))}
               </div>
             </div>
@@ -662,6 +667,8 @@ export default function ProductDetail({ initialProduct = null }) {
                 {/* Slide arrows */}
                 {product.images?.length > 1 && selectedImage > 0 && (
                   <button
+                    type="button"
+                    aria-label="Previous photo"
                     onClick={(e) => { e.stopPropagation(); setSelectedImage((i) => i - 1); }}
                     className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-white/90 hover:bg-white shadow-md rounded-full flex items-center justify-center text-stone-700 text-xl transition z-10 opacity-0 group-hover:opacity-100">
                     ‹
@@ -669,6 +676,8 @@ export default function ProductDetail({ initialProduct = null }) {
                 )}
                 {product.images?.length > 1 && selectedImage < product.images.length - 1 && (
                   <button
+                    type="button"
+                    aria-label="Next photo"
                     onClick={(e) => { e.stopPropagation(); setSelectedImage((i) => i + 1); }}
                     className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-white/90 hover:bg-white shadow-md rounded-full flex items-center justify-center text-stone-700 text-xl transition z-10 opacity-0 group-hover:opacity-100">
                     ›
@@ -678,9 +687,9 @@ export default function ProductDetail({ initialProduct = null }) {
                 {discount > 0 && (
                   <span className="absolute top-3 left-3 badge-sale text-sm px-3 py-1">-{discount}% OFF</span>
                 )}
-                <button onClick={(e) => { e.stopPropagation(); share(); }}
+                <button type="button" onClick={(e) => { e.stopPropagation(); share(); }} aria-label="Share this product"
                   className="absolute top-3 right-3 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-stone-500 hover:text-wine-700 shadow-sm transition">
-                  <FiShare2 className="text-sm" />
+                  <FiShare2 className="text-sm" aria-hidden="true" />
                 </button>
                 {product.images?.[selectedImage] && (
                   <span className="absolute bottom-3 right-3 bg-black/40 text-white text-[10px] px-2 py-1 rounded-full pointer-events-none">Tap to zoom</span>
@@ -709,7 +718,7 @@ export default function ProductDetail({ initialProduct = null }) {
             {/* ── PRODUCT INFO ── */}
             <div className="p-6 lg:p-8 flex flex-col">
 
-              <p className="text-gold-600 text-2xs uppercase tracking-widest font-semibold mb-2 capitalize">
+              <p className="text-gold-700 text-2xs uppercase tracking-widest font-semibold mb-2 capitalize">
                 {product.category?.replace(/-/g, ' ')}
               </p>
 
@@ -722,7 +731,7 @@ export default function ProductDetail({ initialProduct = null }) {
                 <div className="flex items-center gap-2 mb-4">
                   <Stars rating={reviewStats.average} />
                   <span className="text-sm font-semibold text-stone-700">{reviewStats.average}</span>
-                  <span className="text-sm text-stone-400">({reviewStats.count} review{reviewStats.count !== 1 ? 's' : ''})</span>
+                  <span className="text-sm text-stone-500">({reviewStats.count} review{reviewStats.count !== 1 ? 's' : ''})</span>
                 </div>
               )}
 
@@ -732,7 +741,7 @@ export default function ProductDetail({ initialProduct = null }) {
                   <span className="font-serif text-3xl font-bold text-wine-700">{formatPrice(displayPrice)}</span>
                   {discount > 0 && (
                     <>
-                      <span className="text-lg text-stone-300 line-through">{formatPrice(product.price)}</span>
+                      <span className="text-lg text-stone-500 line-through">{formatPrice(product.price)}</span>
                       <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
                         Save {formatPrice(product.price - displayPrice)}
                       </span>
@@ -756,7 +765,7 @@ export default function ProductDetail({ initialProduct = null }) {
                 <div className="grid grid-cols-2 gap-2 mb-5">
                   {SPECS.map(({ label, value }) => (
                     <div key={label} className="bg-stone-50 rounded-xl px-3 py-2.5">
-                      <p className="text-2xs text-stone-400 uppercase tracking-wider mb-0.5">{label}</p>
+                      <p className="text-2xs text-stone-500 uppercase tracking-wider mb-0.5">{label}</p>
                       <p className="text-sm font-semibold text-stone-700 capitalize">{value}</p>
                     </div>
                   ))}
@@ -820,7 +829,7 @@ export default function ProductDetail({ initialProduct = null }) {
                   type="button"
                   onClick={addToCart}
                   disabled={soldOut}
-                  className="min-h-[48px] px-2 sm:px-3 rounded-xl border-2 border-wine-700 bg-white text-wine-700 hover:bg-wine-50 active:bg-wine-100 font-bold text-sm whitespace-nowrap flex items-center justify-center gap-2 transition disabled:border-stone-200 disabled:bg-stone-50 disabled:text-stone-400 disabled:cursor-not-allowed"
+                  className="min-h-[48px] px-2 sm:px-3 rounded-xl border-2 border-wine-700 bg-white text-wine-700 hover:bg-wine-50 active:bg-wine-100 font-bold text-sm whitespace-nowrap flex items-center justify-center gap-2 transition disabled:border-stone-200 disabled:bg-stone-50 disabled:text-stone-500 disabled:cursor-not-allowed"
                 >
                   {/* Icon dropped on the narrowest phones (320px) so the label fits. */}
                   <FiShoppingCart className="hidden min-[360px]:block flex-shrink-0" aria-hidden="true" /> Add to Cart
@@ -833,7 +842,7 @@ export default function ProductDetail({ initialProduct = null }) {
                   onFocus={preloadBuyNowDrawer}
                   disabled={soldOut}
                   aria-haspopup="dialog"
-                  className="min-h-[48px] px-2 sm:px-3 rounded-xl bg-wine-700 hover:bg-wine-800 active:bg-wine-900 text-white font-bold text-sm whitespace-nowrap flex items-center justify-center gap-1.5 shadow-luxury ring-1 ring-inset ring-gold-400/50 transition disabled:bg-stone-200 disabled:text-stone-400 disabled:shadow-none disabled:ring-0 disabled:cursor-not-allowed"
+                  className="min-h-[48px] px-2 sm:px-3 rounded-xl bg-wine-700 hover:bg-wine-800 active:bg-wine-900 text-white font-bold text-sm whitespace-nowrap flex items-center justify-center gap-1.5 shadow-luxury ring-1 ring-inset ring-gold-400/50 transition disabled:bg-stone-200 disabled:text-stone-500 disabled:shadow-none disabled:ring-0 disabled:cursor-not-allowed"
                 >
                   <span aria-hidden="true" className="text-gold-300">⚡</span> Buy Now
                 </button>
@@ -852,7 +861,7 @@ export default function ProductDetail({ initialProduct = null }) {
                       <FiCalendar className="text-gold-600" />
                       <span className="text-sm font-semibold text-stone-700">Available to Rent</span>
                     </div>
-                    <span className="text-sm font-bold text-wine-700">{formatPrice(product.rentalPrice)}<span className="text-xs font-normal text-stone-400">/day</span></span>
+                    <span className="text-sm font-bold text-wine-700">{formatPrice(product.rentalPrice)}<span className="text-xs font-normal text-stone-500">/day</span></span>
                   </div>
                   <p className="text-xs text-stone-500 mb-3">Contact us on WhatsApp to check availability and confirm your rental dates.</p>
                   <a
@@ -904,7 +913,7 @@ export default function ProductDetail({ initialProduct = null }) {
           <div className="flex items-center justify-between mb-8">
             <h2 className="font-serif text-2xl font-bold text-stone-800">
               Customer Reviews
-              {reviewStats.count > 0 && <span className="text-stone-400 text-base font-normal ml-2">({reviewStats.count})</span>}
+              {reviewStats.count > 0 && <span className="text-stone-500 text-base font-normal ml-2">({reviewStats.count})</span>}
             </h2>
             <button
               onClick={() => setShowReviewForm(!showReviewForm)}
@@ -921,7 +930,7 @@ export default function ProductDetail({ initialProduct = null }) {
               <div className="text-center sm:w-36 flex-shrink-0">
                 <p className="font-serif text-6xl font-bold text-stone-800">{reviewStats.average}</p>
                 <Stars rating={reviewStats.average} size="base" />
-                <p className="text-stone-400 text-sm mt-1">{reviewStats.count} reviews</p>
+                <p className="text-stone-500 text-sm mt-1">{reviewStats.count} reviews</p>
               </div>
               <div className="flex-1 space-y-2">
                 {ratingBreakdown.map(({ star, count }) => (
@@ -936,7 +945,7 @@ export default function ProductDetail({ initialProduct = null }) {
                         style={{ width: reviewStats.count > 0 ? `${(count / reviewStats.count) * 100}%` : '0%' }}
                       />
                     </div>
-                    <span className="text-xs text-stone-400 w-6 flex-shrink-0">{count}</span>
+                    <span className="text-xs text-stone-500 w-6 flex-shrink-0">{count}</span>
                   </div>
                 ))}
               </div>
@@ -973,7 +982,7 @@ export default function ProductDetail({ initialProduct = null }) {
                 <FiStar className="text-stone-300 text-2xl" />
               </div>
               <p className="text-stone-500 font-medium mb-1">No reviews yet</p>
-              <p className="text-stone-400 text-sm">Be the first to review this product</p>
+              <p className="text-stone-500 text-sm">Be the first to review this product</p>
               <button onClick={() => setShowReviewForm(true)} className="mt-4 px-5 py-2 bg-wine-700 text-white text-sm font-semibold rounded-xl hover:bg-wine-800 transition">
                 Write a Review
               </button>

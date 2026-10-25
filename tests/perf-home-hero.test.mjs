@@ -391,6 +391,23 @@ test('HomeClient: a seeded showcase is in the first HTML; unseeded, it waits for
   assert.doesNotMatch(render(HomeClient, { heroSlides: [] }), /data-showcase/, 'prop omitted = not seeded');
 });
 
+test('HomeClient: every control on the first screen has a name a screen reader can say (PageSpeed: buttons / links / selects)', { skip }, () => {
+  const html = render(HomeClient, { heroSlides: [slide(), slide({ id: '2', title: 'Second', imageUrl: TWO })] });
+  assert.match(html, /<button[^>]*type="button"[^>]*aria-label="Previous slide"/);
+  assert.match(html, /<button[^>]*type="button"[^>]*aria-label="Next slide"/);
+  const dots = [...html.matchAll(/<button[^>]*aria-label="Go to slide (\d+)"[^>]*>/g)];
+  assert.deepEqual(dots.map((m) => m[1]), ['1', '2'], 'one named dot per slide');
+  assert.equal(dots.filter((m) => /aria-current="true"/.test(m[0])).length, 1, 'the current slide is marked');
+  assert.ok(dots.every((m) => /class="[^"]*\bh-6\b[^"]*\bmin-w-6\b/.test(m[0])), 'each dot is a 24px touch target, not the 10px dot');
+  assert.match(html, /<select[^>]*aria-label="Sort products"/);
+  assert.match(html, /<a href="https:\/\/wa\.me\/[^"]*"[^>]*aria-label="Chat with us on WhatsApp"/);
+  assert.match(html, /<svg[^>]*aria-hidden="true"/);
+  /* Every button on the page names itself with text or an aria-label. */
+  for (const [open, , inner] of html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)) {
+    assert.ok(/aria-label=/.test(open) || inner.replace(/<[^>]*>/g, '').trim(), `unnamed button: ${open.slice(0, 120)}`);
+  }
+});
+
 test('HomeClient: the grids ask for the width they are drawn at, not the generic card sizes', { skip }, () => {
   const source = readFileSync(path.resolve('src/app/HomeClient.js'), 'utf8');
   assert.match(source, /<ProductCard [^>]*sizes=\{GRID_SIZES\.home\}/, 'the home grid is 2-up, then 4-up from 768px');
@@ -443,7 +460,7 @@ test('HeroSlider: a refresh that shortens the list while a later slide is showin
     const html = render(HeroSlider, { slides: [slide({ title: 'First' }), slide({ id: '2', title: 'Second', imageUrl: TWO })] });
     assert.match(html, /First/);
     assert.equal(attr(imgs(html)[0], 'fetchPriority'), 'high', 'it is the first slide again, so it takes the first slide\'s priority');
-    const dots = [...html.matchAll(/<button class="transition-all duration-300 rounded-full ([^"]*)"/g)].map((m) => m[1]);
+    const dots = [...html.matchAll(/<button[^>]*aria-label="Go to slide \d+"[^>]*><span class="block transition-all duration-300 rounded-full ([^"]*)"/g)].map((m) => m[1]);
     assert.equal(dots.length, 2);
     assert.match(dots[0], /w-7/, 'and the first dot is the active one');
     assert.doesNotMatch(dots[1], /w-7/);

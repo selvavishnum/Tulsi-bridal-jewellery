@@ -121,7 +121,7 @@ export default function CatalogContent() {
             </form>
 
             {/* Sort */}
-            <select value={sort} onChange={(e) => setParam('sort', e.target.value)}
+            <select aria-label="Sort products" value={sort} onChange={(e) => setParam('sort', e.target.value)}
               className="w-full text-sm border border-stone-200 rounded-lg px-3 py-2 bg-white outline-none text-stone-600">
               {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>

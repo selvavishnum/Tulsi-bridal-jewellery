@@ -113,7 +113,7 @@ export default function ShopContent() {
 
         {/* Sort + Price + New */}
         <div className="flex items-center gap-2 flex-wrap mb-3">
-          <select value={sort} onChange={(e) => updateParam('sort', e.target.value)}
+          <select aria-label="Sort products" value={sort} onChange={(e) => updateParam('sort', e.target.value)}
             className="text-xs border border-stone-200 rounded-lg px-3 py-1.5 bg-white outline-none focus:ring-1 focus:ring-stone-400 text-stone-600">
             {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>

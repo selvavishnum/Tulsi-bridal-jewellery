@@ -241,7 +241,7 @@
   font-weight: 700;
   letter-spacing: 0.32em;
   text-transform: uppercase;
-  color: #c9973a;
+  color: #9a6220; /* gold-700: 5.1:1 on white (the old #c9973a was 2.6:1); the rules either side stay gold */
 }
 .luxury-label::before,
 .luxury-label::after {

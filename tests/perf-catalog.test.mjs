@@ -190,6 +190,19 @@ function markup(element, state = {}) {
 }
 const product = (over = {}) => ({ _id: 'p1', name: 'Temple Necklace', category: 'necklace', price: 1000, images: [U], stock: 3, ...over });
 const card = (over, props, state) => markup(React.createElement(getProductCard(), { product: product(over), ...props }), state);
+
+test('ProductCard: named for a screen reader without repeating itself — the photo names the link, the buttons are 24px targets', { skip }, () => {
+  const html = card({}, {});
+  const link = html.match(/<a [^>]*href="\/product\/[^"]*"[^>]*class="relative block aspect-\[3\/4\][^"]*"[^>]*>|<a [^>]*class="relative block aspect-\[3\/4\][^"]*"[^>]*href="\/product\/[^"]*"[^>]*>/)?.[0] || '';
+  assert.ok(link, 'the photo link is there');
+  assert.doesNotMatch(link, /aria-label/, 'its name comes from the photo (alt = the product name) — an aria-label that differs from the visible text fails the WCAG label-in-name rule');
+  assert.match(html, /<img [^>]*alt="Temple Necklace"/);
+  const noPhoto = card({ images: [] }, {});
+  assert.match(noPhoto, /aria-label="Temple Necklace"/, 'without a photo the link keeps its own name');
+  assert.match(html, /<button[^>]*aria-label="Add [^"]*to cart"[^>]*class="[^"]*\bh-6 w-6\b/, 'the add-to-cart button is a 24px target (WCAG 2.2 target size)');
+  assert.doesNotMatch(html, /text-stone-400/, 'small text on white needs 4.5:1; stone-400 is 2.5:1');
+  assert.doesNotMatch(html, /opacity-70/, 'and an opacity on the label made it 3.6:1');
+});
 const imgs = (html) => [...html.matchAll(/<img [^>]*>/g)].map((m) => m[0]);
 const attr = (tag, name) => tag.match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`))?.[1];
 const unescape = (s) => s?.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&');

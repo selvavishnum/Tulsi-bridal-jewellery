@@ -105,7 +105,7 @@ export default function ProductCard({ product, priority = false, sizes = IMAGE_S
   return (
     <article className="group relative flex flex-col overflow-hidden rounded-lg border border-gray-100 bg-white transition-shadow duration-300 ease-out hover:shadow-sm [content-visibility:auto] [contain-intrinsic-size:auto_300px]">
       {/* Photo — edge to edge, 3:4 */}
-      <Link href={href} aria-label={product.name} className="relative block aspect-[3/4] overflow-hidden bg-stone-100"
+      <Link href={href} aria-label={main ? undefined : product.name} className="relative block aspect-[3/4] overflow-hidden bg-stone-100"
         onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {main ? (
           <>
@@ -160,20 +160,20 @@ export default function ProductCard({ product, priority = false, sizes = IMAGE_S
       {/* Compact details strip */}
       <div className="px-2 pb-1 pt-0.5">
         {showCategory && product.category && (
-          <p className="truncate text-[10px] font-medium uppercase leading-3 tracking-wider text-stone-600 opacity-70">{product.category}</p>
+          <p className="truncate text-[10px] font-medium uppercase leading-3 tracking-wider text-stone-500">{product.category}</p>
         )}
         <Link href={href} className="block">
           <h3 className="truncate font-sans text-xs font-medium leading-4 text-stone-900 group-hover:text-wine-700">{product.name}</h3>
         </Link>
-        <div className="flex h-5 items-center justify-between gap-1.5">
+        <div className="flex h-6 items-center justify-between gap-1.5">
           <p className="flex min-w-0 items-baseline gap-1 leading-none">
             <span className="text-xs font-semibold text-stone-900 tabular-nums">{formatPrice(displayPrice)}</span>
-            {discount > 0 && <span className="truncate text-[10px] text-stone-400 line-through tabular-nums">{formatPrice(product.price)}</span>}
+            {discount > 0 && <span className="truncate text-[10px] text-stone-500 line-through tabular-nums">{formatPrice(product.price)}</span>}
           </p>
           {!soldOut && (
             <button type="button" onClick={addToCart} aria-label={`Add ${product.name} to cart`}
-              className="relative flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-gray-200 text-stone-700 transition-colors duration-200 before:absolute before:-inset-2 before:content-[''] hover:border-wine-700 hover:bg-wine-700 hover:text-white active:scale-95">
-              <FiShoppingBag className="h-2.5 w-2.5" aria-hidden />
+              className="relative flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-gray-200 text-stone-700 transition-colors duration-200 before:absolute before:-inset-2 before:content-[''] hover:border-wine-700 hover:bg-wine-700 hover:text-white active:scale-95">
+              <FiShoppingBag className="h-3 w-3" aria-hidden />
             </button>
           )}
         </div>
