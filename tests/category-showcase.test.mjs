@@ -614,8 +614,8 @@ test('image URL: only the first /upload/ gets the transformation', () => {
 test('srcset: one candidate per width with the same crop', () => {
   const opts = { variant: 'king_size', focus: { ...DEFAULT_FOCUS, gravity: 'north' } };
   const set = showcaseSrcSet(U, opts).split(', ');
-  assert.equal(set.length, 5);
-  [240, 400, 600, 900, 1200].forEach((w, i) => {
+  assert.equal(set.length, 7);
+  [240, 400, 600, 720, 900, 1200, 1600].forEach((w, i) => {
     assert.equal(set[i], `${showcaseImageUrl(U, { ...opts, width: w })} ${w}w`);
     assert.match(set[i], new RegExp(`/upload/f_auto,q_auto:good,c_fill,ar_4:5,g_north,w_${w}/.* ${w}w$`));
   });

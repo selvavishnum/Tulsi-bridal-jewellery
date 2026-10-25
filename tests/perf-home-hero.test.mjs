@@ -347,12 +347,12 @@ test('HomeClient: the seeded hero is in the first HTML — AVIF → WebP → JPE
   assert.ok(sources.slice(0, 3).every((s) => attr(s, 'media') === PHONE), 'the phone crop is listed first, under the media query');
   assert.ok(sources.slice(3).every((s) => attr(s, 'media') === undefined));
   assert.ok(sources.slice(0, 3).every((s) => /ar_0\.66,/.test(attr(s, 'srcSet')) && /c_lfill,g_auto/.test(attr(s, 'srcSet'))), 'portrait 0.66 (wider than the usual 0.52 box, so a phone covers by height), smart-cropped');
-  assert.deepEqual(widthsIn(attr(sources[0], 'srcSet')), [480, 640, 828, 1080, 1280], 'a phone never gets a desktop-sized file');
+  assert.deepEqual(widthsIn(attr(sources[0], 'srcSet')), [480, 640, 828, 960, 1080, 1280], 'a phone never gets a desktop-sized file; 960 sits between 828 and 1080 so a typical phone box doesn\'t round up a whole rung');
   assert.ok(sources.slice(3).every((s) => !/ar_/.test(attr(s, 'srcSet'))), 'tablet / desktop keep the whole photo');
   assert.deepEqual(widthsIn(attr(sources[3], 'srcSet')), [...IMAGE_WIDTHS.hero]);
   assert.ok(sources.slice(0, 3).every((s) => /q_auto:good/.test(attr(s, 'srcSet'))), 'a phone shows the crop at ≤ 500 CSS px: good is enough, at about half the bytes');
   assert.ok(sources.slice(3).every((s) => /q_auto:best/.test(attr(s, 'srcSet'))), 'the full-bleed desktop hero keeps the best quality tier');
-  assert.ok(sources.slice(0, 3).every((s) => attr(s, 'sizes') === '128vw'), 'the 0.66 crop is drawn ~1.28× the viewport width (cover by height)');
+  assert.ok(sources.slice(0, 3).every((s) => attr(s, 'sizes') === 'calc(clamp(520px, 100vh - 88px, 860px) * 0.66)'), 'the crop is drawn as tall as the hero box × 0.66 wide — exact on any phone (the box: .hero-viewport in globals.css)');
   assert.ok(sources.slice(3).every((s) => attr(s, 'sizes') === '100vw'));
   assert.ok(sources.every((s) => s.includes('bride-one')), 'the first slide only');
 
