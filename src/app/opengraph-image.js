@@ -31,10 +31,10 @@ export default function OpengraphImage() {
             letterSpacing: 2,
           }}
         >
-          TULSI BRIDAL JEWELLERY
+          TULSI FASHION JEWELLERY
         </div>
-        <div style={{ marginTop: 14, fontSize: 26, color: '#f4c9dd', letterSpacing: 4 }}>
-          HANDCRAFTED BRIDAL JEWELLERY · BUY OR RENT
+        <div style={{ marginTop: 14, maxWidth: 1040, textAlign: 'center', lineHeight: 1.45, fontSize: 22, color: '#f4c9dd', letterSpacing: 2 }}>
+          FASHION JEWELLERY · TRENDING CHAINS, NECKLACES, EARRINGS & ANKLETS
         </div>
       </div>
     ),

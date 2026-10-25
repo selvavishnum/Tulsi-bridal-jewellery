@@ -138,7 +138,7 @@ export async function createAdhocOrder({ subOrderId, order, items, pickupLocatio
       order_id: subOrderId,
       order_date: new Date(order.createdAt || Date.now()).toISOString().slice(0, 19).replace('T', ' '),
       pickup_location: pickupLocation,
-      comment: 'Tulsi Bridal Jewellery',
+      comment: 'Tulsi Fashion Jewellery',
       billing_customer_name: addr.name || addr.fullName || 'Customer',
       billing_last_name: '',
       billing_address: addr.street || addr.address || '',

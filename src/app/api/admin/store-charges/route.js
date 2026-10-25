@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getDB } from '@/lib/firebase';
 import { requireRole, ROLES } from '@/lib/requireRole';
 import { parseChargesInput, normalizeCharges } from '@/lib/storeCharges';
@@ -22,6 +23,10 @@ export async function PUT(request) {
     const ref = db.collection('settings').doc('store_settings');
     await ref.set({ ...parsed.data, updatedAt: new Date().toISOString(), updatedBy: auth.session.user.email || null }, { merge: true });
     const saved = normalizeCharges((await ref.get()).data());
+    /* The home page is rendered with this shipping rule in its HTML (the hero's
+       badge): drop that copy now, not within 5 minutes. revalidatePath throws
+       outside a Next request (unit tests); the 5-minute refresh covers that. */
+    try { revalidatePath('/'); } catch { /* not in a request */ }
     return NextResponse.json({ success: true, data: saved });
   } catch (e) {
     console.error('[admin/store-charges]', e.message);

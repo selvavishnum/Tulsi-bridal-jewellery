@@ -18,7 +18,7 @@ export default function ContactPage() {
 
   const phone   = s.phone   || '+91 76958 68787';
   const email   = s.email   || 'tulsibridaljewellery@gmail.com';
-  const address = s.address || '428, Tulsi Bridal Jewellery, Upstairs Udangudi Karuppatti Coffee, Main Bazaar, Udangudi - 628203, Tuticorin Dt.';
+  const address = s.address || '428, Tulsi Fashion Jewellery, Upstairs Udangudi Karuppatti Coffee, Main Bazaar, Udangudi - 628203, Tuticorin Dt.';
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -61,7 +61,7 @@ export default function ContactPage() {
       <div className="bg-gradient-to-br from-maroon-950 to-maroon-800 text-white py-16">
         <div className="max-w-4xl mx-auto px-4 text-center">
           <h1 className="font-serif text-4xl font-bold mb-3">Get in Touch</h1>
-          <p className="text-gray-300">We&apos;d love to help you find your perfect bridal jewellery</p>
+          <p className="text-gray-300">We&apos;d love to help you find your next favourite piece</p>
         </div>
       </div>
 
@@ -86,11 +86,6 @@ export default function ContactPage() {
                   {link && <span className="text-blue-400 text-xs mt-0.5 flex-shrink-0">🗺️</span>}
                 </div>
               ))}
-            </div>
-
-            <div className="bg-gold-50 rounded-xl p-5">
-              <h3 className="font-semibold text-maroon-950 mb-2">Rental Enquiries?</h3>
-              <p className="text-sm text-gray-600">For bulk rental orders or wedding package enquiries, please call us directly or WhatsApp us for personalised assistance.</p>
             </div>
           </div>
 

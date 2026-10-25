@@ -120,7 +120,7 @@ export default function CustomerDetailPage() {
 
   const savedCart = user.savedCart || [];
   const cartReminderMsg = savedCart.length > 0
-    ? `Hi ${user.name?.split(' ')[0] || 'there'}! You left some items in your cart at Tulsi Bridal Jewellery:\n${savedCart.map((item) => `• ${item.name} (Qty: ${item.quantity}) — ₹${item.discountPrice || item.price}`).join('\n')}\nComplete your order now! Visit: tulsibridal.com`
+    ? `Hi ${user.name?.split(' ')[0] || 'there'}! You left some items in your cart at Tulsi Fashion Jewellery:\n${savedCart.map((item) => `• ${item.name} (Qty: ${item.quantity}) — ₹${item.discountPrice || item.price}`).join('\n')}\nComplete your order now! Visit: tulsijewels.in`
     : '';
 
   const recentOrders = [...orders].slice(0, 5);

@@ -3,12 +3,14 @@
    Pure module — no '@/…' imports, no JSX — so it's unit-testable; seo.js
    re-exports it alongside the JsonLd component and data loaders.
    ───────────────────────────────────────────── */
+import { savedBrandText } from './brand.js';
+
 function stripTrailingSlash(url) {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 }
 
 export const SITE_URL = stripTrailingSlash(process.env.NEXT_PUBLIC_SITE_URL || 'https://tulsijewels.in');
-export const SITE_NAME = 'Tulsi Bridal Jewellery';
+export const SITE_NAME = 'Tulsi Fashion Jewellery';
 
 export function absoluteUrl(path = '/') {
   return `${SITE_URL}${path.startsWith('/') ? path : `/${path}`}`;
@@ -45,10 +47,11 @@ export function buildStoreJsonLd(settings) {
     '@context': 'https://schema.org',
     '@type': ['JewelryStore', 'Store'],
     '@id': STORE_ID(),
-    name: s.businessName || SITE_NAME,
-    legalName: s.legalName || s.businessName || SITE_NAME,
-    alternateName: ['Tulsi Jewels', 'Tulsi Bridal'],
-    description: s.seoDescription || 'Handcrafted bridal and wedding jewellery to buy or rent — kundan, temple, antique-finish, gold-plated and silver-plated necklaces, chokers, bridal sets, jhumkas, bangles and maang tikka, delivered across India.',
+    /* Saved text from the old "Bridal" store is ignored until the owner re-saves it (lib/brand.js). */
+    name: savedBrandText(s.businessName, SITE_NAME),
+    legalName: savedBrandText(s.legalName, savedBrandText(s.businessName, SITE_NAME)),
+    alternateName: ['Tulsi Jewels', 'Tulsi Fashion'],
+    description: savedBrandText(s.seoDescription, 'Modern minimalist fashion jewellery — trending chains, necklaces, earrings and anklets for everyday and festive wear, delivered across India.'),
     url: SITE_URL,
     logo: absoluteUrl('/apple-icon'),
     image: absoluteUrl('/opengraph-image'),
@@ -60,7 +63,7 @@ export function buildStoreJsonLd(settings) {
     currenciesAccepted: 'INR',
     paymentAccepted: 'Cash on Delivery, UPI, Credit Card, Debit Card, Net Banking',
     areaServed: { '@type': 'Country', name: 'India' },
-    knowsAbout: ['Bridal jewellery', 'Wedding jewellery', 'Jewellery rental', 'Kundan jewellery', 'Temple jewellery', 'Antique jewellery', 'Polki jewellery', 'Gold-plated jewellery'],
+    knowsAbout: ['Fashion jewellery', 'Trending chains', 'Necklaces', 'Earrings', 'Anklets', 'Daily-wear jewellery', 'Festive jewellery', 'Minimalist jewellery', 'Gold-plated jewellery'],
     ...(s.openTime && s.closeTime && {
       openingHoursSpecification: [{
         '@type': 'OpeningHoursSpecification',
@@ -102,7 +105,8 @@ export function buildWebSiteJsonLd() {
    and material. Only synonyms of what the product actually is — the
    description never claims a finish or stone the listing doesn't have. */
 const CATEGORY_TERMS = {
-  necklace: ['bridal necklace', 'haaram'],
+  necklace: ['necklace', 'chain'],
+  chain: ['chain', 'necklace chain'],
   earrings: ['earrings'],
   bangles: ['bangles'],
   bracelet: ['bracelet'],
@@ -110,7 +114,7 @@ const CATEGORY_TERMS = {
   'maang-tikka': ['maang tikka', 'nethi chutti'],
   'nose-ring': ['nose ring', 'nath'],
   anklet: ['anklet', 'payal / kolusu'],
-  set: ['bridal jewellery set', 'necklace set'],
+  set: ['jewellery set', 'necklace set'],
   other: ['jewellery'],
 };
 const MATERIAL_TERMS = {
@@ -118,7 +122,7 @@ const MATERIAL_TERMS = {
   kundan: 'kundan', meenakari: 'meenakari', polki: 'polki',
 };
 /* Style words taken from the product's own name / tags. */
-const STYLE_WORDS = ['temple', 'antique', 'matte', 'choker', 'jhumka', 'lightweight', 'oxidised', 'oxidized', 'american diamond', 'ad stone', 'pearl', 'emerald', 'ruby', 'kemp', 'guttapusalu', 'long haram', 'mango mala', 'bridal'];
+const STYLE_WORDS = ['temple', 'antique', 'matte', 'choker', 'jhumka', 'lightweight', 'oxidised', 'oxidized', 'american diamond', 'ad stone', 'pearl', 'emerald', 'ruby', 'kemp', 'guttapusalu', 'long haram', 'mango mala', 'layered', 'minimalist', 'delicate'];
 
 /** Semantic facts about a product, from its own fields only. */
 export function productSemantics(product) {
@@ -126,14 +130,14 @@ export function productSemantics(product) {
   const styles = STYLE_WORDS.filter((w) => text.includes(w));
   const category = CATEGORY_TERMS[product.category] || CATEGORY_TERMS.other;
   const material = MATERIAL_TERMS[product.material] || null;
-  return { styles, categoryTerms: category, material, occasion: product.occasion || null, color: product.color || null, rentable: !!product.isAvailableForRent };
+  return { styles, categoryTerms: category, material, occasion: product.occasion || null, color: product.color || null };
 }
 
 /** A factual, natural-language summary (meta description / JSON-LD fallback). */
 export function describeProduct(product) {
   const f = productSemantics(product);
-  const kind = [...f.styles.filter((w) => w !== 'bridal'), f.material, f.categoryTerms[0]].filter(Boolean).join(' ');
-  const parts = [`${product.name} — ${kind || 'bridal jewellery'} by ${SITE_NAME}`];
+  const kind = [...f.styles, f.material, f.categoryTerms[0]].filter(Boolean).join(' ');
+  const parts = [`${product.name} — ${kind || 'fashion jewellery'} by ${SITE_NAME}`];
   const details = [
     f.color && `${f.color} colour`,
     product.stoneType && `${product.stoneType} stones`,
@@ -141,7 +145,7 @@ export function describeProduct(product) {
     f.occasion && `for ${f.occasion}`,
   ].filter(Boolean);
   if (details.length) parts.push(details.join(', '));
-  parts.push(f.rentable ? 'Buy or rent, delivered across India.' : 'Handcrafted, delivered across India.');
+  parts.push('Delivered across India.');
   return parts.join('. ').replace(/\.\./g, '.');
 }
 
@@ -151,14 +155,13 @@ export function productKeywords(product) {
   return [...new Set([
     ...f.categoryTerms, ...f.styles,
     f.material && `${f.material} jewellery`,
-    f.rentable && 'jewellery on rent', f.rentable && 'bridal jewellery rental',
-    'bridal jewellery', 'wedding jewellery',
+    'fashion jewellery', 'fashion jewellery online India',
   ].filter(Boolean))];
 }
 
 /**
- * Product JSON-LD: offers (buy, and rent where offered), shipping and
- * returns from the live store settings, rating and real reviews.
+ * Product JSON-LD: the offer, shipping and returns from the live store
+ * settings, rating and real reviews.
  * @param {object} opts  { charges, reviews }
  */
 export function buildProductJsonLd(product, id, { charges = null, reviews = [] } = {}) {
@@ -173,7 +176,7 @@ export function buildProductJsonLd(product, id, { charges = null, reviews = [] }
     ? (!charges.enable_shipping_fee || (charges.free_shipping_threshold > 0 && displayPrice >= charges.free_shipping_threshold) ? 0 : charges.shipping_fee_amount)
     : null;
 
-  const offers = [{
+  const offer = {
     '@type': 'Offer',
     url,
     priceCurrency: 'INR',
@@ -203,19 +206,7 @@ export function buildProductJsonLd(product, id, { charges = null, reviews = [] }
       returnFees: 'https://schema.org/FreeReturn',
       merchantReturnLink: absoluteUrl('/refunds'),
     },
-  }];
-  if (f.rentable && Number(product.rentalPrice) > 0) {
-    offers.push({
-      '@type': 'Offer',
-      url: absoluteUrl(`/rental-booking/${id}`),
-      name: 'Rent for your function',
-      businessFunction: 'http://purl.org/goodrelations/v1#LeaseOut',
-      priceCurrency: 'INR',
-      priceSpecification: { '@type': 'UnitPriceSpecification', price: String(product.rentalPrice), priceCurrency: 'INR', unitCode: 'DAY', referenceQuantity: { '@type': 'QuantitativeValue', value: 1, unitCode: 'DAY' } },
-      availability: Number(product.rentalStock) > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-      seller: { '@id': STORE_ID() },
-    });
-  }
+  };
 
   const additionalProperty = [
     product.purity && { name: 'Purity', value: product.purity },
@@ -242,7 +233,7 @@ export function buildProductJsonLd(product, id, { charges = null, reviews = [] }
     ...(f.color && { color: f.color }),
     keywords: productKeywords(product).join(', '),
     ...(additionalProperty.length && { additionalProperty }),
-    offers: offers.length === 1 ? offers[0] : offers,
+    offers: offer,
     ...(product.ratings?.count > 0 && {
       aggregateRating: {
         '@type': 'AggregateRating',

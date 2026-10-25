@@ -408,7 +408,7 @@ export default function AdminProductsPage() {
               {/* Basic info */}
               <div className="grid grid-cols-1 gap-4">
                 <Field label="Product Name" required>
-                  <input value={form.name} onChange={(e) => upd('name', e.target.value)} className={inp} placeholder="e.g. Kundan Bridal Necklace Set" />
+                  <input value={form.name} onChange={(e) => upd('name', e.target.value)} className={inp} placeholder="e.g. Layered Gold Chain Necklace" />
                 </Field>
                 <Field label="SKU (Product Code)">
                   <div className="flex gap-2">
@@ -544,7 +544,7 @@ export default function AdminProductsPage() {
 
               {/* Tags */}
               <Field label="Tags (comma separated)">
-                <input value={form.tags} onChange={(e) => upd('tags', e.target.value)} className={inp} placeholder="bridal, kundan, gold, heavy set" />
+                <input value={form.tags} onChange={(e) => upd('tags', e.target.value)} className={inp} placeholder="chain, minimalist, gold, daily wear" />
               </Field>
 
               {/* Metal Type + Stone Type + Color */}

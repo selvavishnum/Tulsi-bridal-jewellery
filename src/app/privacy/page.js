@@ -1,6 +1,6 @@
 import { absoluteUrl } from '@/lib/seo';
 
-export const metadata = { title: 'Privacy Policy | Tulsi Bridal Jewellery', alternates: { canonical: absoluteUrl('/privacy') } };
+export const metadata = { title: 'Privacy Policy', alternates: { canonical: absoluteUrl('/privacy') } };
 
 const LAST_UPDATED = 'January 1, 2025';
 
@@ -19,9 +19,9 @@ export default function PrivacyPage() {
           <section>
             <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">1. Introduction</h2>
             <p className="text-stone-500 text-sm leading-relaxed">
-              Tulsi Bridal Jewellery ("we", "our", "us") respects your privacy and is committed to protecting your personal data.
+              Tulsi Fashion Jewellery ("we", "our", "us") respects your privacy and is committed to protecting your personal data.
               This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website
-              and make purchases or rental bookings. Please read this policy carefully. If you disagree with its terms, please
+              and make purchases. Please read this policy carefully. If you disagree with its terms, please
               discontinue use of the site.
             </p>
           </section>
@@ -33,7 +33,7 @@ export default function PrivacyPage() {
               {[
                 ['Identity Data', 'Name, username, date of birth'],
                 ['Contact Data', 'Email address, phone number, billing and delivery address'],
-                ['Transaction Data', 'Details of purchases, rentals, payments, and order history'],
+                ['Transaction Data', 'Details of purchases, payments, and order history'],
                 ['Technical Data', 'IP address, browser type, device identifiers, cookies and usage data'],
                 ['Marketing Data', 'Your preferences for receiving marketing communications from us'],
               ].map(([label, desc]) => (
@@ -49,7 +49,7 @@ export default function PrivacyPage() {
             <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">3. How We Use Your Information</h2>
             <ul className="space-y-2">
               {[
-                'Process and fulfil your orders and rental bookings',
+                'Process and fulfil your orders',
                 'Send order confirmations, shipping updates, and delivery notifications',
                 'Manage your account and provide customer support',
                 'Send promotional communications (only if you opted in)',
@@ -153,7 +153,7 @@ export default function PrivacyPage() {
               If you have any questions about this Privacy Policy or wish to exercise your rights, please contact us:
             </p>
             <div className="mt-3 space-y-1 text-sm">
-              <p className="text-stone-700 font-medium">Tulsi Bridal Jewellery</p>
+              <p className="text-stone-700 font-medium">Tulsi Fashion Jewellery</p>
               <p className="text-stone-500">Email: <a href="mailto:tulsibridaljewellery@gmail.com" className="text-wine-700 hover:underline">tulsibridaljewellery@gmail.com</a></p>
               <p className="text-stone-500">Phone: <a href="tel:+917695868787" className="text-wine-700 hover:underline">+91 76958 68787</a></p>
             </div>

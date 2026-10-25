@@ -7,13 +7,21 @@
    cart, checkout and Buy Now drawer apply it automatically (the server
    still decides whether it's valid — e.g. first order only).
 
-   Pure helpers + guarded localStorage access (safe during SSR).
+   Pure helpers + guarded browser access — localStorage, the clipboard (safe
+   during SSR).
    ───────────────────────────────────────────── */
+import { deliveryFreeForAll, FREE_DELIVERY_LINE, freeDeliveryClaim } from './storeCharges.js';
 
+export { deliveryFreeForAll, FREE_DELIVERY_LINE };
+
+/* What the strip shows until the owner saves their own (Admin → Settings →
+   Welcome Offer Bar). Saved settings override this on the live site, and the
+   code is only ever shown while it is a live coupon — scripts/setup-welcome-offer.mjs
+   creates TULSI100 and saves this offer. */
 export const DEFAULT_ANNOUNCEMENT = Object.freeze({
   enabled: true,
-  message: 'Welcome Offer: Flat 10% OFF on your first jewellery order',
-  code: 'TULSI10',
+  message: 'Welcome Offer: Flat ₹100 OFF on your first order',
+  code: 'TULSI100',
 });
 
 const CODE_RE = /^[A-Z0-9_-]{3,30}$/;
@@ -33,6 +41,15 @@ export function normalizeAnnouncement(settings = {}) {
 /* Dismissal is per message+code: a new offer shows again. */
 export const DISMISS_KEY = 'tj-announce-dismissed';
 export const dismissToken = (a) => `${a.code}|${a.message}`.slice(0, 200);
+
+/* The strip's delivery clause. "Free Delivery across India" is a promise, so
+   it is shown only when the shipping settings really make every order free
+   (computeCharges is the authority — the same rule the cart and the order
+   endpoint use). Otherwise there is no clause at all: "free above ₹N" is a
+   condition, not something to advertise (storeCharges.freeDeliveryClaim). */
+export function deliveryLine(charges) {
+  return freeDeliveryClaim(charges);
+}
 
 export const PENDING_COUPON_KEY = 'tj-pending-coupon';
 
@@ -63,4 +80,33 @@ export function getPendingCoupon() {
 /** Forget it (applied, or the server said it can't be used). */
 export function clearPendingCoupon() {
   try { store()?.removeItem(PENDING_COUPON_KEY); } catch { /* private mode */ }
+}
+
+/**
+ * Copy text to the clipboard — from a tap, as browsers require.
+ * @returns {Promise<boolean>} whether it was copied (false without the
+ *   Clipboard API — http pages, in-app browsers — when the browser refuses,
+ *   or when it doesn't answer within `timeoutMs`).
+ */
+export async function copyToClipboard(text, timeoutMs = 2000) {
+  let timer;
+  try {
+    if (typeof navigator === 'undefined' || typeof navigator.clipboard?.writeText !== 'function') return false;
+    const copied = navigator.clipboard.writeText(String(text)).then(() => true);
+    const gaveUp = new Promise((resolve) => { timer = setTimeout(() => resolve(false), timeoutMs); });
+    return await Promise.race([copied, gaveUp]);
+  } catch { return false; } finally { clearTimeout(timer); }
+}
+
+/**
+ * The toast after the code is tapped, from what actually worked:
+ * `copied` (on the clipboard) and `saved` (remembered for checkout, which
+ * applies it by itself). Never claims either when it didn't happen.
+ * @returns {{ kind: 'success'|'info', message: string }}
+ */
+export function codeTapToast(code, { copied, saved }) {
+  if (copied && saved) return { kind: 'success', message: `${code} copied — applied at checkout on your first order` };
+  if (copied) return { kind: 'success', message: `${code} copied — paste it at checkout` };
+  if (saved) return { kind: 'success', message: `${code} will be applied at checkout` };
+  return { kind: 'info', message: `Use code ${code} at checkout` };
 }

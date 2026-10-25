@@ -190,14 +190,14 @@ export default function AdminMessagesPage() {
               {/* Quick reply */}
               <div className="px-5 py-4 border-t border-gray-100 bg-gold-50/40">
                 <a
-                  href={`mailto:${selected.email}?subject=Re: ${encodeURIComponent(selected.subject || 'Your enquiry - Tulsi Bridal Jewellery')}`}
+                  href={`mailto:${selected.email}?subject=Re: ${encodeURIComponent(selected.subject || 'Your enquiry - Tulsi Fashion Jewellery')}`}
                   className="inline-flex items-center gap-2 px-4 py-2 bg-maroon-950 text-white text-sm font-semibold rounded-xl hover:bg-maroon-900 transition"
                 >
                   <FiMail /> Reply via Email
                 </a>
                 {selected.phone && (
                   <a
-                    href={`https://wa.me/91${selected.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${selected.name}! Thank you for contacting Tulsi Bridal Jewellery.`)}`}
+                    href={`https://wa.me/91${selected.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${selected.name}! Thank you for contacting Tulsi Fashion Jewellery.`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="ml-2 inline-flex items-center gap-2 px-4 py-2 bg-green-500 text-white text-sm font-semibold rounded-xl hover:bg-green-400 transition"

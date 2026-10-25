@@ -183,26 +183,11 @@
   }
 
   /* === Badge === */
-  .badge-rental {
-    @apply inline-flex items-center gap-1 bg-gold-gradient text-white text-2xs font-bold px-2.5 py-1 rounded-full tracking-wider uppercase;
-  }
   .badge-sale {
     @apply inline-flex items-center gap-1 bg-wine-700 text-white text-2xs font-bold px-2.5 py-1 rounded-full tracking-wider uppercase;
   }
   .badge-new {
     @apply inline-flex items-center bg-emerald-600 text-white text-2xs font-bold px-2.5 py-1 rounded-full tracking-wider uppercase;
-  }
-
-  /* === Nav link hover underline === */
-  .nav-link {
-    @apply relative text-stone-700 text-sm font-medium hover:text-wine-700 transition-colors duration-200;
-  }
-  .nav-link::after {
-    content: '';
-    @apply absolute -bottom-0.5 left-0 w-0 h-px bg-wine-700 transition-all duration-300;
-  }
-  .nav-link:hover::after {
-    @apply w-full;
   }
 
   /* === Skeleton loader === */
@@ -291,27 +276,4 @@
 .trust-icon-ring {
   background: radial-gradient(circle at 30% 30%, #faf0d0, #f4dfa0 60%, #ecc96b);
   box-shadow: 0 4px 14px -4px rgba(201, 151, 58, 0.35), inset 0 1px 0 rgba(255,255,255,0.6);
-}
-
-/* ── Hero viewport height ──
-   100vh doesn't account for mobile browser chrome (address bar/toolbar)
-   showing or hiding, which can clip or letterbox a full-bleed hero. 100dvh
-   tracks the actual visible viewport; the plain vh line stays first as a
-   fallback for browsers that don't support dvh (they ignore that
-   declaration and keep the one before it). */
-.hero-viewport {
-  height: calc(100vh - 88px);
-  height: calc(100dvh - 88px);
-  min-height: 520px;
-  max-height: 860px;
-}
-
-/* ── Particle canvas ── */
-.hero-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 5;
 }

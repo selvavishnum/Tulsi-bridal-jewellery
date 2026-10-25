@@ -1,6 +1,6 @@
 import { absoluteUrl } from '@/lib/seo';
 
-export const metadata = { title: 'Terms & Conditions | Tulsi Bridal Jewellery', alternates: { canonical: absoluteUrl('/terms') } };
+export const metadata = { title: 'Terms & Conditions', alternates: { canonical: absoluteUrl('/terms') } };
 
 const LAST_UPDATED = 'January 1, 2025';
 
@@ -19,7 +19,7 @@ export default function TermsPage() {
           <section>
             <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">1. Acceptance of Terms</h2>
             <p className="text-stone-500 text-sm leading-relaxed">
-              By accessing and using the Tulsi Bridal Jewellery website (www.tulsibridal.com) or placing any order,
+              By accessing and using the Tulsi Fashion Jewellery website (www.tulsijewels.in) or placing any order,
               you agree to be bound by these Terms &amp; Conditions. If you do not accept these terms, please do not
               use our website or services. We reserve the right to modify these terms at any time, and your
               continued use of the site constitutes acceptance of the updated terms.
@@ -78,34 +78,16 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">5. Rental Terms</h2>
-            <ul className="space-y-2">
-              {[
-                'Rental bookings require a refundable security deposit of 30% of the product\'s purchase price.',
-                'The security deposit is returned within 5–7 business days after the item is received and inspected.',
-                'Any damage beyond normal wear will be deducted from the security deposit. Severe damage may be charged additionally.',
-                'Rental items must be returned by the agreed return date. Late returns are charged at 1.5x the daily rental rate.',
-                'Rental items remain the property of Tulsi Bridal Jewellery at all times.',
-                'Cancellations made 48+ hours before rental start date receive a full refund. Within 48 hours, 50% is refunded.',
-              ].map((item) => (
-                <li key={item} className="flex gap-3 text-sm text-stone-500">
-                  <span className="text-gold-500 font-bold flex-shrink-0">✦</span> {item}
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">6. Intellectual Property</h2>
+            <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">5. Intellectual Property</h2>
             <p className="text-stone-500 text-sm leading-relaxed">
               All content on this website — including product photographs, descriptions, logo, brand name, and design —
-              is the property of Tulsi Bridal Jewellery and is protected by copyright law. You may not reproduce,
+              is the property of Tulsi Fashion Jewellery and is protected by copyright law. You may not reproduce,
               distribute, or use any content for commercial purposes without our express written permission.
             </p>
           </section>
 
           <section>
-            <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">7. User Accounts</h2>
+            <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">6. User Accounts</h2>
             <ul className="space-y-2">
               {[
                 'You are responsible for maintaining the confidentiality of your account credentials.',
@@ -121,17 +103,17 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">8. Limitation of Liability</h2>
+            <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">7. Limitation of Liability</h2>
             <p className="text-stone-500 text-sm leading-relaxed">
-              To the maximum extent permitted by applicable law, Tulsi Bridal Jewellery shall not be liable for any
+              To the maximum extent permitted by applicable law, Tulsi Fashion Jewellery shall not be liable for any
               indirect, incidental, special, or consequential damages arising from your use of our products or services.
-              Our total liability in any matter shall not exceed the amount paid by you for the specific order or rental
+              Our total liability in any matter shall not exceed the amount paid by you for the specific order
               in question.
             </p>
           </section>
 
           <section>
-            <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">9. Governing Law</h2>
+            <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">8. Governing Law</h2>
             <p className="text-stone-500 text-sm leading-relaxed">
               These terms are governed by the laws of India. Any disputes arising from these terms or your use of our
               services shall be subject to the exclusive jurisdiction of the courts of Tuticorin, Tamil Nadu.
@@ -139,7 +121,7 @@ export default function TermsPage() {
           </section>
 
           <section className="bg-ivory-200 rounded-xl p-6">
-            <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">10. Contact</h2>
+            <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">9. Contact</h2>
             <p className="text-stone-500 text-sm">
               Questions about these terms? Reach us at{' '}
               <a href="mailto:tulsibridaljewellery@gmail.com" className="text-wine-700 hover:underline font-medium">tulsibridaljewellery@gmail.com</a>

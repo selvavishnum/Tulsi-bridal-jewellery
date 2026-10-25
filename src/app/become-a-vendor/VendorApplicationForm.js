@@ -139,7 +139,7 @@ export default function VendorApplicationForm({ tamilClass = '' }) {
 
   return (
     <>
-      <div ref={topRef} className="scroll-mt-24" />
+      <div ref={topRef} className="scroll-mt-28 lg:scroll-mt-40" />
       {/* Progress */}
       <ol className="mb-6 grid grid-cols-4 gap-2" aria-label="Application steps">
         {STEPS.map((s, i) => (
@@ -167,7 +167,7 @@ export default function VendorApplicationForm({ tamilClass = '' }) {
               <input {...bind('fullName', { autoComplete: 'name', placeholder: 'As on PAN / bank account' })} />
             </Field>
             <Field id="businessName" label="Business / brand name" error={errors.businessName}>
-              <input {...bind('businessName', { autoComplete: 'organization', placeholder: 'e.g. Meena Bridal Collections' })} />
+              <input {...bind('businessName', { autoComplete: 'organization', placeholder: 'e.g. Meena Fashion Jewellery' })} />
             </Field>
             <Field id="phone" label="WhatsApp number" error={errors.phone} hint="10-digit Indian mobile">
               <div className="flex">

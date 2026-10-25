@@ -95,11 +95,11 @@ function printLabel(order) {
   <div class="border-box from-header">
     <div>
       <div class="logo-block">TULSI</div>
-      <div class="logo-sub">BRIDAL JEWELLERY</div>
+      <div class="logo-sub">FASHION JEWELLERY</div>
     </div>
     <div class="from-addr" style="margin-left:auto;text-align:right;">
       <strong>FROM:</strong><br/>
-      Tulsi Bridal Jewellery<br/>
+      Tulsi Fashion Jewellery<br/>
       Tamil Nadu, India<br/>
       +91 76958 68787
     </div>
@@ -146,7 +146,7 @@ function printLabel(order) {
     <div class="tag">Jewellery</div>
   </div>
 
-  <div class="footer-note">Tulsi Bridal Jewellery · Customer support: +91 76958 68787</div>
+  <div class="footer-note">Tulsi Fashion Jewellery · Customer support: +91 76958 68787</div>
 </div>
 <script>window.onload=function(){window.print();setTimeout(function(){window.close();},1000);};</script>
 </body>
@@ -879,7 +879,7 @@ export default function AdminOrdersPage() {
                                     </button>
                                   )}
                                   {o.shippingAddress?.phone && (
-                                    <a href={`https://wa.me/91${o.shippingAddress.phone.replace(/\D/g,'')}?text=${encodeURIComponent(`Hi ${o.shippingAddress.name}! Your Tulsi Bridal order #${o.orderNumber} status: ${o.status}. Thank you!`)}`}
+                                    <a href={`https://wa.me/91${o.shippingAddress.phone.replace(/\D/g,'')}?text=${encodeURIComponent(`Hi ${o.shippingAddress.name}! Your Tulsi Fashion Jewellery order #${o.orderNumber} status: ${o.status}. Thank you!`)}`}
                                       target="_blank" rel="noopener noreferrer"
                                       className="flex items-center gap-2 w-full px-3 py-2 bg-green-500 hover:bg-green-400 text-white text-xs font-semibold rounded-lg transition">
                                       <FiPhone className="text-xs" /> WhatsApp Customer

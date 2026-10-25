@@ -1,20 +1,20 @@
 /* ─────────────────────────────────────────────
-   /catalog  — Full jewellery catalog listing
-   Exactly matches Swastik's product display:
-   category section headings + CatalogProductItem
+   /catalog  — Full jewellery catalogue, filtered by category
+   (?category=necklace | earrings | anklet …) — the header's category links
+   open it. The grid is the shared ProductCard.
    ───────────────────────────────────────────── */
 import { Suspense } from 'react';
 import CatalogContent from './CatalogContent';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { absoluteUrl } from '@/lib/seo';
 
-const description = 'Browse the full Tulsi Bridal Jewellery catalogue by category — necklaces, earrings, bangles, rings, maang tikkas and bridal sets.';
+const description = 'Browse the full Tulsi Fashion Jewellery catalogue by category — chains and necklaces, earrings, anklets, bracelets, bangles and rings.';
 
 export const metadata = {
   title: 'Jewellery Catalogue',
   description,
   alternates: { canonical: absoluteUrl('/catalog') },
-  openGraph: { title: 'Jewellery Catalogue | Tulsi Bridal Jewellery', description, url: absoluteUrl('/catalog') },
+  openGraph: { title: 'Jewellery Catalogue | Tulsi Fashion Jewellery', description, url: absoluteUrl('/catalog') },
 };
 
 export default function CatalogPage() {

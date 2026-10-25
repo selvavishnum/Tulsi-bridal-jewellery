@@ -23,7 +23,7 @@ export default function FeaturedProducts() {
         <div className="flex items-end justify-between mb-8">
           <div>
             <h2 className="font-serif text-3xl font-bold text-maroon-950 mb-1">Featured Collection</h2>
-            <p className="text-gray-500">Our most loved bridal pieces</p>
+            <p className="text-gray-500">Our most loved pieces</p>
           </div>
           <Link href="/shop" className="text-sm font-semibold text-gold-600 hover:text-gold-700 transition hidden sm:block">
             View All →
@@ -36,7 +36,7 @@ export default function FeaturedProducts() {
           <p className="text-center text-gray-400 py-12">No featured products yet.</p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-4">
-            {products.map((p) => <ProductCard key={p._id} product={p} showCategory />)}
+            {products.map((p) => <ProductCard key={p._id || p.id} product={p} showCategory />)}
           </div>
         )}
 

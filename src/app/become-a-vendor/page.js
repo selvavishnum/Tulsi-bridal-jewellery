@@ -10,7 +10,7 @@ export const metadata = {
   title: 'Become a Vendor — Sell Your Jewellery on Tulsi',
   description,
   alternates: { canonical: absoluteUrl('/become-a-vendor') },
-  openGraph: { title: 'Become a Vendor | Tulsi Bridal Jewellery', description, url: absoluteUrl('/become-a-vendor') },
+  openGraph: { title: 'Become a Vendor | Tulsi Fashion Jewellery', description, url: absoluteUrl('/become-a-vendor') },
 };
 
 const BENEFITS = [
@@ -57,7 +57,7 @@ export default function BecomeAVendorPage() {
         </div>
       </section>
 
-      <section id="apply" className="max-w-3xl mx-auto px-4 py-10 md:py-14 scroll-mt-20">
+      <section id="apply" className="max-w-3xl mx-auto px-4 py-10 md:py-14 scroll-mt-28 lg:scroll-mt-40">
         <h2 className="font-serif text-3xl font-bold text-maroon-950">Seller application</h2>
         <p className="mt-1 mb-6 text-sm text-stone-500">Four short steps, about 5 minutes. Keep your GST / Enrolment ID and bank details handy.</p>
         <VendorApplicationForm tamilClass={tamil.className} />

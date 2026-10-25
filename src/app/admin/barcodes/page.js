@@ -97,7 +97,7 @@ export default function BarcodesPage() {
     const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>${escapeHtml(title)} — Tulsi Bridal</title>
+  <title>${escapeHtml(title)} — Tulsi Fashion</title>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js" crossorigin="anonymous"><\/script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -132,7 +132,7 @@ export default function BarcodesPage() {
   </style>
 </head>
 <body>
-  <h2 class="no-print">${title} — Tulsi Bridal Jewellery</h2>
+  <h2 class="no-print">${title} — Tulsi Fashion Jewellery</h2>
   <button onclick="window.print()" class="no-print" style="margin-bottom:12px;padding:8px 20px;background:#7f1d1d;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold;font-size:13px;">
     🖨️ Print
   </button>

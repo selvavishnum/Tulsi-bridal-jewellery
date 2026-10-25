@@ -39,10 +39,10 @@ function createTransporter() {
 }
 
 const BRAND = {
-  name:    'Tulsi Bridal Jewellery',
+  name:    'Tulsi Fashion Jewellery',
   primary: '#8b1a4a',
   gold:    '#c9973a',
-  site:    process.env.NEXT_PUBLIC_SITE_URL || 'https://www.tulsibridal.com',
+  site:    process.env.NEXT_PUBLIC_SITE_URL || 'https://www.tulsijewels.in',
 };
 
 /* ── Login OTP ── */
@@ -82,7 +82,7 @@ function emailWrapper(content) {
       <tr>
         <td style="background:linear-gradient(135deg,#8b1a4a 0%,#601238 100%);padding:32px 40px;text-align:center;">
           <p style="margin:0 0 4px;font-family:Georgia,serif;font-size:28px;font-weight:bold;color:#ffffff;letter-spacing:0.12em;">TULSI</p>
-          <p style="margin:0;font-size:10px;letter-spacing:0.3em;color:#c9973a;text-transform:uppercase;">Bridal Jewellery</p>
+          <p style="margin:0;font-size:10px;letter-spacing:0.3em;color:#c9973a;text-transform:uppercase;">Fashion Jewellery</p>
         </td>
       </tr>
 

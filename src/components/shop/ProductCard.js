@@ -18,7 +18,7 @@
    second photo fades in. Touch: swipe between photos. */
 import Link from 'next/link';
 import { useRef, useState } from 'react';
-import { FiHeart, FiShoppingBag, FiCalendar } from 'react-icons/fi';
+import { FiHeart, FiShoppingBag } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
@@ -133,11 +133,6 @@ export default function ProductCard({ product, priority = false, sizes = IMAGE_S
           )}
           {soldOut && (
             <span className="rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-stone-600 backdrop-blur-sm">Sold out</span>
-          )}
-          {product.isAvailableForRent && (
-            <span className="inline-flex items-center gap-0.5 rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-gold-700 backdrop-blur-sm">
-              <FiCalendar className="h-2.5 w-2.5" aria-hidden /> Rent
-            </span>
           )}
         </div>
 

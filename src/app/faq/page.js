@@ -8,13 +8,13 @@ import { getStoreCharges } from '@/lib/storeChargesServer';
    settings without a deploy. */
 export const revalidate = 3600;
 
-const description = 'Answers on shipping times and charges, Cash on Delivery, returns and refunds, materials and jewellery rental at Tulsi Bridal Jewellery.';
+const description = 'Answers on shipping times and charges, Cash on Delivery, returns and refunds, and materials at Tulsi Fashion Jewellery.';
 
 export const metadata = {
-  title: 'FAQ — Shipping, COD, Returns & Rentals',
+  title: 'FAQ — Shipping, COD & Returns',
   description,
   alternates: { canonical: absoluteUrl('/faq') },
-  openGraph: { title: 'FAQ | Tulsi Bridal Jewellery', description, url: absoluteUrl('/faq') },
+  openGraph: { title: 'FAQ | Tulsi Fashion Jewellery', description, url: absoluteUrl('/faq') },
 };
 
 async function loadFaqs() {

@@ -180,7 +180,7 @@ function LoginForm() {
     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-7">
       <div className="text-center mb-6">
         <GiQueenCrown className="text-gold-500 text-4xl mx-auto mb-2" />
-        <h1 className="font-serif text-2xl font-bold text-maroon-950">Tulsi Bridal</h1>
+        <h1 className="font-serif text-2xl font-bold text-maroon-950">Tulsi Fashion</h1>
         <p className="text-gray-400 text-xs mt-0.5">Sign in to your account</p>
       </div>
 

@@ -159,7 +159,7 @@ const FUNNEL_FLAGS = Object.freeze([
 /* Per-batch limits. A real tracker batch carries a page or two and a few
    actions; a crafted 30-event batch must not count (or cost) 30 times. */
 const MAX_EVENT_PRODUCTS = 10;
-/* Cart lines priced per batch (bridal carts hold a handful of pieces). */
+/* Cart lines priced per batch (jewellery carts hold a handful of pieces). */
 const MAX_CART_LINES = 12;
 const MAX_CLAIMS_PER_BATCH = 2;
 const MAX_PAGEVIEWS_PER_BATCH = 10;

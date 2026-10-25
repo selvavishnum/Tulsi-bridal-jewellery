@@ -37,13 +37,13 @@ export async function POST(request) {
     /* Send test mail */
     const to = testEmail || process.env.ADMIN_EMAIL;
     await transporter.sendMail({
-      from: `"Tulsi Bridal Jewellery" <${process.env.SMTP_USER}>`,
+      from: `"Tulsi Fashion Jewellery" <${process.env.SMTP_USER}>`,
       to,
-      subject: '✅ Email Test — Tulsi Bridal Jewellery',
+      subject: '✅ Email Test — Tulsi Fashion Jewellery',
       html: `
         <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#fff;border-radius:12px;border:1px solid #e5e7eb;">
           <h2 style="color:#8b1a4a;margin:0 0 12px;">Email is Working! ✅</h2>
-          <p style="color:#374151;font-size:15px;">Your SMTP email notifications are configured correctly for <strong>Tulsi Bridal Jewellery</strong>.</p>
+          <p style="color:#374151;font-size:15px;">Your SMTP email notifications are configured correctly for <strong>Tulsi Fashion Jewellery</strong>.</p>
           <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;"/>
           <p style="color:#6b7280;font-size:13px;">SMTP: <strong>${process.env.SMTP_HOST || 'smtp.gmail.com'}:${process.env.SMTP_PORT || '587'}</strong></p>
           <p style="color:#6b7280;font-size:13px;">Sent to: <strong>${to}</strong></p>

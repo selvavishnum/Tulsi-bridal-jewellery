@@ -1,6 +1,6 @@
 import { absoluteUrl } from '@/lib/seo';
 
-export const metadata = { title: 'Refund & Return Policy | Tulsi Bridal Jewellery', alternates: { canonical: absoluteUrl('/refunds') } };
+export const metadata = { title: 'Refund & Return Policy', alternates: { canonical: absoluteUrl('/refunds') } };
 
 const LAST_UPDATED = 'January 1, 2025';
 
@@ -63,7 +63,7 @@ export default function RefundsPage() {
           <div className="bg-white rounded-2xl shadow-card p-8 md:p-10 space-y-8">
 
             <section>
-              <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">1. Return Eligibility (Purchase Orders)</h2>
+              <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">1. Return Eligibility</h2>
               <p className="text-stone-500 text-sm leading-relaxed mb-3">
                 We accept returns within <strong className="text-stone-700">7 days of delivery</strong> for the following reasons:
               </p>
@@ -156,24 +156,6 @@ export default function RefundsPage() {
                   'Once dispatched, cancellation is not possible — please initiate a return after delivery.',
                   'To cancel, go to My Account → Orders → Cancel Order, or contact us on WhatsApp.',
                   'Refund for cancelled orders is processed within 3–5 business days.',
-                ].map((item) => (
-                  <li key={item} className="flex gap-3 text-sm text-stone-500">
-                    <span className="text-gold-500 font-bold flex-shrink-0">✦</span> {item}
-                  </li>
-                ))}
-              </ul>
-            </section>
-
-            <section>
-              <h2 className="font-serif text-xl font-bold text-stone-800 mb-3">5. Rental Returns &amp; Deposits</h2>
-              <ul className="space-y-2">
-                {[
-                  'Rental items must be returned on or before the agreed return date.',
-                  'Security deposit (30% of product value) is refunded within 5–7 business days after inspection.',
-                  'Minor cleaning charges may be deducted from the deposit if required.',
-                  'Damage beyond normal wear will be assessed; costs deducted from deposit or billed separately.',
-                  'Late returns incur a charge of 1.5× the daily rental rate per additional day.',
-                  'Lost or stolen items will be charged at full purchase price.',
                 ].map((item) => (
                   <li key={item} className="flex gap-3 text-sm text-stone-500">
                     <span className="text-gold-500 font-bold flex-shrink-0">✦</span> {item}

@@ -718,16 +718,6 @@ export default function AccountPage() {
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500"
                   />
                 </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block font-medium">💍 Wedding Date</label>
-                  <input
-                    type="date"
-                    value={profile.weddingDate}
-                    onChange={(e) => setProfile((p) => ({ ...p, weddingDate: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-gold-500"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">We'll send you special offers before your big day!</p>
-                </div>
               </div>
               <div className="flex gap-3">
                 <button type="submit" disabled={savingProfile} className="px-6 py-2.5 bg-maroon-950 text-white text-sm font-semibold rounded-xl hover:bg-maroon-900 disabled:opacity-60 transition">

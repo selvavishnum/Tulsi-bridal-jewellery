@@ -13,8 +13,23 @@ const SECURITY_HEADERS = [
   { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=(), payment=(self "https://api.razorpay.com" "https://checkout.razorpay.com")' },
 ];
 
+/* The store no longer rents jewellery. The old rental URLs are still linked
+   from search results, bookmarks and e-mails already sent, so they redirect
+   permanently (308) instead of 404ing — to the product page where there is
+   one, otherwise to the shop. A redirect runs before the file system, so the
+   retired pages could never be served. The booking API (/api/rentals) and
+   the admin screens are untouched: they still serve bookings already made. */
+const RETIRED_RENTAL_REDIRECTS = [
+  { source: '/rentals', destination: '/shop', permanent: true },
+  { source: '/rental-booking/:id', destination: '/product/:id', permanent: true },
+  { source: '/rental-success', destination: '/shop', permanent: true },
+];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  async redirects() {
+    return RETIRED_RENTAL_REDIRECTS;
+  },
   async headers() {
     return [
       { source: '/:path*', headers: SECURITY_HEADERS },

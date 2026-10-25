@@ -31,12 +31,11 @@ export async function GET() {
   const lines = [
     `# ${SITE_NAME}`,
     '',
-    `> ${SITE_NAME} (tulsijewels.in) is an Indian online store for handcrafted bridal and wedding jewellery — kundan, temple, antique-finish, polki, gold-plated and silver-plated necklaces, chokers, bridal sets, jhumkas, bangles and maang tikka. Pieces can be bought or rented for weddings and functions, with delivery across India and Cash on Delivery.`,
+    `> ${SITE_NAME} (tulsijewels.in) is an Indian online store for modern minimalist fashion jewellery — trending chains, necklaces, earrings and anklets for everyday and festive wear. Delivery across India and Cash on Delivery.`,
     '',
     '## Key pages',
     `- [Shop all jewellery](${SITE_URL}/shop): full catalogue with prices`,
-    `- [Bridal jewellery on rent](${SITE_URL}/rentals): rent sets for a function, refundable deposit`,
-    `- [FAQ](${SITE_URL}/faq): shipping, COD, returns, materials, rentals`,
+    `- [FAQ](${SITE_URL}/faq): shipping, COD, returns, materials`,
     `- [Return & refund policy](${SITE_URL}/refunds)`,
     `- [Track an order](${SITE_URL}/track-order)`,
     `- [Contact](${SITE_URL}/contact)`,
@@ -51,7 +50,7 @@ export async function GET() {
     for (const p of list.slice(0, 40)) {
       const price = p.discountPrice || p.price;
       const f = productSemantics(p);
-      const tags = [f.material, ...f.styles.filter((s) => s !== 'bridal'), f.rentable && 'available to rent'].filter(Boolean).join(', ');
+      const tags = [f.material, ...f.styles].filter(Boolean).join(', ');
       lines.push(`- [${p.name}](${SITE_URL}/product/${p.id}): ${inr(price)}${tags ? ` — ${tags}` : ''}${Number(p.stock) > 0 ? '' : ' (out of stock)'}`);
     }
   }

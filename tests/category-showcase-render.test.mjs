@@ -101,6 +101,8 @@ function cards(html) {
 }
 const listClass = (html) => html.match(/<ul [^>]*?class="([^"]*)"/)?.[1];
 const count = (html, needle) => html.split(needle).length - 1;
+/* A label as it appears in markup: "Chains & Necklaces" renders as "Chains &amp; Necklaces". */
+const inHtml = (text) => text.replace(/&/g, '&amp;');
 
 /* ── What is shown, and in what order ── */
 
@@ -114,7 +116,7 @@ test('defaults: all six cards, in card order, as King Size 4:5 tiles in a grid, 
   assert.doesNotMatch(html, /snap-x|<button/);
   for (const c of list) {
     assert.match(c.body, /aspect-\[4\/5\]/);
-    assert.ok(c.body.includes(`>${CARD[c.key].label}</span>`), `${c.key} label is the link text`);
+    assert.ok(c.body.includes(`>${inHtml(CARD[c.key].label)}</span>`), `${c.key} label is the link text`);
     assert.ok(c.body.includes(CARD[c.key].emoji), `${c.key} emoji placeholder`);
     assert.ok(c.body.includes(CARD[c.key].color), `${c.key} gradient`);
     assert.equal(c.img, null);
@@ -125,14 +127,14 @@ test('defaults: all six cards, in card order, as King Size 4:5 tiles in a grid, 
 test('hidden cards are not rendered at all — no link, label, emoji or image', { skip }, () => {
   const s = make({ layoutVariant: 'square', displayMode: 'grid', size: 'medium' }, [
     { key: 'earrings', isActive: false, image: CLD('earrings') },
-    { key: 'rentals', isActive: false },
+    { key: 'anklet', isActive: false },
   ]);
   for (const showcase of [s, patchOf(s, { layout: { displayMode: 'slider' } }), patchOf(s, { layout: { layoutVariant: 'circle' } }), patchOf(s, { layout: { layoutVariant: 'circle', displayMode: 'slider' } })]) {
     const html = render(showcase);
-    assert.deepEqual(cards(html).map((c) => c.key), ['necklace', 'bangles', 'maang-tikka', 'set'], JSON.stringify(showcase.layout));
-    for (const k of ['earrings', 'rentals']) {
+    assert.deepEqual(cards(html).map((c) => c.key), ['necklace', 'bracelet', 'bangles', 'set'], JSON.stringify(showcase.layout));
+    for (const k of ['earrings', 'anklet']) {
       assert.ok(!html.includes(`href="${CARD[k].href}"`), `${k} link`);
-      assert.ok(!html.includes(`>${CARD[k].label}<`), `${k} label`);
+      assert.ok(!html.includes(`>${inHtml(CARD[k].label)}<`), `${k} label`);
       assert.ok(!html.includes(CARD[k].emoji), `${k} emoji`);
     }
     assert.ok(!html.includes('earrings.jpg'));
@@ -140,12 +142,12 @@ test('hidden cards are not rendered at all — no link, label, emoji or image', 
 });
 
 test('the admin order is the storefront order, in every layout', { skip }, () => {
-  const order = ['rentals', 'set', 'maang-tikka', 'necklace', 'bangles', 'earrings'];
-  const base = patchOf(normalizeShowcase({}), { order, items: [{ key: 'maang-tikka', isActive: false }] });
+  const order = ['anklet', 'set', 'bracelet', 'necklace', 'bangles', 'earrings'];
+  const base = patchOf(normalizeShowcase({}), { order, items: [{ key: 'bracelet', isActive: false }] });
   for (const v of LAYOUT_VARIANTS) {
     for (const m of DISPLAY_MODES) {
       const html = render(patchOf(base, { layout: { layoutVariant: v.value, displayMode: m.value } }));
-      assert.deepEqual(cards(html).map((c) => c.key), order.filter((k) => k !== 'maang-tikka'), `${v.value}/${m.value}`);
+      assert.deepEqual(cards(html).map((c) => c.key), order.filter((k) => k !== 'bracelet'), `${v.value}/${m.value}`);
     }
   }
 });
@@ -208,7 +210,7 @@ test('featured card: double slot (col-span-2 row-span-2) for Square / King Size,
         if (c.key === 'set') {
           assert.equal(c.liClass, span[variant], `${variant}/${size}`);
           assert.match(c.body, /border-gold-300/);
-          assert.match(c.body, /font-serif[^"]*">Bridal Sets</, 'bigger serif label');
+          assert.match(c.body, /font-serif[^"]*">Jewellery Sets</, 'bigger serif label');
         } else {
           assert.equal(c.liClass, '', `${variant}/${size}/${c.key} has no span`);
         }
@@ -235,14 +237,14 @@ test('featured circle: a bigger round frame instead of a grid span', { skip }, (
 test('circle: every card is a rounded-full frame with the name below, sized by density', { skip }, () => {
   const frames = { small: 'w-20 h-20 md:w-28 md:h-28', medium: 'w-24 h-24 md:w-32 md:h-32', large: 'w-28 h-28 md:w-40 md:h-40' };
   for (const size of SIZES) {
-    const html = render(make({ layoutVariant: 'circle', displayMode: 'grid', size }, [{ key: 'rentals', isActive: false }]));
+    const html = render(make({ layoutVariant: 'circle', displayMode: 'grid', size }, [{ key: 'anklet', isActive: false }]));
     assert.match(listClass(html), /\bflex flex-wrap\b.*justify-center/);
     assert.doesNotMatch(listClass(html), /\bgrid\b/);
     assert.equal(count(html, 'rounded-full border-2'), 5, `${size}: one round frame per visible card`);
     assert.equal(count(html, frames[size]), 5, size);
     assert.doesNotMatch(html, /rounded-2xl|aspect-\[4\/5\]|aspect-video/);
     for (const c of cards(html)) {
-      assert.match(c.body, new RegExp(`</span><span class="[^"]*">${CARD[c.key].label}</span></a>$`), `${c.key}: name below the circle`);
+      assert.match(c.body, new RegExp(`</span><span class="[^"]*">${inHtml(CARD[c.key].label)}</span></a>$`), `${c.key}: name below the circle`);
     }
   }
   const slider = render(make({ layoutVariant: 'circle', displayMode: 'slider', size: 'small' }));
@@ -274,7 +276,7 @@ test('density sets the grid columns per shape (mobile / desktop)', { skip }, () 
     }
   }
   const small = cards(render(make({ layoutVariant: 'square', displayMode: 'grid', size: 'small' })));
-  assert.match(small[0].body, /text-xs md:text-sm">Necklaces</, 'small tiles get smaller labels');
+  assert.match(small[0].body, /text-xs md:text-sm">Chains &amp; Necklaces</, 'small tiles get smaller labels');
 });
 
 /* ── Photos and crops ── */
@@ -314,7 +316,7 @@ test('photos: Face gravity → g_auto:faces; a custom point → c_limit + CSS ob
 });
 
 test('photos: a non-Cloudinary URL is used as is, with no srcset', { skip }, () => {
-  const url = 'https://images.example.test/bridal-set.jpg?w=800&q=90';
+  const url = 'https://images.example.test/jewellery-set.jpg?w=800&q=90';
   const set = cards(render(make({ layoutVariant: 'square', displayMode: 'grid', size: 'large' }, [{ key: 'set', image: url }]))).find((c) => c.key === 'set');
   assert.equal(set.src, url);
   assert.equal(set.srcset, undefined);
@@ -364,7 +366,7 @@ test('a non-string stored shape (e.g. ["circle"]) falls back to King Size instea
 test('the preview frame (draft re-normalized from postMessage) renders exactly what the storefront renders', { skip }, () => {
   const draft = patchOf(normalizeShowcase({ categoryImages: { necklace: CLD('necklace') } }), {
     layout: { layoutVariant: 'king_size', displayMode: 'slider', size: 'small' },
-    order: ['set', 'necklace', 'rentals', 'earrings', 'bangles', 'maang-tikka'],
+    order: ['set', 'necklace', 'anklet', 'earrings', 'bangles', 'bracelet'],
     items: [{ key: 'set', isFeatured: true }, { key: 'bangles', isActive: false }, { key: 'necklace', focus: { gravity: 'custom', x: 35, y: 65, zoom: 2 } }],
   });
   /* What ShowcasePreviewClient does with the message it receives. */
@@ -377,7 +379,7 @@ test('every shape × mode × density × featured/hidden mix renders cleanly with
     [],
     [{ key: 'set', isFeatured: true }],
     SHOWCASE_CARDS.map((c) => ({ key: c.key, isFeatured: true })),
-    [{ key: 'necklace', isActive: false }, { key: 'rentals', isActive: false }, { key: 'earrings', isFeatured: true, image: CLD('earrings'), focus: { gravity: 'custom', x: 0, y: 100, zoom: 2.5 } }],
+    [{ key: 'necklace', isActive: false }, { key: 'anklet', isActive: false }, { key: 'earrings', isFeatured: true, image: CLD('earrings'), focus: { gravity: 'custom', x: 0, y: 100, zoom: 2.5 } }],
     [{ key: 'bangles', image: 'https://images.example.test/b.jpg', focus: { gravity: 'south', zoom: 1.2 } }],
   ];
   let renders = 0;

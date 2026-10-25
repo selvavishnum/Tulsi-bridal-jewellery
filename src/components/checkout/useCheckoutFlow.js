@@ -676,7 +676,7 @@ export default function useCheckoutFlow({
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
         amount: payData.data.amount,
         currency: payData.data.currency,
-        name: 'Tulsi Bridal Jewellery',
+        name: 'Tulsi Fashion Jewellery',
         description: 'Order Payment',
         order_id: payData.data.id,
         prefill: { name: form.fullName, email: form.email, contact: form.phone },

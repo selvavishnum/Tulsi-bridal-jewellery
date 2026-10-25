@@ -330,7 +330,7 @@ export default function AdminRentalsPage() {
                                   </p>
                                 )}
                                 {r.customerDetails?.phone && (
-                                  <a href={`https://wa.me/91${r.customerDetails.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${r.customerDetails.name}! Your Tulsi Bridal rental #${r.rentalNumber} status: ${r.status}.`)}`}
+                                  <a href={`https://wa.me/91${r.customerDetails.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${r.customerDetails.name}! Your Tulsi Fashion Jewellery rental #${r.rentalNumber} status: ${r.status}.`)}`}
                                     target="_blank" rel="noopener noreferrer"
                                     className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 bg-green-500 hover:bg-green-400 text-white text-xs font-semibold rounded-lg transition">
                                     <FiPhone className="text-[10px]" /> WhatsApp Customer

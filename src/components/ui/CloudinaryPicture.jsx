@@ -39,6 +39,9 @@ import { CLOUDINARY_ORIGIN, IMAGE_SIZES, IMAGE_WIDTHS, PIXEL, cldSrcSet, picture
  *                                  CSS hides at a breakpoint, with the SAME query the other copy passes to `showWhen`, so the
  *                                  two are exact complements at every width (a hand-written "max-width: 1023.99px" is not:
  *                                  browsers round fractional widths, so at exactly 1024px both copies would download).
+ * @property {number}   [ratio]    A fixed crop for every source, width ÷ height (e.g. 0.8 for 4:5), smart-cropped with g_auto so the
+ *                                  jewellery stays in frame whatever the shape of the stored photo. Pair it with a parent of the same
+ *                                  aspect ratio. Default: the whole photo (c_limit). Not used for a non-Cloudinary URL.
  * @property {{ media: string, ratio: number, widths?: number[], sizes?: string, quality?: 'eco'|'low'|'good'|'best'|number }} [art]
  *                                  Art direction: under `media` serve a different crop (`ratio` = width ÷ height, g_auto
  *                                  keeps the jewellery in frame) — e.g. a portrait crop on phones instead of a landscape
@@ -54,12 +57,12 @@ import { CLOUDINARY_ORIGIN, IMAGE_SIZES, IMAGE_WIDTHS, PIXEL, cldSrcSet, picture
 export default function CloudinaryPicture({
   src, alt, width, height, fill = false,
   sizes = IMAGE_SIZES.hero, widths = IMAGE_WIDTHS.gallery,
-  quality = 'good', formats = ['avif', 'webp'], fallbackFormat = 'jpg',
+  quality = 'good', formats = ['avif', 'webp'], fallbackFormat = 'jpg', ratio,
   priority = false, showWhen, hideWhen, art,
   className = '', style, ...rest
 }) {
   if (!src) return null;
-  const main = pictureModel(src, { widths, sizes, quality, formats, fallbackFormat });
+  const main = pictureModel(src, { widths, sizes, quality, formats, fallbackFormat, ratio });
   const cropQuality = art?.quality || quality;
   const crop = art && main.cloudinary
     ? pictureModel(src, { widths: art.widths || IMAGE_WIDTHS.card, sizes: art.sizes || sizes, quality: cropQuality, formats, fallbackFormat, ratio: art.ratio })

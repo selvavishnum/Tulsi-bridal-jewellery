@@ -78,7 +78,7 @@ export async function sendOrderWhatsAppToAdmin(order) {
   const addr = order.shippingAddress || {};
   addr.name = addr.name || addr.fullName || '';
   const body =
-`🛍️ *New Order — Tulsi Bridal Jewellery*
+`🛍️ *New Order — Tulsi Fashion Jewellery*
 
 📦 Order: *${order.orderNumber}*
 👤 Customer: ${addr.name || order.guestEmail || 'Guest'}
@@ -106,7 +106,7 @@ export async function sendOrderWhatsAppToCustomer(order) {
   if (!phone) return { success: false, message: 'No customer phone number' };
 
   const body =
-`✨ *Order Confirmed — Tulsi Bridal Jewellery*
+`✨ *Order Confirmed — Tulsi Fashion Jewellery*
 
 Namaste ${addr.name || 'Customer'}! 🙏
 
@@ -126,7 +126,7 @@ ${addr.address || ''}${addr.city ? ', ' + addr.city : ''}${addr.state ? ', ' + a
 Track your order: ${process.env.NEXT_PUBLIC_SITE_URL || ''}/track-order?order=${order.orderNumber}
 
 Need help? Reply to this message or call us.
-*Tulsi Bridal Jewellery* 💍`;
+*Tulsi Fashion Jewellery* ✨`;
 
   return sendMessage(phone, body);
 }
@@ -150,7 +150,7 @@ export async function sendStatusWhatsApp(order, newStatus) {
   const statusText = statusMessages[newStatus] || `Your order *${order.orderNumber}* status: *${newStatus}*`;
 
   const body =
-`*Tulsi Bridal Jewellery — Order Update* 💍
+`*Tulsi Fashion Jewellery — Order Update* ✨
 
 Namaste ${addr.name || 'Customer'}!
 
@@ -166,7 +166,7 @@ View order: ${process.env.NEXT_PUBLIC_SITE_URL || ''}/track-order?order=${order.
  */
 export async function sendContactWhatsApp(msg) {
   const body =
-`📩 *New Contact Message — Tulsi Bridal*
+`📩 *New Contact Message — Tulsi Fashion*
 
 👤 Name: ${msg.name}
 📧 Email: ${msg.email}
@@ -187,7 +187,7 @@ Reply in admin: ${process.env.NEXT_PUBLIC_SITE_URL || ''}/admin/messages`;
 export async function sendReviewWhatsApp(review) {
   const stars = '⭐'.repeat(review.rating || 0);
   const body =
-`⭐ *New Review — Tulsi Bridal*
+`⭐ *New Review — Tulsi Fashion*
 
 Product: ${review.productName || review.productId}
 By: ${review.reviewerName}
@@ -206,7 +206,7 @@ View reviews: ${process.env.NEXT_PUBLIC_SITE_URL || ''}/admin`;
 export async function sendRentalWhatsAppToAdmin(rental) {
   const cd = rental.customerDetails || {};
   const body =
-`📅 *New Rental Booking — Tulsi Bridal*
+`📅 *New Rental Booking — Tulsi Fashion*
 
 🔖 Booking: *${rental.rentalNumber}*
 💍 Product: ${rental.productName}
@@ -236,7 +236,7 @@ export async function sendRentalWhatsAppToCustomer(rental) {
   if (!phone) return { success: false, message: 'No customer phone' };
 
   const body =
-`✨ *Rental Confirmed — Tulsi Bridal Jewellery*
+`✨ *Rental Confirmed — Tulsi Fashion Jewellery*
 
 Namaste ${cd.name || 'Customer'}! 🙏
 
@@ -248,7 +248,7 @@ Namaste ${cd.name || 'Customer'}! 🙏
 
 ✅ Security deposit ₹${rental.securityDeposit || 0} refunded after safe return.
 We'll contact you before the rental date.
-*Tulsi Bridal Jewellery* 💍`;
+*Tulsi Fashion Jewellery* 💍`;
 
   return sendMessage(phone, body);
 }

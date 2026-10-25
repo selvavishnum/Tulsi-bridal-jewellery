@@ -561,12 +561,14 @@ describe('GET /api/announcement', () => {
   const read = async () => { const r = await get(); return { status: r.status, cc: r.headers.get('cache-control'), json: await r.json() }; };
   const site = (a) => db.store.get('settings').set('site', { announcement: a });
 
-  test('not configured: the default TULSI10 offer is only active when that coupon really works', async () => {
+  test('not configured: the default TULSI100 offer is only active when that coupon really works', async () => {
+    const welcome100 = { ...COUPON, code: 'TULSI100', type: 'fixed', value: 100, firstOrderOnly: true };
+    db = fakeFirestore({ coupons: { welcome: welcome100 }, settings: { site: {} } });
     let r = await read();
-    assert.deepEqual(r.json, { success: true, enabled: true, message: 'Welcome Offer: Flat 10% OFF on your first jewellery order', code: 'TULSI10', active: true });
+    assert.deepEqual(r.json, { success: true, enabled: true, message: 'Welcome Offer: Flat ₹100 OFF on your first order', code: 'TULSI100', active: true });
     assert.equal(r.cc, 'public, max-age=60');
     for (const change of [{ isActive: false }, { expiresAt: '2020-01-01T00:00:00.000Z' }, { startsAt: '2099-01-01T00:00:00.000Z' }, { maxUses: 3, usedCount: 3 }]) {
-      db = fakeFirestore({ coupons: { welcome: { ...COUPON, code: 'TULSI10', value: 10, ...change } }, settings: { site: {} } });
+      db = fakeFirestore({ coupons: { welcome: { ...welcome100, ...change } }, settings: { site: {} } });
       r = await read();
       assert.equal(r.json.active, false, JSON.stringify(change));
     }
