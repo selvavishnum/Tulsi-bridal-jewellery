@@ -81,7 +81,7 @@ export default function StockCheckerPage() {
   </style>
 </head>
 <body>
-  <h2>Tulsi Bridal Jewellery — Stock Report</h2>
+  <h2>Tulsi Fashion Jewellery — Stock Report</h2>
   <p>Generated: ${new Date().toLocaleString('en-IN')} &nbsp;|&nbsp; Showing qty ${minQty || 0}–${maxQty || '∞'} ${mainCat ? '| Category: ' + mainCat : ''} | ${filtered.length} products</p>
   <table>
     <thead><tr><th>Product Name</th><th>MRP</th><th>Disc%</th><th>S.Price</th><th>In Stock</th></tr></thead>

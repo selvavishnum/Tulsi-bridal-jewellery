@@ -144,7 +144,7 @@ test('GET: legacy settings come back as the normalized showcase (no-store)', asy
   assert.deepEqual(keysOf(json.data), KEYS);
   assert.equal(byKey(json.data).necklace.image, CLD('necklace'));
   assert.equal(byKey(json.data).set.image, CLD('set'));
-  assert.equal(byKey(json.data).necklace.label, 'Necklaces', 'card label/link included for the manager');
+  assert.equal(byKey(json.data).necklace.label, 'Chains & Necklaces', 'card label/link included for the manager');
   assert.equal(site().categoryShowcase, undefined, 'a GET never writes');
 });
 
@@ -200,13 +200,13 @@ test('PATCH: writes only settings/site.categoryShowcase (stored form) and return
 
 test('PATCH: the first save migrates the legacy photos and layout into the stored showcase', async () => {
   signInAs(OWNER);
-  const { json } = await patch({ items: [{ key: 'rentals', isFeatured: true }] });
+  const { json } = await patch({ items: [{ key: 'anklet', isFeatured: true }] });
   const stored = site().categoryShowcase;
   const it = Object.fromEntries(stored.items.map((x) => [x.key, x]));
   assert.equal(it.necklace.image, CLD('necklace'));
   assert.equal(it.set.image, CLD('set'));
   assert.equal(it.earrings.image, '');
-  assert.equal(it.rentals.isFeatured, true);
+  assert.equal(it.anklet.isFeatured, true);
   assert.deepEqual(stored.layout, { layoutVariant: 'king_size', displayMode: 'grid', size: 'medium' });
   assert.deepEqual(json.data.layout, stored.layout);
 
@@ -220,7 +220,7 @@ test('PATCH: the first save migrates the legacy photos and layout into the store
 
 test('PATCH: sequential changes to different fields all survive', async () => {
   signInAs(OWNER);
-  const order = ['set', 'necklace', 'rentals', 'earrings', 'bangles', 'maang-tikka'];
+  const order = ['set', 'necklace', 'anklet', 'earrings', 'bangles', 'bracelet'];
   const steps = [
     { items: [{ key: 'earrings', isActive: false }] },
     { items: [{ key: 'set', isFeatured: true }] },
@@ -249,7 +249,7 @@ test('PATCH: sequential changes to different fields all survive', async () => {
   assert.equal(it.bangles.image, CLD('bangles'));
   assert.equal(it.necklace.image, CLD('necklace'));
   assert.deepEqual(it.necklace.focus, { gravity: 'custom', x: 30, y: 70, zoom: 1.5 });
-  assert.deepEqual(it.rentals.focus, { ...DEFAULT_FOCUS });
+  assert.deepEqual(it.anklet.focus, { ...DEFAULT_FOCUS });
   assert.deepEqual(site().heroSlides, HERO);
   assert.equal(site().phone, LEGACY.phone);
 });
@@ -277,7 +277,7 @@ test('PATCH: invalid JSON or an invalid change → 400 with a message, nothing w
     { body: { items: [{ key: 'set', focus: { x: 101 } }] } },
     { body: { items: [{ key: 'set', focus: { gravity: 'g_face' } }] } },
     { body: { order: KEYS.slice(1) } },
-    { body: { order: ['set', 'set', 'necklace', 'earrings', 'bangles', 'rentals'] } },
+    { body: { order: ['set', 'set', 'necklace', 'earrings', 'bangles', 'anklet'] } },
   ];
   for (const opts of bad) {
     const { status, json } = await patch(undefined, opts);
@@ -311,7 +311,7 @@ test('PATCH: a junk stored showcase is repaired on the next save (only known car
     ],
   };
   signInAs(OWNER);
-  const { status } = await patch({ items: [{ key: 'rentals', isActive: false }] });
+  const { status } = await patch({ items: [{ key: 'anklet', isActive: false }] });
   assert.equal(status, 200);
   const stored = site().categoryShowcase;
   assert.deepEqual(stored.layout, { layoutVariant: 'king_size', displayMode: 'slider', size: 'large' });
@@ -383,8 +383,8 @@ test('settings POST: still SUPER_ADMIN only, and still refuses credentials', asy
 
 test('public settings GET → normalizeShowcase gives the same showcase the admin saved; hidden cards are not visible', async () => {
   signInAs(OWNER);
-  const order = ['rentals', 'set', 'necklace', 'earrings', 'bangles', 'maang-tikka'];
-  await patch({ order, items: [{ key: 'bangles', isActive: false }, { key: 'maang-tikka', isActive: false }, { key: 'set', isFeatured: true }], layout: { layoutVariant: 'square', displayMode: 'slider' } });
+  const order = ['anklet', 'set', 'necklace', 'earrings', 'bangles', 'bracelet'];
+  await patch({ order, items: [{ key: 'bangles', isActive: false }, { key: 'bracelet', isActive: false }, { key: 'set', isFeatured: true }], layout: { layoutVariant: 'square', displayMode: 'slider' } });
   const adminView = (await getShowcase()).json.data;
 
   signInAs(null);
@@ -392,7 +392,7 @@ test('public settings GET → normalizeShowcase gives the same showcase the admi
   assert.equal(pub.status, 200);
   const showcase = normalizeShowcase(pub.json.data);
   assert.deepEqual(showcase, adminView);
-  assert.deepEqual(visibleItems(showcase).map((it) => it.key), ['rentals', 'set', 'necklace', 'earrings']);
+  assert.deepEqual(visibleItems(showcase).map((it) => it.key), ['anklet', 'set', 'necklace', 'earrings']);
   assert.deepEqual(showcase.layout, { layoutVariant: 'square', displayMode: 'slider', size: 'medium' });
   assert.equal(byKey(showcase).set.isFeatured, true);
 });

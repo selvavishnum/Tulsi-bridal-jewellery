@@ -128,7 +128,7 @@ describe('whatsappOrderUrl', () => {
 
 describe('normalizeAnnouncement', () => {
   test('not configured (or junk) → the default welcome offer', () => {
-    const def = { enabled: true, message: 'Welcome Offer: Flat 10% OFF on your first jewellery order', code: 'TULSI10' };
+    const def = { enabled: true, message: 'Welcome Offer: Flat ₹100 OFF on your first order', code: 'TULSI100' };
     assert.deepEqual({ ...DEFAULT_ANNOUNCEMENT }, def);
     for (const s of [undefined, null, {}, { phone: '+91 1' }, { announcement: null }, { announcement: 'on' }, { announcement: {} }]) {
       assert.deepEqual(normalizeAnnouncement(s), def, JSON.stringify(s));
@@ -146,11 +146,11 @@ describe('normalizeAnnouncement', () => {
 
   test('code: trimmed and upper-cased; an invalid one is dropped (never shown), empty means no code', () => {
     const code = (c) => normalizeAnnouncement({ announcement: { code: c } }).code;
-    assert.equal(code('  tulsi10 '), 'TULSI10');
+    assert.equal(code('  tulsi100 '), 'TULSI100');
     assert.equal(code('FEST_2026-A'), 'FEST_2026-A');
     assert.equal(code(''), '');
     for (const bad of ['AB', 'X!', 'TEN OFF', 'A'.repeat(31), '<b>']) assert.equal(code(bad), '', bad);
-    assert.equal(code(42), 'TULSI10', 'not a string → default');
+    assert.equal(code(42), 'TULSI100', 'not a string → default');
   });
 
   test('message: no markup characters, at most 140 characters, empty → the default message', () => {
@@ -164,8 +164,8 @@ describe('normalizeAnnouncement', () => {
   test('dismissal is per message + code: a new offer shows again', () => {
     const a = normalizeAnnouncement({});
     assert.equal(DISMISS_KEY, 'tj-announce-dismissed');
-    assert.equal(dismissToken(a), `TULSI10|${a.message}`);
-    assert.equal(dismissToken(a), dismissToken(normalizeAnnouncement({ announcement: { code: 'tulsi10' } })));
+    assert.equal(dismissToken(a), `TULSI100|${a.message}`);
+    assert.equal(dismissToken(a), dismissToken(normalizeAnnouncement({ announcement: { code: 'tulsi100' } })));
     assert.notEqual(dismissToken(a), dismissToken({ ...a, code: 'NEW15' }));
     assert.notEqual(dismissToken(a), dismissToken({ ...a, message: 'Flat 15% OFF' }));
     assert.ok(dismissToken({ code: 'A'.repeat(30), message: 'm'.repeat(500) }).length <= 200);

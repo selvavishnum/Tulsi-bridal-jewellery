@@ -4,6 +4,7 @@ import { checkProductVendor } from '@/lib/vendorProducts';
 import { requireRole, CAN } from '@/lib/requireRole';
 import { catalogProductViolations, CATALOG_EDITABLE_PRODUCT_FIELDS } from '@/lib/access';
 import { slugify } from '@/lib/utils';
+import { searchProducts } from '@/lib/productSearch';
 
 export async function GET(request) {
   try {
@@ -29,7 +30,12 @@ export async function GET(request) {
       .map(toPublicProduct); // never serve purchase price / supplier publicly
 
     // Filter in JS (avoids Firestore composite index requirement)
-    if (category) products = products.filter((p) => p.category === category);
+    /* One category, or several comma-separated ("necklace,chain" — the storefront's
+       "Chains & Necklaces" shelf). A single value filters exactly as before. */
+    if (category) {
+      const wanted = category.split(',').map((c) => c.trim()).filter(Boolean);
+      products = products.filter((p) => wanted.includes(p.category));
+    }
     if (featured === 'true') products = products.filter((p) => p.featured === true);
     if (rental === 'true')  products = products.filter((p) => p.isAvailableForRent === true);
     if (rental === 'false') products = products.filter((p) => !p.isAvailableForRent);
@@ -37,12 +43,7 @@ export async function GET(request) {
     if (priceMin) products = products.filter((p) => (p.discountPrice || p.price || 0) >= Number(priceMin));
     if (priceMax) products = products.filter((p) => (p.discountPrice || p.price || 0) <= Number(priceMax));
     if (isNew === 'true') products = products.filter((p) => p.isNew === true);
-    if (search) {
-      const term = search.toLowerCase();
-      products = products.filter(
-        (p) => p.name?.toLowerCase().includes(term) || p.sku?.toLowerCase().includes(term)
-      );
-    }
+    if (search) products = searchProducts(products, search);
 
     // Sort
     products.sort((a, b) => {

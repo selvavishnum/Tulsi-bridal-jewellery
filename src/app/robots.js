@@ -1,13 +1,16 @@
 import { SITE_URL } from '@/lib/seoSchema';
 
-/* Private and transactional paths — nothing to index there. */
+/* Private and transactional paths — nothing to index there. The retired
+   rental URLs (/rentals, /rental-booking, /rental-success) are deliberately
+   not listed: they 301 to the shop (next.config.mjs), and a crawler that
+   robots.txt keeps out never sees the redirect. */
 const PRIVATE = [
   '/admin', '/admin-portal', '/vendor', '/api/', '/cart', '/checkout', '/account', '/login',
-  '/wishlist', '/order-success', '/rental-success', '/rental-booking', '/auth-error', '/photo-editor',
+  '/wishlist', '/order-success', '/auth-error', '/photo-editor',
 ];
 
 /* Search engines and AI answer engines are named explicitly (not only via
-   "*") so the policy is unambiguous for each: product, category, rental,
+   "*") so the policy is unambiguous for each: product, category,
    FAQ and policy pages are open to all of them. Allowing GPTBot, ClaudeBot,
    Google-Extended and Applebot-Extended also permits use of public pages
    for AI training — remove those four to keep AI search/answers but opt
@@ -23,7 +26,7 @@ const CRAWLERS = [
 export default function robots() {
   return {
     rules: [
-      { userAgent: CRAWLERS, allow: ['/', '/product/', '/shop', '/catalog', '/rentals', '/faq', '/llms.txt'], disallow: PRIVATE },
+      { userAgent: CRAWLERS, allow: ['/', '/product/', '/shop', '/catalog', '/faq', '/llms.txt'], disallow: PRIVATE },
       { userAgent: '*', allow: '/', disallow: PRIVATE },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,

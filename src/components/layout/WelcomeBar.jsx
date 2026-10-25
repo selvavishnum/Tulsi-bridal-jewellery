@@ -3,16 +3,22 @@
 /* ─────────────────────────────────────────────
    Welcome-offer strip — the top line of the storefront header.
 
-   "✨ {message} · Use code [TULSI10] · {free-delivery line}" from the
+   "✨ {message} | Use Code: [TULSI100] | {delivery line} 🚚" from the
    public site settings (settings/site.announcement) and the store's real
-   shipping rule (never a hard-coded "free shipping" claim). Tapping the
-   code remembers it for checkout (cart, checkout and the Buy Now drawer
-   apply it; the server decides whether it's valid) and copies it.
+   shipping rule (never a hard-coded "free shipping" claim: the delivery line
+   says "Free Delivery across India" only when the shipping settings make
+   every order free, else the real rule — see deliveryLine). One click
+   anywhere on the offer (the code chip's hit area is stretched over the
+   strip) remembers the code for checkout (cart, checkout and the Buy Now
+   drawer apply it; the server decides whether it's valid), copies it, and
+   says so in a toast.
 
    Dismissed (per message+code), switched off, or empty: the strip shows
    its usual tagline + delivery line + phone instead. Always one line at a
    fixed height, so swapping tagline → offer after hydration changes text
-   only — never the header's height.
+   only — never the header's height. The two states are keyed fragments, so
+   the swap replaces the elements instead of re-using (and so moving) the
+   tagline's.
 
    Never advertises a code that doesn't work: the server render and first
    paint show the tagline, and the offer appears only once GET
@@ -20,21 +26,22 @@
    (checked on the server). So a switched-off or changed offer never
    flashes, and a code that doesn't exist (or expired) is never shown.
    ───────────────────────────────────────────── */
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { Fragment, useEffect, useState, useSyncExternalStore } from 'react';
 import toast from 'react-hot-toast';
 import { FiPhone, FiX } from 'react-icons/fi';
-import { freeShippingLine } from '@/lib/storeCharges';
-import { normalizeAnnouncement, DISMISS_KEY, dismissToken, setPendingCoupon } from '@/lib/welcomeOffer';
+import {
+  normalizeAnnouncement, DISMISS_KEY, dismissToken, setPendingCoupon, deliveryLine, copyToClipboard, codeTapToast,
+} from '@/lib/welcomeOffer';
 
 export const DEFAULT_SITE_PHONE = '+91 76958 68787';
-const TAGLINE = '✦ Handcrafted Bridal Jewellery — Made with Love ✦';
+export const TAGLINE = '✦ Modern Fashion Jewellery — Made for Every Day ✦';
 
 /* Shared with the admin preview (AnnouncementSettingsPanel). */
 export const BAR_BG = 'bg-velvet-950 bg-gradient-to-r from-velvet-950 via-wine-950 to-velvet-950';
 export const CODE_CHIP = 'inline-flex flex-shrink-0 items-center h-6 px-2 rounded border border-dashed border-velvet-950/30 bg-gold-gradient text-velvet-950 text-[11px] font-bold tracking-[0.14em] leading-none shadow-gold';
 
 /* Phones get a short form: the message itself when it fits, else its
-   offer ("10% OFF first order", "Up to ₹500 OFF"), else the part after a
+   offer ("₹100 OFF first order", "Up to ₹500 OFF"), else the part after a
    "Headline:" prefix. Whatever is left still truncates with an ellipsis. */
 const SHORT_FITS = 26;
 export function shortOffer(message) {
@@ -83,8 +90,9 @@ function parseCache(raw) {
   } catch { return null; }
 }
 
-const Dot = ({ className = '' }) => (
-  <span aria-hidden="true" className={`flex-shrink-0 text-gold-400/70 ${className}`}>·</span>
+/* The "|" between the clauses — decoration, so a screen reader doesn't read it. */
+const Pipe = ({ className = '' }) => (
+  <span aria-hidden="true" className={`flex-shrink-0 text-gold-400/70 ${className}`}>|</span>
 );
 
 /**
@@ -116,7 +124,7 @@ export default function WelcomeBar({ settings, charges }) {
     : null;
   const phone = (typeof source.phone === 'string' && source.phone.trim()) || DEFAULT_SITE_PHONE;
   const tel = `tel:${phone.replace(/[^\d+]/g, '')}`;
-  const shippingLine = freeShippingLine(charges);
+  const shippingLine = deliveryLine(charges);
 
   /* Remember the fresh phone number, for the next page load. */
   useEffect(() => {
@@ -128,15 +136,19 @@ export default function WelcomeBar({ settings, charges }) {
   const showOffer = !!a && offer.active === true && a.enabled && !!(a.message || a.code)
     && dismissedNow !== token && storedDismissal !== token;
 
-  const applyCode = () => {
-    const saved = setPendingCoupon(a.code);
-    try { navigator.clipboard?.writeText(a.code)?.catch(() => {}); } catch { /* no clipboard (http, old browser) */ }
+  const applyCode = async () => {
+    const code = a.code;
+    const saved = setPendingCoupon(code);
+    /* Started inside the tap (browsers only copy from a gesture); the toast
+       waits for the answer so it never says "copied" when it wasn't. */
+    const copying = copyToClipboard(code);
     /* Lets an already-open cart or checkout pick the code up without a reload. */
-    try { window.dispatchEvent(new CustomEvent('tj:pending-coupon', { detail: { code: a.code } })); } catch { /* old browser */ }
+    try { window.dispatchEvent(new CustomEvent('tj:pending-coupon', { detail: { code } })); } catch { /* old browser */ }
+    const { kind, message } = codeTapToast(code, { copied: await copying, saved });
     /* At the bottom: a toast at the top would sit right over this strip
        (and its ✕) on phones. */
-    if (saved) toast.success(`${a.code} will be applied at checkout`, { id: 'welcome-code', position: 'bottom-center' });
-    else toast(`Use code ${a.code} at checkout`, { id: 'welcome-code', icon: '✨', position: 'bottom-center' });
+    if (kind === 'success') toast.success(message, { id: 'welcome-code', position: 'bottom-center' });
+    else toast(message, { id: 'welcome-code', icon: '✨', position: 'bottom-center' });
   };
 
   const dismiss = () => {
@@ -149,7 +161,7 @@ export default function WelcomeBar({ settings, charges }) {
       <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-gold-500/40 to-transparent" />
       <div className="section-container h-full flex items-center gap-2">
         {showOffer ? (
-          <>
+          <Fragment key="offer">
             <p className="flex-1 min-w-0 flex items-center justify-center gap-1.5 sm:gap-2 whitespace-nowrap text-xs tracking-wide text-gold-200">
               <span aria-hidden="true" className="flex-shrink-0">✨</span>
               {a.message && (
@@ -160,47 +172,59 @@ export default function WelcomeBar({ settings, charges }) {
               )}
               {a.code && (
                 <>
-                  {a.message && <Dot />}
+                  {a.message && <Pipe />}
                   <span className="flex-shrink-0 text-gold-200/80 max-[359px]:hidden">
-                    <span className="sm:hidden">Code</span>
-                    <span className="hidden sm:inline">Use code</span>
+                    <span className="sm:hidden">Code:</span>
+                    <span className="hidden sm:inline">Use Code:</span>
                   </span>
+                  {/* The strip is one big tap target: the ::after stretches this
+                      button over it (the ✕ and the phone sit above it). So the
+                      button itself carries no transform or filter — either would
+                      make it the ::after's containing block and shrink the target
+                      to the chip while hovered or pressed; the chip's hover and
+                      press effects are on the span inside. */}
                   <button
                     type="button"
                     onClick={applyCode}
                     aria-label={`Apply code ${a.code} at checkout`}
-                    title="Tap to apply at checkout"
-                    className={`${CODE_CHIP} transition hover:brightness-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-200 focus-visible:ring-offset-1 focus-visible:ring-offset-velvet-950`}
+                    title={`Click to copy ${a.code} and apply it at checkout`}
+                    className="group flex-shrink-0 cursor-pointer rounded after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-200 focus-visible:ring-offset-1 focus-visible:ring-offset-velvet-950"
                   >
-                    {a.code}
+                    <span className={`${CODE_CHIP} transition group-hover:brightness-110 group-active:scale-95`}>{a.code}</span>
                   </button>
                 </>
               )}
-              <Dot className="hidden md:block" />
-              <span className="hidden md:block flex-shrink-0 text-gold-200/80">{shippingLine}</span>
+              {/* From 820px, not 768px: an iPad held upright is exactly 768px wide and the
+                  offer's own words were cut short ("…on your fir…") to make room for it. */}
+              {shippingLine && (
+                <>
+                  <Pipe className="hidden min-[820px]:block" />
+                  <span className="hidden min-[820px]:block flex-shrink-0 text-gold-200/80">{shippingLine} <span aria-hidden="true">🚚</span></span>
+                </>
+              )}
             </p>
-            <a href={tel} className="hidden lg:inline-flex flex-shrink-0 items-center gap-1 text-xs font-medium tracking-wide text-gold-200/90 hover:text-gold-100 transition-colors">
+            <a href={tel} className="relative z-10 hidden lg:inline-flex flex-shrink-0 items-center gap-1 min-h-6 text-xs font-medium tracking-wide text-gold-200/90 hover:text-gold-100 transition-colors">
               <FiPhone aria-hidden="true" className="text-[10px]" /> {phone}
             </a>
             <button
               type="button"
               onClick={dismiss}
               aria-label="Dismiss offer"
-              className="flex-shrink-0 -mr-2 w-8 h-8 inline-flex items-center justify-center rounded-full text-gold-200/70 hover:text-gold-100 hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-300/60"
+              className="relative z-10 flex-shrink-0 -mr-2 w-8 h-8 inline-flex items-center justify-center rounded-full text-gold-200/70 hover:text-gold-100 hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-300/60"
             >
               <FiX aria-hidden="true" className="text-sm" />
             </button>
-          </>
+          </Fragment>
         ) : (
-          <>
-            <p className="hidden sm:block flex-shrink-0 whitespace-nowrap text-xs tracking-wider text-gold-300/80">{TAGLINE}</p>
-            <p className="flex-1 min-w-0 truncate whitespace-nowrap text-center sm:text-right text-xs tracking-wide text-gold-300/70">
-              {shippingLine} &nbsp;·&nbsp;
-              <a href={tel} className="inline-flex items-center gap-1 font-medium hover:text-gold-300 transition-colors text-gold-300/90">
+          <Fragment key="tagline">
+            <p className="hidden md:block flex-shrink-0 whitespace-nowrap text-xs tracking-wider text-gold-300/80">{TAGLINE}</p>
+            <p className="flex-1 min-w-0 truncate whitespace-nowrap text-center md:text-right text-xs tracking-wide text-gold-300/70">
+              {shippingLine && <>{shippingLine} &nbsp;·&nbsp;</>}
+              <a href={tel} className="inline-flex items-center gap-1 min-h-6 font-medium hover:text-gold-300 transition-colors text-gold-300/90">
                 <FiPhone aria-hidden="true" className="text-[10px]" /> {phone}
               </a>
             </p>
-          </>
+          </Fragment>
         )}
       </div>
     </div>

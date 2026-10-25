@@ -183,7 +183,7 @@ export default function AdminCouponsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <label className="text-xs text-gray-500 mb-1 block">Code *</label>
-                  <input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} placeholder="e.g. BRIDE20" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono uppercase outline-none focus:ring-2 focus:ring-gold-500" />
+                  <input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} placeholder="e.g. FESTIVE20" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono uppercase outline-none focus:ring-2 focus:ring-gold-500" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Type *</label>

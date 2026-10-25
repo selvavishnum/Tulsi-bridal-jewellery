@@ -7,7 +7,7 @@ import { GRID_SIZES, cardPriority } from '@/lib/catalogImages';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { FiX } from 'react-icons/fi';
 
-const CATEGORIES = ['necklace', 'earrings', 'bangles', 'bracelet', 'ring', 'maang-tikka', 'nose-ring', 'anklet', 'set', 'other'];
+const CATEGORIES = ['necklace', 'chain', 'earrings', 'anklet', 'bracelet', 'bangles', 'ring', 'maang-tikka', 'nose-ring', 'set', 'other'];
 const COLORS = ['Gold', 'Silver', 'Red', 'Green', 'Blue', 'Pink', 'White', 'Multi-color'];
 const SORT_OPTIONS = [
   { label: 'Newest', value: 'createdAt-desc' },
@@ -15,6 +15,8 @@ const SORT_OPTIONS = [
   { label: 'Price: High to Low', value: 'price-desc' },
   { label: 'Most Popular', value: 'ratings.average-desc' },
 ];
+/* "Most Popular" is what the header's "Trending Now" link opens (navLinks.js). */
+const TRENDING_SORT = 'ratings.average-desc';
 
 export default function ShopContent() {
   const searchParams = useSearchParams();
@@ -29,7 +31,6 @@ export default function ShopContent() {
 
   const category = searchParams.get('category') || '';
   const search = searchParams.get('search') || '';
-  const rental = searchParams.get('rental') || '';
   const color = searchParams.get('color') || '';
   const priceMin = searchParams.get('priceMin') || '';
   const priceMax = searchParams.get('priceMax') || '';
@@ -45,7 +46,7 @@ export default function ShopContent() {
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({ page: page.toString(), limit: '12', sort: sortField, order: sortOrder, rental: 'false' });
+    const params = new URLSearchParams({ page: page.toString(), limit: '12', sort: sortField, order: sortOrder });
     if (category) params.set('category', category);
     if (search) params.set('search', search);
     if (color) params.set('color', color);
@@ -58,7 +59,7 @@ export default function ShopContent() {
       if (data.success) { setProducts(data.data.products); setTotal(data.data.total); setPages(data.data.pages); }
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [category, search, rental, color, priceMin, priceMax, isNew, page, sortField, sortOrder]);
+  }, [category, search, color, priceMin, priceMax, isNew, page, sortField, sortOrder]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
@@ -77,7 +78,7 @@ export default function ShopContent() {
     router.push(`/shop?${params.toString()}`);
   }
 
-  const hasActiveFilters = category || rental || search || color || priceMin || priceMax || isNew;
+  const hasActiveFilters = category || search || color || priceMin || priceMax || isNew;
 
   return (
     <div className="min-h-screen bg-white">
@@ -85,7 +86,7 @@ export default function ShopContent() {
       {/* ── Category title header — arshis.in style ── */}
       <div className="bg-[#f5ede6] py-7 text-center border-b border-stone-200">
         <h1 className="font-serif text-3xl font-bold text-stone-800 tracking-wide">
-          {category ? category.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : search ? `"${search}"` : 'All Jewellery'}
+          {category ? category.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : search ? `"${search}"` : sort === TRENDING_SORT ? 'Trending Now' : 'All Jewellery'}
         </h1>
       </div>
 
@@ -160,7 +161,7 @@ export default function ShopContent() {
             {/* Photos: cardPriority loads the first row first and the rest lazily; GRID_SIZES.shop is this grid's
                 tile width (container max-w-3xl + px-3, 2 → 3 columns) — change the classes, change it too. */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
-              {products.map((p, i) => <ProductCard key={p._id} product={p} priority={cardPriority(i)} sizes={GRID_SIZES.shop} />)}
+              {products.map((p, i) => <ProductCard key={p._id || p.id} product={p} priority={cardPriority(i)} sizes={GRID_SIZES.shop} />)}
             </div>
             {pages > 1 && (
               <div className="flex justify-center gap-2 mt-8">

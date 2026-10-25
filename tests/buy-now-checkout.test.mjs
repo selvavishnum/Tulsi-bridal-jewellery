@@ -618,7 +618,7 @@ describe('useCheckoutFlow', { skip }, () => {
     assert.equal(rzp.options.order_id, 'order_rzp1');
     assert.equal(rzp.options.amount, 159900);
     assert.equal(rzp.options.currency, 'INR');
-    assert.equal(rzp.options.name, 'Tulsi Bridal Jewellery');
+    assert.equal(rzp.options.name, 'Tulsi Fashion Jewellery');
     assert.deepEqual(rzp.options.prefill, { name: 'Asha', email: 'asha@example.com', contact: '9876543210' });
     assert.deepEqual(rzp.options.theme, { color: '#800020' });
     await tick();

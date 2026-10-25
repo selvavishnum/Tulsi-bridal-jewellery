@@ -34,9 +34,8 @@ export function buildFaqs({ charges, phone = '+91 76958 68787', email = 'tulsibr
     { group: 'Returns', q: 'What is your return policy?', a: 'We accept returns within 7 days of delivery if the item arrives damaged or defective, or if a wrong item was delivered. An unboxing video is required for every return claim. Change of mind, minor colour variation from photos, worn or used items and custom orders are not eligible.' },
     { group: 'Returns', q: 'How are refunds paid?', a: 'Approved refunds go back to the original payment method within 5–7 business days. We arrange the return pickup for approved returns.' },
     { group: 'Products', q: 'What materials is your jewellery made from?', a: 'Our collection includes gold-plated, silver-plated, kundan, meenakari and polki pieces, alongside gold and silver designs. Each product page lists its material, finish, weight and stones — please check the listing for the exact piece.' },
-    { group: 'Products', q: 'What kind of jewellery do you sell?', a: 'Handcrafted bridal and wedding jewellery: necklaces and chokers, bridal sets, earrings and jhumkas, bangles, maang tikka, nose rings, rings and anklets — including temple and antique-finish designs.' },
-    { group: 'Rentals', q: 'Can I rent bridal jewellery instead of buying?', a: 'Yes. Selected pieces are available to rent for your wedding or function. You pick the dates, pay the rental charge plus a refundable security deposit (30% of the item price), and choose delivery or self pickup and return.' },
-    { group: 'Contact', q: 'How can I contact Tulsi Bridal Jewellery?', a: `WhatsApp or call ${phone}, or email ${email}. You can also use the contact form on our website.` },
+    { group: 'Products', q: 'What kind of jewellery do you sell?', a: 'Modern minimalist fashion jewellery for everyday and festive wear: trending chains and necklaces, earrings, anklets, bracelets, bangles and rings.' },
+    { group: 'Contact', q: 'How can I contact Tulsi Fashion Jewellery?', a: `WhatsApp or call ${phone}, or email ${email}. You can also use the contact form on our website.` },
   ];
 }
 

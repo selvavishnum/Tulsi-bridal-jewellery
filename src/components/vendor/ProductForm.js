@@ -123,7 +123,7 @@ export default function ProductForm({ product }) {
         <div className="grid sm:grid-cols-3 gap-4">
           <Field label="Weight"><input maxLength={40} value={form.weight} onChange={(e) => upd('weight', e.target.value)} className={field} placeholder="45 g" /></Field>
           <Field label="Colour"><input maxLength={40} value={form.color} onChange={(e) => upd('color', e.target.value)} className={field} placeholder="Ruby red" /></Field>
-          <Field label="Occasion"><input maxLength={60} value={form.occasion} onChange={(e) => upd('occasion', e.target.value)} className={field} placeholder="Wedding" /></Field>
+          <Field label="Occasion"><input maxLength={60} value={form.occasion} onChange={(e) => upd('occasion', e.target.value)} className={field} placeholder="Daily wear" /></Field>
         </div>
       </section>
 

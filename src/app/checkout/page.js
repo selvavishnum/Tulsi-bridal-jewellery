@@ -165,7 +165,7 @@ export default function CheckoutPage() {
 
               {/* Summary */}
               <div>
-                <div className="bg-white rounded-xl p-5 shadow-sm sticky top-24">
+                <div className="bg-white rounded-xl p-5 shadow-sm sticky top-24 lg:top-40">
                   <h2 className="font-semibold text-gray-700 mb-4">Order Summary</h2>
                   <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
                     {items.map((i) => (

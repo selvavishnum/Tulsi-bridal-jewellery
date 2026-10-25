@@ -184,7 +184,7 @@ export default function AdminPortalPage() {
           <h1 className="font-serif text-2xl font-bold text-white tracking-tight">Admin Portal</h1>
           <div className="flex items-center justify-center gap-1.5 mt-1">
             <FiShield className="text-amber-500 text-xs" />
-            <span className="text-amber-500 text-xs tracking-widest uppercase font-medium">Tulsi Bridal Jewellery</span>
+            <span className="text-amber-500 text-xs tracking-widest uppercase font-medium">Tulsi Fashion Jewellery</span>
           </div>
         </div>
 

@@ -26,67 +26,37 @@ function Toggle({ value, onChange, label, description }) {
   );
 }
 
-/* ─────────────────────────── Hero Slide row ─────────────────────────── */
-const BLANK_SLIDE = { id: '', imageUrl: '', tag: '', title: '', subtitle: '', ctaText: 'Shop Collection', ctaLink: '/shop', cta2Text: 'Book Rental', cta2Link: '/rentals' };
+/* ─────────────────────────── Hero photo row ───────────────────────────
+   The homepage hero is one editorial photo: the image of the FIRST slide.
+   The old slider's tag, title, subtitle and buttons are no longer drawn on
+   the homepage, so the form no longer asks for them. A slide saved earlier
+   keeps them in the database (this form sends every field it loaded back
+   unchanged); nothing on the site shows them. */
+const BLANK_SLIDE = { id: '', imageUrl: '' };
 
 function SlideRow({ slide, index, onChange, onDelete }) {
   return (
     <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 space-y-3">
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Slide {index + 1}</span>
+        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+          Slide {index + 1} <span className={index === 0 ? 'text-green-700' : 'text-gray-400'}>{index === 0 ? '· shown on the homepage' : '· not shown'}</span>
+        </span>
         <button type="button" onClick={onDelete} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"><FiTrash2 className="text-sm" /></button>
       </div>
-      {slide.imageUrl && (
-        <div className="relative h-32 rounded-lg overflow-hidden bg-gray-200 mb-1">
-          <Image src={slide.imageUrl} alt="slide preview" fill className="object-cover object-top" />
-        </div>
-      )}
-      <div className="grid md:grid-cols-2 gap-3">
-        <div className="md:col-span-2">
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Image URL <span className="text-gray-400">(model photo — full width)</span></label>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <FiImage className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
-              <input type="url" value={slide.imageUrl} onChange={(e) => onChange('imageUrl', e.target.value)} placeholder="https://… paste image link here"
-                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-            </div>
+      <div className="flex gap-4 items-start">
+        {slide.imageUrl && (
+          <div className="relative aspect-[4/5] w-24 flex-shrink-0 rounded-lg overflow-hidden bg-gray-200">
+            <Image src={slide.imageUrl} alt="hero photo preview" fill className="object-cover object-center" />
           </div>
-          <p className="text-[10px] text-gray-400 mt-1">Recommended size: 1600×900px</p>
-        </div>
-        <div>
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Tag / Badge text</label>
-          <input value={slide.tag} onChange={(e) => onChange('tag', e.target.value)} placeholder="e.g. New Bridal Collection"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Main Title</label>
-          <input value={slide.title} onChange={(e) => onChange('title', e.target.value)} placeholder="You Are The Occasion"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-        </div>
-        <div className="md:col-span-2">
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Subtitle / description</label>
-          <input value={slide.subtitle} onChange={(e) => onChange('subtitle', e.target.value)} placeholder="Jewellery Crafted for Brides"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Button 1 Text</label>
-          <input value={slide.ctaText} onChange={(e) => onChange('ctaText', e.target.value)} placeholder="Shop Collection"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Button 1 Link</label>
-          <input value={slide.ctaLink} onChange={(e) => onChange('ctaLink', e.target.value)} placeholder="/shop"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Button 2 Text <span className="text-gray-400">(optional)</span></label>
-          <input value={slide.cta2Text} onChange={(e) => onChange('cta2Text', e.target.value)} placeholder="Book Rental"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Button 2 Link <span className="text-gray-400">(optional)</span></label>
-          <input value={slide.cta2Link} onChange={(e) => onChange('cta2Link', e.target.value)} placeholder="/rentals"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
+        )}
+        <div className="flex-1 min-w-0">
+          <label className="text-xs text-gray-500 mb-1 block font-medium">Image URL <span className="text-gray-400">(portrait photo, 4:5)</span></label>
+          <div className="relative">
+            <FiImage className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+            <input type="url" value={slide.imageUrl} onChange={(e) => onChange('imageUrl', e.target.value)} placeholder="https://… paste image link here"
+              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
+          </div>
+          <p className="text-[10px] text-gray-400 mt-1">Recommended: 1200×1500px (4:5).</p>
         </div>
       </div>
     </div>
@@ -163,7 +133,7 @@ function InstaPostRow({ post, index, onChange, onDelete }) {
         </div>
         <div>
           <label className="text-xs text-gray-500 mb-1 block font-medium">Caption <span className="text-gray-400">(optional)</span></label>
-          <input value={post.caption} onChange={(e) => onChange('caption', e.target.value)} placeholder="Beautiful bridal necklace set…"
+          <input value={post.caption} onChange={(e) => onChange('caption', e.target.value)} placeholder="Layered gold-tone chains…"
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
         </div>
         <div>
@@ -342,8 +312,8 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('Business');
   const [settings, setSettings] = useState({
     /* Business */
-    businessName: 'Tulsi Bridal Jewellery',
-    tagline: 'Premium Bridal Jewellery Rentals',
+    businessName: 'Tulsi Fashion Jewellery',
+    tagline: 'Modern Fashion Jewellery',
     phone: '+91 76958 68787',
     email: '',
     address: '',
@@ -454,8 +424,8 @@ export default function SettingsPage() {
         <SectionCard title="Business Information" description="Your store name, contact info, and tax details">
           <div className="grid md:grid-cols-2 gap-4">
             {[
-              { key: 'businessName', label: 'Business Name', placeholder: 'Tulsi Bridal Jewellery' },
-              { key: 'tagline',      label: 'Tagline',        placeholder: 'Premium Bridal Jewellery Rentals' },
+              { key: 'businessName', label: 'Business Name', placeholder: 'Tulsi Fashion Jewellery' },
+              { key: 'tagline',      label: 'Tagline',        placeholder: 'Modern Fashion Jewellery' },
               { key: 'phone',        label: 'Phone / WhatsApp', placeholder: '+91 76958 68787' },
               { key: 'email',        label: 'Contact Email',  placeholder: 'info@tulsibridal.com' },
               { key: 'address',      label: 'Address',        placeholder: 'Your city, State' },
@@ -471,7 +441,7 @@ export default function SettingsPage() {
         <SectionCard title="Store Location for Google & AI Search" description="Used in the store's structured data (JewelryStore). Leave blank what you don't want published — nothing is guessed.">
           <div className="grid md:grid-cols-2 gap-4">
             {[
-              { key: 'legalName',       label: 'Registered / Legal Name', placeholder: 'Tulsi Bridal Jewellery' },
+              { key: 'legalName',       label: 'Registered / Legal Name', placeholder: 'Tulsi Fashion Jewellery' },
               { key: 'priceRange',      label: 'Price Range',             placeholder: '₹500 – ₹25,000' },
               { key: 'streetAddress',   label: 'Street Address',          placeholder: 'Shop no., street' },
               { key: 'addressLocality', label: 'City / Town',             placeholder: 'Thuckalay' },
@@ -645,21 +615,28 @@ export default function SettingsPage() {
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
             <div>
-              <h2 className="font-bold text-gray-800">Homepage Hero Banners</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Full-screen model images shown on the homepage slider</p>
+              <h2 className="font-bold text-gray-800">Homepage Hero Photo</h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                The homepage hero shows one photo: the image of <strong>Slide 1</strong>. Other slides are kept here but not shown.
+                The title, subtitle and button fields of the old slider are no longer used on the homepage, so they are not listed.
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                Best: a portrait photo (about 1200×1500px, 4:5) of a model wearing layered chains and minimalist earrings on a soft off-white background.
+                A Cloudinary link is resized and cropped around the jewellery for you. With no photo, a gold-chains illustration is shown instead.
+              </p>
             </div>
             <button type="button" onClick={addSlide}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 transition">
-              <FiPlus /> Add Slide
+              <FiPlus /> Add Photo
             </button>
           </div>
           {heroSlides.length === 0 ? (
             <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
               <FiImage className="text-3xl mx-auto mb-2 opacity-40" />
-              <p className="text-sm font-medium">No hero slides yet</p>
-              <p className="text-xs mt-1">Click "Add Slide" to add your first model banner image</p>
+              <p className="text-sm font-medium">No hero photo yet</p>
+              <p className="text-xs mt-1">Click &ldquo;Add Photo&rdquo; and paste the link of your hero image</p>
               <button type="button" onClick={addSlide} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 transition">
-                <FiPlus /> Add First Slide
+                <FiPlus /> Add Hero Photo
               </button>
             </div>
           ) : (
@@ -669,7 +646,7 @@ export default function SettingsPage() {
               ))}
               <button type="button" onClick={addSlide}
                 className="w-full py-3 border-2 border-dashed border-gray-200 text-sm text-gray-500 hover:border-amber-400 hover:text-amber-600 rounded-xl flex items-center justify-center gap-2 transition">
-                <FiPlus /> Add Another Slide
+                <FiPlus /> Add Another Photo
               </button>
             </div>
           )}
@@ -683,7 +660,7 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
             <div>
               <h2 className="font-bold text-gray-800">Happy Customers (Testimonials)</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Customer reviews shown in the "Happy Customers" section on the homepage</p>
+              <p className="text-xs text-gray-400 mt-0.5">Real customer reviews shown in the &ldquo;Happy Customers&rdquo; section on the homepage (no reviews, no section)</p>
             </div>
             <button type="button" onClick={addTestimonial}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 transition">
@@ -693,7 +670,7 @@ export default function SettingsPage() {
           {testimonials.length === 0 ? (
             <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
               <p className="text-sm font-medium">No testimonials configured</p>
-              <p className="text-xs mt-1">Default reviews will be shown until you add custom ones here</p>
+              <p className="text-xs mt-1">The &ldquo;Happy Customers&rdquo; section is hidden on the homepage until you add a real review here</p>
               <button type="button" onClick={addTestimonial} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 transition">
                 <FiPlus /> Add First Review
               </button>
@@ -780,7 +757,7 @@ export default function SettingsPage() {
               <input value={settings.emailFirstName || ''} onChange={(e) => upd('emailFirstName', e.target.value)} placeholder="Tulsi" className={inputCls} />
             </Field>
             <Field label="Sender Last Name">
-              <input value={settings.emailLastName || ''} onChange={(e) => upd('emailLastName', e.target.value)} placeholder="Bridal Jewellery" className={inputCls} />
+              <input value={settings.emailLastName || ''} onChange={(e) => upd('emailLastName', e.target.value)} placeholder="Fashion Jewellery" className={inputCls} />
             </Field>
           </div>
         </SectionCard>

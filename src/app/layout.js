@@ -19,7 +19,7 @@ const inter = Inter({
   display: 'swap',
 });
 
-const DESCRIPTION = 'Handcrafted bridal jewellery to buy or rent — kundan, temple and antique-finish necklaces, chokers, bridal sets, jhumkas, bangles and maang tikka. Free delivery across India, COD available.';
+const DESCRIPTION = 'Modern minimalist fashion jewellery — trending chains, necklaces, earrings and anklets for everyday and festive wear. Delivered across India, Cash on Delivery available.';
 
 export const metadata = {
   metadataBase: new URL(SITE_URL),
@@ -28,9 +28,9 @@ export const metadata = {
   applicationName: SITE_NAME,
   category: 'shopping',
   keywords: [
-    'bridal jewellery', 'wedding jewellery', 'bridal jewellery on rent', 'jewellery rental', 'rental fashion jewellery',
-    'antique jewellery set', 'temple jewellery', 'kundan bridal set', 'bridal choker', 'south indian bridal jewellery',
-    'gold-plated jewellery', 'jhumka', 'maang tikka',
+    'fashion jewellery online India', 'trending chains', 'necklaces', 'earrings', 'anklets',
+    'daily-wear jewellery', 'casual jewellery', 'festive jewellery', 'anti-tarnish jewellery',
+    'minimalist jewellery', 'layered chains', 'gold-plated jewellery',
   ],
   /* No site-wide canonical: every page sets its own. A canonical of "/"
      here was inherited by pages without one, telling Google they were all

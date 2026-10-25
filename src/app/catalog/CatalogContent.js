@@ -7,17 +7,19 @@ import { GRID_SIZES, cardPriority } from '@/lib/catalogImages';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { FiSearch, FiX, FiSliders } from 'react-icons/fi';
 
+/* The values are the stored product categories; the labels lead with the
+   header's three (Chains & Necklaces, Earrings, Anklets). */
 const CATEGORIES = [
-  { label: 'All',          value: '' },
-  { label: 'Necklaces',    value: 'necklace' },
-  { label: 'Earrings',     value: 'earrings' },
-  { label: 'Bangles',      value: 'bangles' },
-  { label: 'Rings',        value: 'ring' },
-  { label: 'Maang Tikka',  value: 'maang-tikka' },
-  { label: 'Bridal Sets',  value: 'set' },
-  { label: 'Anklets',      value: 'anklet' },
-  { label: 'Bracelets',    value: 'bracelet' },
-  { label: 'Other',        value: 'other' },
+  { label: 'All',                value: '' },
+  { label: 'Chains & Necklaces', value: 'necklace' },
+  { label: 'Earrings',           value: 'earrings' },
+  { label: 'Anklets',            value: 'anklet' },
+  { label: 'Bracelets',          value: 'bracelet' },
+  { label: 'Bangles',            value: 'bangles' },
+  { label: 'Rings',              value: 'ring' },
+  { label: 'Maang Tikka',        value: 'maang-tikka' },
+  { label: 'Jewellery Sets',     value: 'set' },
+  { label: 'Other',              value: 'other' },
 ];
 
 const SORT_OPTIONS = [
@@ -25,6 +27,10 @@ const SORT_OPTIONS = [
   { label: 'Price: Low → High', value: 'price-asc' },
   { label: 'Price: High → Low', value: 'price-desc' },
 ];
+
+/* "Chains & Necklaces" is one shelf: a piece is filed under 'necklace' or
+   'chain' (admin quick-add), and the header's link is ?category=necklace. */
+const CATEGORY_SHELVES = { necklace: ['necklace', 'chain'] };
 
 function categoryTitle(slug) {
   if (!slug) return 'All Jewellery';
@@ -43,16 +49,14 @@ export default function CatalogContent() {
 
   const category = searchParams.get('category') || '';
   const search   = searchParams.get('search')   || '';
-  const rental   = searchParams.get('rental')   || '';
   const sort     = searchParams.get('sort')     || 'createdAt-desc';
   const [sortField, sortOrder] = sort.split('-');
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams({ limit: '100', sort: sortField, order: sortOrder });
-    if (category) params.set('category', category);
+    if (category) params.set('category', (CATEGORY_SHELVES[category] || [category]).join(','));
     if (search)   params.set('search', search);
-    if (rental)   params.set('rental', 'true');
     try {
       const res  = await fetch(`/api/products?${params}`);
       const data = await res.json();
@@ -62,7 +66,7 @@ export default function CatalogContent() {
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [category, search, rental, sortField, sortOrder]);
+  }, [category, search, sortField, sortOrder]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
@@ -125,12 +129,6 @@ export default function CatalogContent() {
               className="w-full text-sm border border-stone-200 rounded-lg px-3 py-2 bg-white outline-none text-stone-600">
               {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
-
-            {/* Rental toggle */}
-            <button onClick={() => setParam('rental', rental ? '' : 'true')}
-              className={`w-full py-2 rounded-lg text-sm font-semibold border transition ${rental ? 'bg-stone-800 text-white border-stone-800' : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'}`}>
-              {rental ? '✓ Rental Only' : 'Show Rental Only'}
-            </button>
           </div>
         )}
 
@@ -154,7 +152,18 @@ export default function CatalogContent() {
         ) : products.length === 0 ? (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">💍</div>
-            <p className="text-stone-500 text-lg mb-2">No products found</p>
+            <p className="text-stone-500 text-lg mb-2">{search ? `No matches for “${search}”` : 'No products found'}</p>
+            {search && <p className="text-sm text-stone-400 mb-4">Try one word, like “chain” or “earring”, or browse a collection.</p>}
+            {search && (
+              <div className="flex flex-wrap justify-center gap-2 mb-3">
+                {CATEGORIES.slice(1, 4).map((c) => (
+                  <button key={c.value} onClick={() => router.push(`/catalog?category=${c.value}`)}
+                    className="px-4 py-2 rounded-full text-xs font-semibold border border-stone-200 text-stone-600 hover:bg-stone-50 transition">
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            )}
             <button onClick={() => router.push('/catalog')} className="text-sm text-stone-400 hover:underline mt-1">
               Clear filters
             </button>

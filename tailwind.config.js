@@ -93,9 +93,9 @@ module.exports = {
         },
       },
       fontFamily: {
-        serif:   ['"Cormorant Rupee"', '"Cormorant Garamond"', 'Georgia', '"Times New Roman"', 'serif'],
-        display: ['"Cormorant Rupee"', '"Cormorant Garamond"', 'Georgia', 'serif'],
-        sans:    ['"Inter Rupee"', 'Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        serif:   ['"Cormorant Rupee"', '"Cormorant Garamond"', '"Cormorant Garamond Fallback"', 'Georgia', '"Times New Roman"', 'serif'],
+        display: ['"Cormorant Rupee"', '"Cormorant Garamond"', '"Cormorant Garamond Fallback"', 'Georgia', 'serif'],
+        sans:    ['"Inter Rupee"', 'Inter', '"Inter Fallback"', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
       },
       fontSize: {
         '2xs': ['0.65rem', { lineHeight: '1rem' }],

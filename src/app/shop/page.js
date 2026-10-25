@@ -3,13 +3,13 @@ import ShopContent from './ShopContent';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { absoluteUrl } from '@/lib/seo';
 
-const description = 'Shop handcrafted bridal jewellery — necklaces, earrings, bangles, rings and more. Kundan, gold-plated and silver pieces for the modern bride.';
+const description = 'Shop modern fashion jewellery online — trending chains, necklaces, earrings, anklets and more for everyday and festive wear.';
 
 export const metadata = {
   title: 'Shop',
   description,
   alternates: { canonical: absoluteUrl('/shop') },
-  openGraph: { title: 'Shop | Tulsi Bridal Jewellery', description, url: absoluteUrl('/shop') },
+  openGraph: { title: 'Shop | Tulsi Fashion Jewellery', description, url: absoluteUrl('/shop') },
 };
 
 export default function ShopPage() {

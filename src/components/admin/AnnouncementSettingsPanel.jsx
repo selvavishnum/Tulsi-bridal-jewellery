@@ -12,9 +12,8 @@
 import Link from 'next/link';
 import { FiPhone, FiX } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
-import { freeShippingLine } from '@/lib/storeCharges';
-import { DEFAULT_ANNOUNCEMENT, normalizeAnnouncement } from '@/lib/welcomeOffer';
-import { BAR_BG, CODE_CHIP, DEFAULT_SITE_PHONE, shortOffer } from '@/components/layout/WelcomeBar';
+import { DEFAULT_ANNOUNCEMENT, FREE_DELIVERY_LINE, normalizeAnnouncement, deliveryLine } from '@/lib/welcomeOffer';
+import { BAR_BG, CODE_CHIP, DEFAULT_SITE_PHONE, TAGLINE, shortOffer } from '@/components/layout/WelcomeBar';
 
 const MAX_MESSAGE = 140;
 const CODE_RE = /^[A-Z0-9_-]{3,30}$/;
@@ -33,15 +32,15 @@ function PreviewStrip({ a, shippingLine, phone, mobile }) {
               <span className="min-w-0 truncate font-medium text-gold-100">{mobile ? shortOffer(a.message) : a.message}</span>
               {a.code && (
                 <>
-                  <span aria-hidden="true" className="flex-shrink-0 text-gold-400/70">·</span>
-                  <span className="flex-shrink-0 text-gold-200/80">{mobile ? 'Code' : 'Use code'}</span>
+                  <span aria-hidden="true" className="flex-shrink-0 text-gold-400/70">|</span>
+                  <span className="flex-shrink-0 text-gold-200/80">{mobile ? 'Code:' : 'Use Code:'}</span>
                   <span className={CODE_CHIP}>{a.code}</span>
                 </>
               )}
-              {!mobile && (
+              {!mobile && shippingLine && (
                 <>
-                  <span aria-hidden="true" className="flex-shrink-0 text-gold-400/70">·</span>
-                  <span className="flex-shrink-0 text-gold-200/80">{shippingLine}</span>
+                  <span aria-hidden="true" className="flex-shrink-0 text-gold-400/70">|</span>
+                  <span className="flex-shrink-0 text-gold-200/80">{shippingLine} <span aria-hidden="true">🚚</span></span>
                 </>
               )}
             </p>
@@ -49,8 +48,8 @@ function PreviewStrip({ a, shippingLine, phone, mobile }) {
           </>
         ) : (
           <p className="flex-1 min-w-0 truncate whitespace-nowrap text-center text-xs tracking-wide text-gold-300/70">
-            {!mobile && <span className="text-gold-300/80">✦ Handcrafted Bridal Jewellery — Made with Love ✦ &nbsp;&nbsp;</span>}
-            {shippingLine} &nbsp;·&nbsp; <FiPhone aria-hidden="true" className="inline text-[10px]" /> {phone}
+            {!mobile && <span className="text-gold-300/80">{TAGLINE} &nbsp;&nbsp;</span>}
+            {shippingLine && <>{shippingLine} &nbsp;·&nbsp;</>}<FiPhone aria-hidden="true" className="inline text-[10px]" /> {phone}
           </p>
         )}
       </div>
@@ -68,7 +67,7 @@ export default function AnnouncementSettingsPanel({ value, onChange, phone }) {
   const codeError = code && !CODE_RE.test(code) ? 'Use 3–30 letters, numbers, - or _ — an invalid code is not shown.' : '';
   /* What the storefront will actually show (same rules as the strip). */
   const shown = normalizeAnnouncement({ announcement: { enabled: v.enabled !== false, message, code } });
-  const shippingLine = freeShippingLine(charges);
+  const shippingLine = deliveryLine(charges);
   const previewPhone = (typeof phone === 'string' && phone.trim()) || DEFAULT_SITE_PHONE;
 
   return (
@@ -76,7 +75,7 @@ export default function AnnouncementSettingsPanel({ value, onChange, phone }) {
       <div className="flex items-start justify-between gap-4 mb-5">
         <div>
           <h2 className="font-bold text-gray-800 mb-1">Welcome Offer Bar</h2>
-          <p className="text-xs text-gray-400">The gold strip at the very top of every storefront page. Tapping the code saves it for checkout.</p>
+          <p className="text-xs text-gray-400">The gold strip at the very top of every storefront page. Clicking it copies the code and saves it for checkout.</p>
         </div>
         <button
           type="button"
@@ -133,7 +132,7 @@ export default function AnnouncementSettingsPanel({ value, onChange, phone }) {
         <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg text-xs text-amber-800 leading-relaxed">
           Create this code in{' '}
           <Link href="/admin/coupons" target="_blank" rel="noopener" className="font-semibold underline underline-offset-2 hover:text-amber-900">Coupons</Link>
-          {' '}and tick <span className="font-semibold">First order only</span> — checkout checks it there, not here. The delivery line comes from your Shipping &amp; Payment Charges.
+          {' '}and tick <span className="font-semibold">First order only</span> — checkout checks it there, not here. The strip shows the code only while that coupon is live. The delivery line comes from your Shipping &amp; Payment Charges: &ldquo;{FREE_DELIVERY_LINE}&rdquo; appears only when shipping is switched off for every order.
         </div>
       </div>
 

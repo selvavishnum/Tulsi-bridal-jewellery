@@ -34,14 +34,18 @@ export const SHOWCASE_VERSION = 1;
    '<type>-height' { height } come back. */
 export const PREVIEW_MSG = 'tj-showcase-preview';
 
-/* The cards. `key` matches the catalogue category (and the old categoryImages keys). */
+/* The cards. `key` matches the catalogue category (and the old categoryImages
+   keys). Led by the header's three — Chains & Necklaces, Earrings, Anklets.
+   A stored doc may still carry the retired 'maang-tikka' and 'rentals' items:
+   normalizeShowcase() ignores keys it doesn't know, so they simply stop
+   showing. */
 export const SHOWCASE_CARDS = Object.freeze([
-  { key: 'necklace', label: 'Necklaces', href: '/catalog?category=necklace', emoji: '📿', color: 'from-rose-50 to-pink-50' },
+  { key: 'necklace', label: 'Chains & Necklaces', href: '/catalog?category=necklace', emoji: '📿', color: 'from-rose-50 to-pink-50' },
   { key: 'earrings', label: 'Earrings', href: '/catalog?category=earrings', emoji: '✨', color: 'from-amber-50 to-yellow-50' },
+  { key: 'anklet', label: 'Anklets', href: '/catalog?category=anklet', emoji: '🦋', color: 'from-sky-50 to-cyan-50' },
+  { key: 'bracelet', label: 'Bracelets', href: '/catalog?category=bracelet', emoji: '🔗', color: 'from-purple-50 to-violet-50' },
   { key: 'bangles', label: 'Bangles', href: '/catalog?category=bangles', emoji: '🟡', color: 'from-orange-50 to-amber-50' },
-  { key: 'maang-tikka', label: 'Maang Tikka', href: '/catalog?category=maang-tikka', emoji: '👑', color: 'from-purple-50 to-violet-50' },
-  { key: 'set', label: 'Bridal Sets', href: '/catalog?category=set', emoji: '💍', color: 'from-red-50 to-rose-50' },
-  { key: 'rentals', label: 'Rentals', href: '/rentals', emoji: '🗓️', color: 'from-gold-50 to-amber-50' },
+  { key: 'set', label: 'Jewellery Sets', href: '/catalog?category=set', emoji: '💍', color: 'from-red-50 to-rose-50' },
 ]);
 export const CARD_KEYS = SHOWCASE_CARDS.map((c) => c.key);
 

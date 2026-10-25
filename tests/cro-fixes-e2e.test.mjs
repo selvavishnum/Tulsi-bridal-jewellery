@@ -916,33 +916,34 @@ describe('the remembered welcome code', { skip }, () => {
     assert.equal(cart.coupon?.code, 'FEST5');
   });
 
-  test('checkout-coupons E + server/D: the strip offers a code only while it is live; tapping it on an open /checkout applies it there', async () => {
-    db.store.get('coupons').delete('welcome'); // the default TULSI10 offer, no such coupon
+  test('checkout-coupons E + server/D: the strip offers the default TULSI100 code only while it is live; tapping it on an open /checkout applies it there', async () => {
+    /* Only TULSI10 (a different code) exists: the default TULSI100 offer is not advertised. */
     const strip = mountHook(() => WelcomeBar({ settings: null, charges: DEFAULT_CHARGES }));
     await settle();
-    assert.equal(byLabel(strip.result, 'Apply code TULSI10 at checkout'), null, 'never advertised');
-    assert.match(textOf(strip.result), /Handcrafted Bridal Jewellery/);
+    assert.equal(byLabel(strip.result, 'Apply code TULSI100 at checkout'), null, 'never advertised');
+    assert.match(textOf(strip.result), /Modern Fashion Jewellery/);
     leavePage();
 
-    resetWorld(); // a fresh store: the coupon exists and is live
+    resetWorld(); // a fresh store …
+    db.store.get('coupons').set('welcome100', { ...COUPON, code: 'TULSI100', type: 'fixed', value: 100, firstOrderOnly: true }); // … where the coupon exists and is live
     signInAs(NEW);
     seedCart([1]);
     const page = mountPage(() => CheckoutPage());
     const bar = mountHook(() => WelcomeBar({ settings: null, charges: DEFAULT_CHARGES }));
     await settle();
     assert.equal(buttonLabel(page.result), 'Place Order · ₹1,599');
-    const chip = byLabel(bar.result, 'Apply code TULSI10 at checkout');
+    const chip = byLabel(bar.result, 'Apply code TULSI100 at checkout');
     assert.ok(chip, 'the live code is offered');
     chip.props.onClick();
     await settle();
-    assert.equal(cart.coupon?.code, 'TULSI10', 'applied on the open page (was: nothing listened)');
+    assert.equal(cart.coupon?.code, 'TULSI100', 'applied on the open page (was: nothing listened)');
     const label = buttonLabel(page.result);
-    assert.equal(label, 'Place Order · ₹1,449');
+    assert.equal(label, 'Place Order · ₹1,499');
     flowOf(page.result).setPaymentMethod('cod');
     await settle();
     await submit(page);
     assert.equal(newOrders()[0].total, rupees(label));
-    assert.equal(newOrders()[0].couponCode, 'TULSI10');
+    assert.equal(newOrders()[0].couponCode, 'TULSI100');
   });
 
   test('checkout/F: /cart can take an applied code off (and forget it) or replace it with another', async () => {

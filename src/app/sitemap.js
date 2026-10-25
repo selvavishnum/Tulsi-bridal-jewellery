@@ -11,7 +11,6 @@ const LISTING_ROUTES = [
   { path: '/', changeFrequency: 'daily', priority: 1 },
   { path: '/shop', changeFrequency: 'daily', priority: 0.9 },
   { path: '/catalog', changeFrequency: 'daily', priority: 0.9 },
-  { path: '/rentals', changeFrequency: 'weekly', priority: 0.8 },
 ];
 const INFO_ROUTES = [
   { path: '/faq', changeFrequency: 'monthly', priority: 0.6 },

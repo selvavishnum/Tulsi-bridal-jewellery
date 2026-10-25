@@ -191,6 +191,14 @@ function markup(element, state = {}) {
 const product = (over = {}) => ({ _id: 'p1', name: 'Temple Necklace', category: 'necklace', price: 1000, images: [U], stock: 3, ...over });
 const card = (over, props, state) => markup(React.createElement(getProductCard(), { product: product(over), ...props }), state);
 
+test('ProductCard: a piece still flagged rentable in the database is just a piece — no "Rent" pill, rental price or calendar', { skip }, () => {
+  const html = card({ isAvailableForRent: true, rentalPrice: 499, rentalStock: 2 }, {});
+  assert.match(html, /Temple Necklace/);
+  assert.doesNotMatch(html, /\bRent\b|rental|\/day/i);
+  assert.equal(html, card({}, {}), 'the rental fields change nothing on the card');
+  assert.doesNotMatch(read('src/components/shop/ProductCard.js'), /FiCalendar|isAvailableForRent|rentalPrice/);
+});
+
 test('ProductCard: named for a screen reader without repeating itself — the photo names the link, the buttons are 24px targets', { skip }, () => {
   const html = card({}, {});
   const link = html.match(/<a [^>]*href="\/product\/[^"]*"[^>]*class="relative block aspect-\[3\/4\][^"]*"[^>]*>|<a [^>]*class="relative block aspect-\[3\/4\][^"]*"[^>]*href="\/product\/[^"]*"[^>]*>/)?.[0] || '';
@@ -229,8 +237,8 @@ test('priority → loading attributes: only "high" sets fetchpriority; "eager" l
   assert.deepEqual(cardLoading(undefined), { loading: 'lazy' });
 });
 
-test('no grid hand-writes the rule: shop, catalog, rentals and wishlist all call cardPriority(i)', () => {
-  for (const file of ['src/app/shop/ShopContent.js', 'src/app/catalog/CatalogContent.js', 'src/app/rentals/RentalContent.js', 'src/app/wishlist/page.js']) {
+test('no grid hand-writes the rule: shop, catalog and wishlist all call cardPriority(i)', () => {
+  for (const file of ['src/app/shop/ShopContent.js', 'src/app/catalog/CatalogContent.js', 'src/app/wishlist/page.js']) {
     const src = read(file);
     assert.match(src, /priority=\{cardPriority\(i\)\}/, file);
     assert.doesNotMatch(src, /\bi\s*<\s*\d/, `${file}: a hand-written index condition`);
@@ -406,8 +414,8 @@ test('sizes match the grid CSS: home "All Products" (section-container, 2 → 4 
   assert.equal(SECTION_CONTAINER.max, 1280);
 });
 
-test('sizes match the grid CSS: /rentals and /wishlist tiles', () => {
-  for (const [file, key, container] of [['src/app/rentals/RentalContent.js', 'rentals', 'max-w-6xl mx-auto px-4'], ['src/app/wishlist/page.js', 'wishlist', 'max-w-5xl mx-auto px-4']]) {
+test('sizes match the grid CSS: /wishlist tiles', () => {
+  for (const [file, key, container] of [['src/app/wishlist/page.js', 'wishlist', 'max-w-5xl mx-auto px-4']]) {
     const css = gridOf(file, /(?:products|items)\.map\(/);
     assert.equal(css.grid, 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4', file);
     assert.match(css.container, new RegExp(container), file);
@@ -551,7 +559,7 @@ test('CategoryShowcase: every photo sits in a box with its own aspect ratio or f
 test('every product / category image in the listing files is a reserved box + right-sized srcset (no next/image, no bare full-size <img>)', () => {
   const files = [
     'src/components/shop/ProductCard.js', 'src/components/home/CategoryShowcase.jsx', 'src/app/shop/ShopContent.js', 'src/app/catalog/CatalogContent.js',
-    'src/app/rentals/RentalContent.js', 'src/app/wishlist/page.js', 'src/app/cart/page.js', 'src/app/rental-booking/[id]/page.js',
+    'src/app/wishlist/page.js', 'src/app/cart/page.js',
     'src/app/order-success/page.js', 'src/app/account/page.js', 'src/app/track-order/page.js', 'src/components/chat/ChatInbox.js',
   ];
   let found = 0;
@@ -573,7 +581,7 @@ test('every product / category image in the listing files is a reserved box + ri
       }
     }
   }
-  assert.ok(found >= 9, `expected at least 9 CatalogImage sites (ProductCard, 2 grids, 6 thumbnails), found ${found}`);
+  assert.ok(found >= 7, `expected at least 7 CatalogImage sites (ProductCard, 2 grids, 4 thumbnails), found ${found}`);
   assert.doesNotMatch(read('src/components/home/CategoryShowcase.jsx'), /<Image\b/);
 });
 

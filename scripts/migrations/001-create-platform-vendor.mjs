@@ -1,4 +1,4 @@
-/* 001 — Register Tulsi Bridal Jewellery as vendor #1.
+/* 001 — Register Tulsi Fashion Jewellery as vendor #1.
    Every existing product, warehouse, stock lot etc. gets assigned to this
    vendor by migration 002. Idempotent: does nothing if it already exists. */
 import { db, APPLY } from './_lib.mjs';
@@ -13,7 +13,7 @@ if (existing.exists) {
 } else {
   const now = new Date().toISOString();
   const doc = {
-    name: 'Tulsi Bridal Jewellery',
+    name: 'Tulsi Fashion Jewellery',
     status: 'active',
     isPlatformOwner: true,
     commissionBps: 0, // the platform doesn't take commission from its own store

@@ -187,6 +187,25 @@ test('CloudinaryPicture: art direction — a portrait crop under the media query
   assert.ok(preloads[1].includes(`media="not all and ${media}"`) && !/ar_0\.6/.test(preloads[1]), 'a phone preloads the crop only, a desktop the full image only');
 });
 
+test('CloudinaryPicture: a fixed ratio crops every source, the <img> and the preload alike — and no ratio crops nothing', { skip }, () => {
+  const html = render({ src: U, alt: 'Hero', fill: true, priority: true, ratio: 0.8, widths: [320, 640] });
+  const sources = sourcesOf(html);
+  assert.equal(sources.length, 2, 'avif, webp — no art-direction twins');
+  assert.ok(sources.every((s) => /,c_lfill,g_auto,ar_0\.8,w_\d+\//.test(s) && !s.includes('media=')), 'one smart 4:5 crop for every screen');
+  assert.match(imgOf(html), /f_jpg,q_auto:good,c_lfill,g_auto,ar_0\.8,w_640,fl_progressive/, 'the JPEG fallback is cropped the same');
+  const preloads = links(html, 'preload');
+  assert.equal(preloads.length, 1);
+  assert.match(preloads[0], /ar_0\.8/, 'the preload fetches the very file the <picture> will use');
+  assert.doesNotMatch(render({ src: U, alt: 'Hero', fill: true, widths: [320, 640] }), /ar_|c_lfill/, 'without a ratio the whole photo is kept (c_limit)');
+  /* A non-Cloudinary link has nothing to crop: the same plain <img>, ratio or not. */
+  const other = render({ src: 'https://images.unsplash.com/a.jpg', alt: 'U', fill: true, ratio: 0.8 });
+  assert.doesNotMatch(other, /ar_|<picture/);
+  assert.match(imgOf(other), /src="https:\/\/images\.unsplash\.com\/a\.jpg"/);
+  /* Beside art direction: the crop under `media` is its own, the main sources keep `ratio`. */
+  const both = render({ src: U, alt: 'Hero', fill: true, ratio: 0.8, widths: [640], art: { media: '(max-width: 767px)', ratio: 0.6, widths: [480] } });
+  assert.deepEqual(sourcesOf(both).map((s) => s.match(/ar_([\d.]+)/)[1]), ['0.6', '0.6', '0.6', '0.8', '0.8']);
+});
+
 test('CloudinaryPicture: showWhen — the hidden twin layout downloads a pixel, not the photo', { skip }, () => {
   const html = render({ src: U, alt: 'Necklace', width: 1000, height: 1000, priority: true, showWhen: '(min-width: 1024px)' });
   const sources = sourcesOf(html);

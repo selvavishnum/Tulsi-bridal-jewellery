@@ -83,6 +83,24 @@ export function parseChargesInput(body) {
   return { data: out };
 }
 
+/** True when no order pays for delivery — the one case in which "free delivery" can be stated without a condition. */
+export function deliveryFreeForAll(charges) {
+  return computeCharges({ subtotal: 1, paymentMethod: 'razorpay', charges }).shipping === 0;
+}
+
+export const FREE_DELIVERY_LINE = 'Free Delivery across India';
+
+/**
+ * The delivery claim the storefront may advertise: "Free Delivery across India"
+ * when every order ships free, otherwise nothing ('').
+ * "Free above ₹N" is a condition, not a headline, so the strip, the hero, the
+ * home page and the product page do not advertise it; the cart and checkout
+ * still show how much more unlocks it. One rule, so no two places can disagree.
+ */
+export function freeDeliveryClaim(charges) {
+  return deliveryFreeForAll(charges) ? FREE_DELIVERY_LINE : '';
+}
+
 /**
  * The charges for one order.
  * @param {{ subtotal: number, paymentMethod: 'cod'|'razorpay'|string, charges: object }} p

@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────
-   Images in grids, lists and thumbnails: product cards, rental / wishlist
+   Images in grids, lists and thumbnails: product cards, wishlist
    tiles, the 40–80px photos beside an order line. (Heroes and the product
    page use <picture>: components/ui/CloudinaryPicture.jsx.)
 
@@ -145,8 +145,6 @@ export const GRID_SIZES = Object.freeze({
   shop: gridSizes({ cols: [[0, 2], [640, 3]], gap: [[0, 8], [640, 12]], pad: [[0, 12]], max: 768 }),
   /* Home "All Products" — section-container around `grid-cols-2 md:grid-cols-4 gap-2 md:gap-4` */
   home: gridSizes({ cols: [[0, 2], [768, 4]], gap: [[0, 8], [768, 16]], ...SECTION_CONTAINER }),
-  /* /rentals — `max-w-6xl mx-auto px-4` around `grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4` */
-  rentals: gridSizes({ cols: [[0, 2], [640, 3], [1024, 4]], gap: [[0, 16]], pad: [[0, 16]], max: 1152 }),
   /* /wishlist — `max-w-5xl mx-auto px-4` around `grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4` */
   wishlist: gridSizes({ cols: [[0, 2], [640, 3], [1024, 4]], gap: [[0, 16]], pad: [[0, 16]], max: 1024 }),
 });

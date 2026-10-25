@@ -49,7 +49,7 @@ table{width:100%;font-size:8pt;border-collapse:collapse}td{padding:1mm 0;border-
 <div class="box"><div class="lbl">Ship to</div><div class="to">${e(c.name)}</div>
 <div class="addr">${e(c.street)}<br/>${e(c.city)}${c.city && c.state ? ', ' : ''}${e(c.state)} — ${e(c.pincode)}<br/>📞 ${e(c.phone)}</div></div>
 ${cod ? `<div class="cod">COLLECT CASH ₹${e(order.charges?.total ?? order.itemsTotal)}</div>` : '<div class="cod">PREPAID — DO NOT COLLECT</div>'}
-<div class="box"><div class="lbl">From (return address)</div><div style="font-size:8.5pt;line-height:1.5"><b>${e(profile?.name || '')}</b> for Tulsi Bridal Jewellery<br/>${from || '—'}${profile?.phone ? `<br/>📞 ${e(profile.phone)}` : ''}</div></div>
+<div class="box"><div class="lbl">From (return address)</div><div style="font-size:8.5pt;line-height:1.5"><b>${e(profile?.name || '')}</b> for Tulsi Fashion Jewellery<br/>${from || '—'}${profile?.phone ? `<br/>📞 ${e(profile.phone)}` : ''}</div></div>
 <div class="box"><div class="lbl">Contents</div><table>${items}</table></div>
 </div><script>window.onload=function(){window.print();}</script></body></html>`;
   const w = window.open('', '_blank', 'width=480,height=720');

@@ -55,8 +55,8 @@ function assertWellFormed(s) {
 /* ── The constants the admin UI, the storefront and the API agree on ── */
 
 test('constants: six cards, four shapes, two modes, three sizes; every shape has an aspect', () => {
-  assert.deepEqual(KEYS, ['necklace', 'earrings', 'bangles', 'maang-tikka', 'set', 'rentals']);
-  assert.deepEqual(SHOWCASE_CARDS.map((c) => c.label), ['Necklaces', 'Earrings', 'Bangles', 'Maang Tikka', 'Bridal Sets', 'Rentals']);
+  assert.deepEqual(KEYS, ['necklace', 'earrings', 'anklet', 'bracelet', 'bangles', 'set']);
+  assert.deepEqual(SHOWCASE_CARDS.map((c) => c.label), ['Chains & Necklaces', 'Earrings', 'Anklets', 'Bracelets', 'Bangles', 'Jewellery Sets']);
   for (const c of SHOWCASE_CARDS) assert.match(c.href, /^\/[a-z]/, `${c.key}: an internal link`);
   assert.deepEqual(LAYOUT_VARIANTS.map((v) => v.value), ['circle', 'square', 'king_size', 'wide']);
   assert.deepEqual(Object.keys(ASPECTS).sort(), LAYOUT_VARIANTS.map((v) => v.value).sort());
@@ -108,9 +108,9 @@ test('normalize: returns fresh objects — mutating the result never leaks into 
   a.items[0].focus.x = 1;
   const b = normalizeShowcase({});
   assert.equal(b.layout.layoutVariant, DEFAULT_LAYOUT.layoutVariant);
-  assert.equal(b.items[0].label, 'Necklaces');
+  assert.equal(b.items[0].label, 'Chains & Necklaces');
   assert.equal(b.items[0].focus.x, 50);
-  assert.equal(SHOWCASE_CARDS[0].label, 'Necklaces');
+  assert.equal(SHOWCASE_CARDS[0].label, 'Chains & Necklaces');
   assert.equal(DEFAULT_FOCUS.x, 50);
 });
 
@@ -140,21 +140,21 @@ test('legacy photos: categoryImages become the card photos; unknown keys and non
   const s = normalizeShowcase({
     categoryImages: {
       necklace: CLD('necklace'),
-      set: 'https://images.example.test/bridal-set.jpg',
+      set: 'https://images.example.test/jewellery-set.jpg',
       earrings: 'http://res.cloudinary.com/tulsi/image/upload/v1/earrings.jpg',
       bangles: 'javascript:alert(1)',
       ring: CLD('ring'),
-      'maang-tikka': '',
+      'bracelet': '',
     },
   });
   assertWellFormed(s);
   const it = byKey(s);
   assert.equal(it.necklace.image, CLD('necklace'));
-  assert.equal(it.set.image, 'https://images.example.test/bridal-set.jpg');
+  assert.equal(it.set.image, 'https://images.example.test/jewellery-set.jpg');
   assert.equal(it.earrings.image, '', 'plain http is not used');
   assert.equal(it.bangles.image, '');
-  assert.equal(it['maang-tikka'].image, '');
-  assert.equal(it.rentals.image, '');
+  assert.equal(it['bracelet'].image, '');
+  assert.equal(it.anklet.image, '');
   assert.ok(!keysOf(s).includes('ring'), 'no card is invented for an unknown key');
   assert.ok(s.items.every((x) => x.isActive), 'legacy settings had no hidden cards');
 });
@@ -284,29 +284,29 @@ test('displayOrder: sorted, ties broken by card order, re-numbered 0..5; non-int
       { key: 'necklace', displayOrder: 50 },
       { key: 'earrings', displayOrder: 10 },
       { key: 'bangles', displayOrder: -3 },
-      { key: 'maang-tikka', displayOrder: 7 },
+      { key: 'bracelet', displayOrder: 7 },
       { key: 'set', displayOrder: 7 },
-      { key: 'rentals', displayOrder: 100 },
+      { key: 'anklet', displayOrder: 100 },
     ],
   });
   assertWellFormed(s);
-  assert.deepEqual(keysOf(s), ['bangles', 'maang-tikka', 'set', 'earrings', 'necklace', 'rentals']);
+  assert.deepEqual(keysOf(s), ['bangles', 'bracelet', 'set', 'earrings', 'necklace', 'anklet']);
   assert.deepEqual(s.items.map((it) => it.displayOrder), [0, 1, 2, 3, 4, 5]);
 
   /* Non-integer orders fall back to the card's own index (necklace 0 …
-     rentals 5); rentals moved to the front with a real integer. */
+     set 5); anklet moved to the front with a real integer. */
   const t = stored({
     items: [
       { key: 'necklace', displayOrder: '2' },
       { key: 'earrings', displayOrder: 1.5 },
       { key: 'bangles', displayOrder: Number.NaN },
-      { key: 'maang-tikka', displayOrder: null },
+      { key: 'bracelet', displayOrder: null },
       { key: 'set', displayOrder: Infinity },
-      { key: 'rentals', displayOrder: -1 },
+      { key: 'anklet', displayOrder: -1 },
     ],
   });
   assertWellFormed(t);
-  assert.deepEqual(keysOf(t), ['rentals', 'necklace', 'earrings', 'bangles', 'maang-tikka', 'set']);
+  assert.deepEqual(keysOf(t), ['anklet', 'necklace', 'earrings', 'bracelet', 'bangles', 'set']);
 });
 
 test('label, link, emoji and colour always come from code, never from the stored doc', () => {
@@ -328,8 +328,8 @@ test('label, link, emoji and colour always come from code, never from the stored
 test('normalizing is idempotent: normalize(toStored(normalize(x))) === normalize(x)', () => {
   const inputs = [
     {},
-    { categoryShape: 'square', categorySize: 'medium', categoryImages: { necklace: CLD('n'), rentals: CLD('r') } },
-    { categoryShowcase: { layout: { layoutVariant: 'wide', displayMode: 'slider', size: 'small' }, items: [{ key: 'rentals', displayOrder: 0, isFeatured: true, image: CLD('r'), focus: { gravity: 'custom', x: 10, y: 90, zoom: 2 } }, { key: 'set', isActive: false }] } },
+    { categoryShape: 'square', categorySize: 'medium', categoryImages: { necklace: CLD('n'), anklet: CLD('r') } },
+    { categoryShowcase: { layout: { layoutVariant: 'wide', displayMode: 'slider', size: 'small' }, items: [{ key: 'anklet', displayOrder: 0, isFeatured: true, image: CLD('r'), focus: { gravity: 'custom', x: 10, y: 90, zoom: 2 } }, { key: 'set', isActive: false }] } },
   ];
   for (const input of inputs) {
     const s = normalizeShowcase(input);
@@ -456,11 +456,11 @@ test('patch schema: a photo must be an https URL (or "" to remove it)', () => {
 test('patch schema: order must list all six cards exactly once', () => {
   rejected({ order: KEYS.slice(0, 5) }, 'five keys');
   rejected({ order: [...KEYS, 'necklace'] }, 'seven keys');
-  rejected({ order: ['necklace', 'necklace', 'bangles', 'maang-tikka', 'set', 'rentals'] }, 'a duplicate');
-  rejected({ order: ['necklace', 'earrings', 'bangles', 'maang-tikka', 'set', 'ring'] }, 'an unknown key');
+  rejected({ order: ['necklace', 'necklace', 'bangles', 'bracelet', 'set', 'anklet'] }, 'a duplicate');
+  rejected({ order: ['necklace', 'earrings', 'bangles', 'bracelet', 'set', 'ring'] }, 'an unknown key');
   rejected({ order: [] }, 'empty');
   rejected({ order: 'necklace,earrings' }, 'not an array');
-  ok({ order: ['rentals', 'set', 'maang-tikka', 'bangles', 'earrings', 'necklace'] });
+  ok({ order: ['anklet', 'set', 'bracelet', 'bangles', 'earrings', 'necklace'] });
 });
 
 /* ── applyShowcasePatch ── */
@@ -493,9 +493,9 @@ test('apply: photos can be replaced and removed; hidden cards can be shown again
   assert.equal(byKey(removed).necklace.image, '');
   const replaced = apply(removed, { items: [{ key: 'necklace', image: CLD('new') }] });
   assert.equal(byKey(replaced).necklace.image, CLD('new'));
-  const hidden = apply(BASE, { items: [{ key: 'rentals', isActive: false }] });
-  assert.deepEqual(visibleItems(hidden).map((it) => it.key), KEYS.filter((k) => k !== 'rentals'));
-  const shown = apply(hidden, { items: [{ key: 'rentals', isActive: true }] });
+  const hidden = apply(BASE, { items: [{ key: 'anklet', isActive: false }] });
+  assert.deepEqual(visibleItems(hidden).map((it) => it.key), KEYS.filter((k) => k !== 'anklet'));
+  const shown = apply(hidden, { items: [{ key: 'anklet', isActive: true }] });
   assert.deepEqual(shown, BASE);
 });
 
@@ -510,7 +510,7 @@ test('apply: patches touching different fields give the same result in either or
     { layout: { layoutVariant: 'circle' } },
     { layout: { displayMode: 'slider' } },
     { layout: { size: 'small' } },
-    { order: ['set', 'necklace', 'rentals', 'earrings', 'bangles', 'maang-tikka'] },
+    { order: ['set', 'necklace', 'anklet', 'earrings', 'bangles', 'bracelet'] },
   ];
   for (let i = 0; i < patches.length; i += 1) {
     for (let j = i + 1; j < patches.length; j += 1) {
@@ -524,7 +524,7 @@ test('apply: patches touching different fields give the same result in either or
 
 test('apply: order reassigns displayOrder to the given sequence; other fields ride along', () => {
   const hidden = apply(BASE, { items: [{ key: 'bangles', isActive: false }] });
-  const order = ['rentals', 'set', 'maang-tikka', 'bangles', 'earrings', 'necklace'];
+  const order = ['anklet', 'set', 'bracelet', 'bangles', 'earrings', 'necklace'];
   const next = apply(hidden, { order });
   assertWellFormed(next);
   assert.deepEqual(keysOf(next), order);
@@ -533,7 +533,7 @@ test('apply: order reassigns displayOrder to the given sequence; other fields ri
   assert.equal(byKey(next).necklace.image, CLD('necklace'));
   assert.deepEqual(visibleItems(next).map((it) => it.key), order.filter((k) => k !== 'bangles'));
   /* Order and item changes in one patch. */
-  const both = apply(BASE, { order, items: [{ key: 'rentals', isFeatured: true }] });
+  const both = apply(BASE, { order, items: [{ key: 'anklet', isFeatured: true }] });
   assert.deepEqual(keysOf(both), order);
   assert.equal(both.items[0].isFeatured, true);
   /* The stored round trip keeps the order. */

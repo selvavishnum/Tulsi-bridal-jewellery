@@ -84,8 +84,8 @@ export async function POST(request) {
     /* Build a simple plain confirmation email for debugging */
     const to      = type === 'customer' ? customerEmail : adminEmails;
     const subject = type === 'customer'
-      ? `Order Confirmed #${order.orderNumber} | Tulsi Bridal Jewellery`
-      : `🛍 New Order #${order.orderNumber} — ₹${order.total} | Tulsi Bridal Jewellery`;
+      ? `Order Confirmed #${order.orderNumber} | Tulsi Fashion Jewellery`
+      : `🛍 New Order #${order.orderNumber} — ₹${order.total} | Tulsi Fashion Jewellery`;
 
     const itemRows = (order.items || []).map((i) =>
       `<tr>
@@ -105,7 +105,7 @@ export async function POST(request) {
 
   <tr><td style="background:linear-gradient(135deg,#8b1a4a,#601238);padding:28px 40px;text-align:center;">
     <p style="margin:0;font-family:Georgia,serif;font-size:26px;font-weight:bold;color:#fff;letter-spacing:0.12em;">TULSI</p>
-    <p style="margin:2px 0 0;font-size:10px;letter-spacing:0.3em;color:#c9973a;text-transform:uppercase;">Bridal Jewellery</p>
+    <p style="margin:2px 0 0;font-size:10px;letter-spacing:0.3em;color:#c9973a;text-transform:uppercase;">Fashion Jewellery</p>
   </td></tr>
 
   <tr><td style="padding:32px 40px;">
@@ -140,7 +140,7 @@ export async function POST(request) {
   </td></tr>
 
   <tr><td style="background:#1c1917;padding:20px 40px;text-align:center;">
-    <p style="margin:0;font-size:11px;color:#78716c;">© ${new Date().getFullYear()} Tulsi Bridal Jewellery. All rights reserved.</p>
+    <p style="margin:0;font-size:11px;color:#78716c;">© ${new Date().getFullYear()} Tulsi Fashion Jewellery. All rights reserved.</p>
   </td></tr>
 
 </table>
@@ -158,7 +158,7 @@ export async function POST(request) {
 
     await transporter.verify();
     await transporter.sendMail({
-      from: `"Tulsi Bridal Jewellery" <${process.env.SMTP_USER}>`,
+      from: `"Tulsi Fashion Jewellery" <${process.env.SMTP_USER}>`,
       to,
       subject,
       html,

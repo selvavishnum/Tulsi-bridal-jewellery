@@ -3,25 +3,26 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { FiInstagram, FiFacebook, FiYoutube, FiPhone, FiMail, FiMapPin, FiArrowRight } from 'react-icons/fi';
+import { NAV_LINKS } from '@/components/layout/navLinks';
+import { savedBrandText } from '@/lib/brand';
 
+/* The header's eight destinations (one shared list), then the two pages only
+   the footer links to. */
 const QUICK_LINKS = [
-  { name: 'Home', href: '/' },
-  { name: 'Buy Jewellery', href: '/shop' },
-  { name: 'Rent Jewellery', href: '/rentals' },
-  { name: 'Browse Catalogue', href: '/catalog' },
-  { name: 'About Us', href: '/about' },
-  { name: 'Contact', href: '/contact' },
+  ...NAV_LINKS.map((l) => ({ name: l.label, href: l.href })),
   { name: 'My Account', href: '/account' },
   { name: 'Become a Vendor / Seller Application', href: '/become-a-vendor' },
 ];
 
+/* Catalogue categories (the keys CatalogContent filters on), led by the same
+   three as the header. */
 const CATEGORIES = [
-  { name: 'Necklaces', href: '/catalog?category=necklace' },
+  { name: 'Chains & Necklaces', href: '/catalog?category=necklace' },
   { name: 'Earrings', href: '/catalog?category=earrings' },
-  { name: 'Bangles', href: '/catalog?category=bangles' },
+  { name: 'Anklets', href: '/catalog?category=anklet' },
+  { name: 'Bracelets', href: '/catalog?category=bracelet' },
   { name: 'Rings', href: '/catalog?category=ring' },
-  { name: 'Maang Tikka', href: '/catalog?category=maang-tikka' },
-  { name: 'Bridal Sets', href: '/catalog?category=set' },
+  { name: 'Bangles', href: '/catalog?category=bangles' },
 ];
 
 export default function Footer() {
@@ -36,7 +37,7 @@ export default function Footer() {
 
   const phone   = s.phone   || '+91 76958 68787';
   const email   = s.email   || 'tulsibridaljewellery@gmail.com';
-  const address = s.address || '428, Tulsi Bridal Jewellery, Main Bazaar, Udangudi - 628203, Tuticorin Dt.';
+  const address = s.address || '428, Tulsi Fashion Jewellery, Main Bazaar, Udangudi - 628203, Tuticorin Dt.';
   const phoneRaw = phone.replace(/\D/g, '');
 
   return (
@@ -57,14 +58,14 @@ export default function Footer() {
                 </svg>
                 <div>
                   <p className="font-serif text-lg font-bold tracking-[0.12em] text-stone-800 leading-none group-hover:text-gold-600 transition-colors">
-                    {s.businessName || 'TULSI'}
+                    TULSI
                   </p>
-                  <p className="text-[8px] tracking-[0.28em] text-gold-700 uppercase leading-none mt-0.5">Bridal Jewellery</p>
+                  <p className="text-[8px] tracking-[0.28em] text-gold-700 uppercase leading-none mt-0.5">Fashion Jewellery</p>
                 </div>
               </Link>
 
               <p className="text-sm text-stone-500 leading-relaxed mb-6">
-                {s.tagline || 'Exquisite bridal jewellery crafted with love. Making your special day shine brighter.'}
+                {savedBrandText(s.tagline, 'Modern fashion jewellery for every day — trending chains, necklaces, earrings and anklets that make your look unforgettable.')}
               </p>
 
               {/* Social links — only the ones the admin has set. An icon with no
@@ -162,7 +163,7 @@ export default function Footer() {
         {/* Bottom bar */}
         <div className="section-container py-5 flex flex-col sm:flex-row justify-between items-center gap-3">
           <p className="text-xs text-stone-500">
-            © {new Date().getFullYear()} {s.businessName || 'Tulsi Bridal Jewellery'}. All rights reserved.
+            © {new Date().getFullYear()} {savedBrandText(s.businessName, 'Tulsi Fashion Jewellery')}. All rights reserved.
           </p>
           <div className="flex gap-5">
             {[

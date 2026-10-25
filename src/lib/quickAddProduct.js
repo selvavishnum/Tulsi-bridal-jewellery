@@ -16,7 +16,7 @@ import { z } from 'zod';
 export const QUICK_CATEGORIES = Object.freeze([
   { slug: 'necklace', label: 'Necklace', code: 'NK' },
   { slug: 'earrings', label: 'Earrings', code: 'ER' },
-  { slug: 'set', label: 'Bridal Set', code: 'BS' },
+  { slug: 'set', label: 'Jewellery Set', code: 'BS' },
   { slug: 'chain', label: 'Chains', code: 'CH' },
   { slug: 'bangles', label: 'Bangles', code: 'BG' },
   { slug: 'ring', label: 'Rings', code: 'RG' },

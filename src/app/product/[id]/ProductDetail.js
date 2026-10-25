@@ -6,11 +6,11 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import {
   FiShoppingCart, FiHeart, FiShare2, FiStar,
-  FiCalendar, FiShield, FiCheckCircle, FiTruck, FiRefreshCw,
+  FiShield, FiCheckCircle, FiTruck, FiRefreshCw,
   FiUser, FiSend, FiCamera,
 } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
-import { freeShippingLine } from '@/lib/storeCharges';
+import { freeDeliveryClaim } from '@/lib/storeCharges';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
 import { IMAGE_WIDTHS, cldBase, cldZoom } from '@/lib/cloudinaryImage';
@@ -25,7 +25,6 @@ import { absoluteUrl } from '@/lib/seoSchema';
 import StockBadge from '@/components/product/StockBadge';
 import LiveViewersBadge from '@/components/product/LiveViewersBadge';
 import OrderOnWhatsApp from '@/components/product/OrderOnWhatsApp';
-import WhatsAppIcon from '@/components/product/WhatsAppIcon';
 import useStoreWhatsApp from '@/components/product/useStoreWhatsApp';
 import useBuyNowReturn from '@/components/product/useBuyNowReturn';
 import { buyNowLoadFailure } from '@/components/checkout/checkoutRules';
@@ -62,9 +61,9 @@ function BuyNowLoading() {
 }
 
 const TRUST_ITEMS = [
-  { icon: FiShield,      label: 'Certified Authentic' },
-  { icon: FiTruck,       label: 'FREE_DELIVERY' }, // filled from the store's shipping settings
-  { icon: FiRefreshCw,   label: '7-Day Returns' },
+  { icon: FiShield,      label: 'Anti-Tarnish Finish' },
+  { icon: FiTruck,       label: 'FREE_DELIVERY' }, // "Free Delivery across India" only when shipping really is free for every order; otherwise left out
+  { icon: FiRefreshCw,   label: '7-Day Damaged / Wrong-Item Returns' },
   { icon: FiCheckCircle, label: 'Secure Payment' },
 ];
 
@@ -750,11 +749,6 @@ export default function ProductDetail({ initialProduct = null }) {
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5">
                   <StockBadge stock={product.stock} />
-                  {product.isAvailableForRent && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gold-50 text-gold-700 ring-1 ring-gold-100">
-                      <FiCalendar className="text-xs" aria-hidden="true" /> Available to Rent
-                    </span>
-                  )}
                   <LiveViewersBadge productId={id} />
                 </div>
               </div>
@@ -853,32 +847,9 @@ export default function ProductDetail({ initialProduct = null }) {
 
               {product.sellerChat && <ChatWithSeller product={product} />}
 
-              {/* Rental enquiry */}
-              {product.isAvailableForRent && product.rentalPrice && (
-                <div className="rounded-xl border border-gold-200 bg-gold-50 p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <FiCalendar className="text-gold-600" />
-                      <span className="text-sm font-semibold text-stone-700">Available to Rent</span>
-                    </div>
-                    <span className="text-sm font-bold text-wine-700">{formatPrice(product.rentalPrice)}<span className="text-xs font-normal text-stone-500">/day</span></span>
-                  </div>
-                  <p className="text-xs text-stone-500 mb-3">Contact us on WhatsApp to check availability and confirm your rental dates.</p>
-                  <a
-                    href={`https://wa.me/${waPhone}?text=${encodeURIComponent(`Hi! I'm interested in renting *${product.name}*.\nRental price: ₹${product.rentalPrice}/day\nPlease let me know about availability and rental details.`)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 w-full min-h-[44px] py-2.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition text-sm"
-                  >
-                    <WhatsAppIcon />
-                    Enquire on WhatsApp for Rental
-                  </a>
-                </div>
-              )}
-
               {/* Trust */}
               <div className="mt-5 pt-5 border-t border-stone-100 grid grid-cols-2 gap-2">
-                {TRUST_ITEMS.map(({ icon: Icon, label: rawLabel }) => ({ Icon, label: rawLabel === 'FREE_DELIVERY' ? freeShippingLine(charges) : rawLabel })).map(({ Icon, label }) => (
+                {TRUST_ITEMS.map(({ icon: Icon, label: rawLabel }) => ({ Icon, label: rawLabel === 'FREE_DELIVERY' ? freeDeliveryClaim(charges) : rawLabel })).filter(({ label }) => label).map(({ Icon, label }) => (
                   <div key={label} className="flex items-center gap-2 text-xs text-stone-500">
                     <Icon className="text-green-500 flex-shrink-0" /> <span>{label}</span>
                   </div>
