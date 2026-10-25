@@ -3,7 +3,8 @@
 import { useWishlist } from '@/context/WishlistContext';
 import { useCart } from '@/context/CartContext';
 import Link from 'next/link';
-import Image from 'next/image';
+import CatalogImage from '@/components/ui/CatalogImage';
+import { GRID_SIZES, cardPriority } from '@/lib/catalogImages';
 import { FiHeart, FiShoppingCart, FiTrash2, FiArrowRight } from 'react-icons/fi';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -50,8 +51,10 @@ export default function WishlistPage() {
           </div>
         ) : (
           <>
+            {/* Photos: GRID_SIZES.wishlist is this grid's tile width (container max-w-5xl + px-4, 2 → 3 → 4 columns)
+                — change the classes, change it too. */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {items.map((product) => {
+              {items.map((product, i) => {
                 const pid = getId(product);
                 const discount = getDiscountPercentage(product.price, product.discountPrice);
                 const displayPrice = product.discountPrice || product.price;
@@ -61,10 +64,12 @@ export default function WishlistPage() {
                     {/* Image */}
                     <Link href={`/product/${pid}`} className="block relative aspect-square overflow-hidden bg-gray-50">
                       {product.images?.[0] ? (
-                        <Image
+                        <CatalogImage
                           src={product.images[0]}
                           alt={product.name}
                           fill
+                          sizes={GRID_SIZES.wishlist}
+                          priority={cardPriority(i)}
                           className="object-cover group-hover:scale-105 transition-transform duration-500"
                         />
                       ) : (

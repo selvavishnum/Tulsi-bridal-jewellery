@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import ProductCard from '@/components/shop/ProductCard';
+import { GRID_SIZES, cardPriority } from '@/lib/catalogImages';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { FiSearch, FiX, FiSliders } from 'react-icons/fi';
 
@@ -120,7 +121,7 @@ export default function CatalogContent() {
             </form>
 
             {/* Sort */}
-            <select value={sort} onChange={(e) => setParam('sort', e.target.value)}
+            <select aria-label="Sort products" value={sort} onChange={(e) => setParam('sort', e.target.value)}
               className="w-full text-sm border border-stone-200 rounded-lg px-3 py-2 bg-white outline-none text-stone-600">
               {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
@@ -159,8 +160,10 @@ export default function CatalogContent() {
             </button>
           </div>
         ) : (
+          /* Photos: cardPriority loads the first row first and the rest lazily; GRID_SIZES.shop is this grid's
+             tile width (container max-w-3xl + px-3, 2 → 3 columns) — change the classes, change it too. */
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
-            {products.map((p, i) => <ProductCard key={p._id || p.id} product={p} priority={i < 4} />)}
+            {products.map((p, i) => <ProductCard key={p._id || p.id} product={p} priority={cardPriority(i)} sizes={GRID_SIZES.shop} />)}
           </div>
         )}
       </div>

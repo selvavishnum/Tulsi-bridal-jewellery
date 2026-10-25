@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Image from 'next/image';
 import Link from 'next/link';
 import { FiCalendar, FiTag, FiSearch, FiMessageCircle } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import CatalogImage from '@/components/ui/CatalogImage';
+import { GRID_SIZES, cardPriority } from '@/lib/catalogImages';
 
 const CATEGORIES = ['necklace', 'earrings', 'bangles', 'bracelet', 'ring', 'maang-tikka', 'set'];
 const WA_NUMBER = '917695868787';
@@ -121,14 +122,16 @@ export default function RentalContent() {
             <p className="text-gray-400 text-sm mt-1">Try a different category or search term</p>
           </div>
         ) : (
+          /* Photos: cardPriority loads the first row first; GRID_SIZES.rentals is this grid's tile width
+             (container max-w-6xl + px-4, 2 → 3 → 4 columns) — change the classes, change it too. */
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {products.map((product) => {
+            {products.map((product, i) => {
               const pid = product.id || product._id;
               return (
                 <div key={pid} className="bg-white rounded-xl shadow-sm overflow-hidden group">
                   <Link href={`/product/${pid}`} className="block relative aspect-square overflow-hidden bg-gray-50">
                     {product.images?.[0] ? (
-                      <Image src={product.images[0]} alt={product.name} fill className="object-cover group-hover:scale-105 transition-transform duration-500" />
+                      <CatalogImage src={product.images[0]} alt={product.name} fill sizes={GRID_SIZES.rentals} priority={cardPriority(i)} className="object-cover group-hover:scale-105 transition-transform duration-500" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-5xl">💍</div>
                     )}

@@ -14,6 +14,8 @@ import { formatPrice } from '@/lib/utils';
 import { format } from 'date-fns';
 import Badge from '@/components/ui/Badge';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import CatalogImage from '@/components/ui/CatalogImage';
+import { THUMB_WIDTHS } from '@/lib/catalogImages';
 
 const STATUS_BADGE = {
   pending: 'warning', confirmed: 'success', processing: 'gold',
@@ -387,7 +389,7 @@ export default function AccountPage() {
                           {(o.items || []).map((item, i) => (
                             <div key={i} className="flex items-center gap-3">
                               {item.image && (
-                                <img src={item.image} alt={item.name} className="w-10 h-10 object-cover rounded-lg bg-gray-200 flex-shrink-0" />
+                                <CatalogImage src={item.image} alt={item.name} widths={THUMB_WIDTHS} sizes="40px" width={40} height={40} className="w-10 h-10 object-cover rounded-lg bg-gray-200 flex-shrink-0" />
                               )}
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium text-gray-800 text-sm truncate">{item.name}</p>

@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { FiSearch, FiPackage, FiCheckCircle, FiTruck, FiBox, FiXCircle, FiClock } from 'react-icons/fi';
 import { formatPrice } from '@/lib/utils';
 import { format } from 'date-fns';
+import CatalogImage from '@/components/ui/CatalogImage';
+import { THUMB_WIDTHS } from '@/lib/catalogImages';
 
 const STEPS = [
   { key: 'pending',    label: 'Order Received',   icon: FiClock,        desc: 'We have received your order' },
@@ -204,7 +206,7 @@ function TrackOrderContent() {
                 {(order.items || []).map((item, i) => (
                   <div key={i} className="flex items-center gap-3">
                     {item.image && (
-                      <img src={item.image} alt={item.name} className="w-12 h-12 object-cover rounded-lg bg-gray-100 flex-shrink-0" loading="lazy" decoding="async" />
+                      <CatalogImage src={item.image} alt={item.name} widths={THUMB_WIDTHS} sizes="48px" width={48} height={48} className="w-12 h-12 object-cover rounded-lg bg-gray-100 flex-shrink-0" />
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-gray-800 text-sm truncate">{item.name}</p>

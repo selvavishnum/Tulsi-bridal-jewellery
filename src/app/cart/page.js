@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { FiTrash2, FiPlus, FiMinus, FiShoppingBag } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/utils';
 import { clearPendingCoupon } from '@/lib/welcomeOffer';
+import CatalogImage from '@/components/ui/CatalogImage';
+import { THUMB_WIDTHS } from '@/lib/catalogImages';
 import toast from 'react-hot-toast';
 import useAutoApplyPendingCoupon from '@/components/checkout/useAutoApplyPendingCoupon';
 import { validateCoupon } from '@/components/checkout/validateCoupon';
@@ -102,7 +103,7 @@ export default function CartPage() {
               <div key={itemId} className="bg-white rounded-xl p-4 flex items-center gap-4 shadow-sm">
                 <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
                   {item.images?.[0] ? (
-                    <Image src={item.images[0]} alt={item.name} fill className="object-cover" />
+                    <CatalogImage src={item.images[0]} alt={item.name} fill widths={THUMB_WIDTHS} sizes="80px" className="object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-2xl">💍</div>
                   )}

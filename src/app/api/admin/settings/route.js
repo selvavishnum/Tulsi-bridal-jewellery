@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getDB, docToObj } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
 import { isUsableImageUrl } from '@/lib/avatar';
@@ -15,6 +16,21 @@ export async function GET() {
     res.headers.set('Cache-Control', 'no-store');
     return res;
   } catch (e) { return NextResponse.json({ success: false, message: e.message }, { status: 500 }); }
+}
+
+/* The homepage is pre-rendered with the hero slides in its HTML (src/app/page.js,
+   rebuilt every 5 minutes at most). Drop that copy now, so the next visitor
+   sees this save and not the previous one.
+   It must never fail the save — the settings are already stored, and the page
+   catches up on its own within 5 minutes anyway: revalidatePath throws when
+   there is no Next request to attach to (unit tests, scripts), which is not
+   an error worth a 500. */
+function refreshHomepage() {
+  try {
+    revalidatePath('/');
+  } catch (e) {
+    if (process.env.NODE_ENV === 'production') console.warn('[settings] homepage refresh failed:', e.message);
+  }
 }
 
 export async function POST(request) {
@@ -41,6 +57,7 @@ export async function POST(request) {
       ));
     }
     await db.collection('settings').doc('site').set({ ...rest, updatedAt: new Date().toISOString() }, { merge: true });
+    refreshHomepage();
     return NextResponse.json({ success: true, message: 'Settings saved' });
   } catch (e) { return NextResponse.json({ success: false, message: e.message }, { status: 500 }); }
 }

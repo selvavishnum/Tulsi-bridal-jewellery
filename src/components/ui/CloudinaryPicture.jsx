@@ -33,12 +33,17 @@ import { CLOUDINARY_ORIGIN, IMAGE_SIZES, IMAGE_WIDTHS, PIXEL, cldSrcSet, picture
  * @property {('avif'|'webp')[]} [formats=['avif','webp']]  Modern formats, best first.
  * @property {'jpg'|'png'} [fallbackFormat='jpg']  Last resort; 'png' for cut-outs with transparency.
  * @property {boolean}  [priority=false]  The LCP image: eager, fetchpriority=high, preloaded. At most one per page.
- * @property {string}   [showWhen]  A single media query; below/outside it the photo is NOT fetched (a 1×1 pixel is). For twin
+ * @property {string}   [showWhen]  A single media query; where it does NOT match, the photo is not fetched (a 1×1 pixel is). For twin
  *                                  mobile/desktop layouts where CSS hides one copy but the browser would still download it.
- * @property {{ media: string, ratio: number, widths?: number[], sizes?: string }} [art]
+ * @property {string}   [hideWhen]  The inverse: where this query matches, a pixel is fetched instead. Use it for the copy that
+ *                                  CSS hides at a breakpoint, with the SAME query the other copy passes to `showWhen`, so the
+ *                                  two are exact complements at every width (a hand-written "max-width: 1023.99px" is not:
+ *                                  browsers round fractional widths, so at exactly 1024px both copies would download).
+ * @property {{ media: string, ratio: number, widths?: number[], sizes?: string, quality?: 'eco'|'low'|'good'|'best'|number }} [art]
  *                                  Art direction: under `media` serve a different crop (`ratio` = width ÷ height, g_auto
  *                                  keeps the jewellery in frame) — e.g. a portrait crop on phones instead of a landscape
- *                                  photo mostly cut off by object-cover. Not with `showWhen`.
+ *                                  photo mostly cut off by object-cover. `art.quality` overrides `quality` for the crop
+ *                                  (a phone shows it small, so 'good' is enough). Not with `showWhen` / `hideWhen`.
  * @property {string}   [className]
  * @property {import('react').CSSProperties} [style]
  * @property {(e: import('react').SyntheticEvent<HTMLImageElement>) => void} [onLoad]
@@ -50,13 +55,20 @@ export default function CloudinaryPicture({
   src, alt, width, height, fill = false,
   sizes = IMAGE_SIZES.hero, widths = IMAGE_WIDTHS.gallery,
   quality = 'good', formats = ['avif', 'webp'], fallbackFormat = 'jpg',
-  priority = false, showWhen, art,
+  priority = false, showWhen, hideWhen, art,
   className = '', style, ...rest
 }) {
   if (!src) return null;
   const main = pictureModel(src, { widths, sizes, quality, formats, fallbackFormat });
+  const cropQuality = art?.quality || quality;
   const crop = art && main.cloudinary
-    ? pictureModel(src, { widths: art.widths || IMAGE_WIDTHS.card, sizes: art.sizes || sizes, quality, formats, fallbackFormat, ratio: art.ratio })
+    ? pictureModel(src, { widths: art.widths || IMAGE_WIDTHS.card, sizes: art.sizes || sizes, quality: cropQuality, formats, fallbackFormat, ratio: art.ratio })
+    : null;
+  /* Twin layouts: `pixel` is the media query under which a 1×1 pixel is
+     fetched instead of the photo; `visible` is its exact complement (the
+     media the preload gets, so only the visible copy is preloaded). */
+  const gate = showWhen ? { pixel: `not all and ${showWhen}`, visible: showWhen }
+    : hideWhen ? { pixel: hideWhen, visible: `not all and ${hideWhen}` }
     : null;
 
   /* LCP image only. preconnect: open the TLS connection to Cloudinary while
@@ -70,7 +82,7 @@ export default function CloudinaryPicture({
     const hint = (m, media) => m.preload && preload(m.preload.href, {
       as: 'image', type: m.preload.type, imageSrcSet: m.preload.imageSrcSet, imageSizes: m.preload.imageSizes, fetchPriority: 'high', ...(media && { media }),
     });
-    if (crop) { hint(crop, art.media); hint(main, `not all and ${art.media}`); } else hint(main, showWhen);
+    if (crop) { hint(crop, art.media); hint(main, `not all and ${art.media}`); } else hint(main, gate?.visible);
   }
 
   /* Reserve the box: width/height attributes give the browser the aspect
@@ -105,9 +117,9 @@ export default function CloudinaryPicture({
   return (
     <picture>
       {/* Twin layout hidden by CSS: serve a pixel unless this copy is the visible one. */}
-      {showWhen && <source media={`not all and ${showWhen}`} srcSet={PIXEL} />}
+      {gate && <source media={gate.pixel} srcSet={PIXEL} />}
       {crop && sourcesOf(crop, art.media)}
-      {crop && <source media={art.media} srcSet={cldSrcSet(src, art.widths || IMAGE_WIDTHS.card, { quality, format: fallbackFormat, ratio: art.ratio, progressive: true })} sizes={art.sizes || sizes} />}
+      {crop && <source media={art.media} srcSet={cldSrcSet(src, art.widths || IMAGE_WIDTHS.card, { quality: cropQuality, format: fallbackFormat, ratio: art.ratio, progressive: true })} sizes={art.sizes || sizes} />}
       {sourcesOf(main)}
       {img}
     </picture>

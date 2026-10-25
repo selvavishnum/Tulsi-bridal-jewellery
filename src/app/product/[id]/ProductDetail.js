@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import Image from 'next/image';
 import Link from 'next/link';
 import {
   FiShoppingCart, FiHeart, FiShare2, FiStar,
@@ -14,7 +13,8 @@ import { useCart } from '@/context/CartContext';
 import { freeShippingLine } from '@/lib/storeCharges';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
-import { cldBase, cldZoom, cldThumb } from '@/lib/cloudinaryImage';
+import { IMAGE_WIDTHS, cldBase, cldZoom } from '@/lib/cloudinaryImage';
+import CloudinaryPicture from '@/components/ui/CloudinaryPicture';
 import ImageZoomModal from '@/components/shop/ImageZoomModal';
 import { useProductTracking } from '@/hooks/useProductTracking';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
@@ -68,6 +68,111 @@ const TRUST_ITEMS = [
   { icon: FiCheckCircle, label: 'Secure Payment' },
 ];
 
+/* ── Gallery photos ──
+   The page draws the same photo twice: a full-width one for phones
+   (`lg:hidden`) and a half-width one beside the details on desktops
+   (`hidden lg:block`). CSS hides one copy, but a hidden <img> is still
+   downloaded — so the desktop copy says when it is visible (`showWhen`) and
+   the phone copy says when it is hidden (`hideWhen`), both with Tailwind's
+   own `lg` query. Everywhere the photo is hidden, a 1×1 pixel is fetched
+   instead. One query for both means the two are exact complements at every
+   width: a hand-written `max-width: 1023.99px` for the phone copy still
+   matches at exactly 1024px (browsers round fractional widths), where both
+   copies would download. */
+const LG_AND_UP = '(min-width: 1024px)';
+
+/* `sizes`: how wide each copy is drawn, which the browser needs before any
+   CSS has loaded to choose a file from the srcset. Measured from the layout,
+   not guessed:
+   - phone: the photo box spans the viewport;
+   - desktop: half of the page container (max-w-7xl = 1280px, px-8) minus the
+     gallery column's p-8 and the box's 1px border = 50vw − 98px, which stops
+     growing at 542px (a 1280px viewport and up — a 1920px screen still draws
+     542px). IMAGE_SIZES.gallery says 50vw, i.e. 960px at 1920 — about 1.8×
+     the pixels this box can show.
+   The two strings must differ: React merges preload hints that have the same
+   srcset AND sizes, which would leave one twin without its own preload. */
+const MAIN_SIZES_PHONE = '100vw';
+const MAIN_SIZES_DESKTOP = '(min-width: 1280px) 542px, calc(50vw - 98px)';
+/* Thumbnails: w-14 / w-16 minus their 2px borders. */
+const THUMB_SIZES_PHONE = '52px';
+const THUMB_SIZES_DESKTOP = '60px';
+
+/**
+ * The big photo, in one of the two layouts. Fills the aspect-square box its
+ * parent already reserves (so nothing moves when it arrives); object-contain
+ * keeps the whole piece in view whatever the photo's proportions.
+ * `first` = the photo the page opened on: the LCP element, so it is preloaded
+ * and fetched at high priority. A photo picked later is not preloaded (the
+ * shopper just asked for it, so it is simply eager + high priority — `loading`
+ * and `fetchPriority` here override the picture's lazy default).
+ * Quality stays 'best': this is the hero shot of a high-value piece.
+ * (width/height 1×1 only state the square ratio — `fill` sizes it to the box.)
+ * @param {{ url: string, name: string, phone?: boolean, first: boolean, imgRef?: import('react').Ref<HTMLImageElement> }} props
+ */
+function MainPhoto({ url, name, phone = false, first, imgRef }) {
+  return (
+    <CloudinaryPicture
+      ref={imgRef}
+      src={url}
+      alt={name}
+      width={1}
+      height={1}
+      fill
+      widths={IMAGE_WIDTHS.gallery}
+      sizes={phone ? MAIN_SIZES_PHONE : MAIN_SIZES_DESKTOP}
+      quality="best"
+      fallbackFormat="jpg"
+      {...(phone ? { hideWhen: LG_AND_UP } : { showWhen: LG_AND_UP })}
+      priority={first}
+      {...(!first && { loading: 'eager', fetchPriority: 'high' })}
+      className="object-contain"
+    />
+  );
+}
+
+/**
+ * A thumbnail in the selector strip: lazy and decoded off the main thread
+ * (the picture's defaults), a srcset that tops out at 320px (a 60px
+ * thumbnail at 3× needs 180), 'good' quality — perceptually lossless at this
+ * size. Fills its fixed w-14 / w-16 button, so the strip never shifts.
+ * @param {{ url: string, index: number, phone?: boolean }} props
+ */
+function ThumbPhoto({ url, index, phone = false }) {
+  return (
+    <CloudinaryPicture
+      src={url}
+      alt={`View ${index + 1}`}
+      width={1}
+      height={1}
+      fill
+      widths={IMAGE_WIDTHS.thumb}
+      sizes={phone ? THUMB_SIZES_PHONE : THUMB_SIZES_DESKTOP}
+      quality="good"
+      fallbackFormat="jpg"
+      {...(phone ? { hideWhen: LG_AND_UP } : { showWhen: LG_AND_UP })}
+      className="object-cover"
+    />
+  );
+}
+
+/* The file a gallery <img> has actually downloaded (the srcset pick for this
+   screen) — the loupe and the full-screen viewer start from it, so neither
+   has to fetch a second copy of a photo that is already on screen. null while
+   the img is not in the page yet, or is the hidden twin's 1×1 pixel. */
+function shownFile(img, index) {
+  const src = img?.currentSrc;
+  return src && !src.startsWith('data:') ? { index, src } : null;
+}
+
+/* The rating shown above the price. The review endpoint keeps product.ratings
+   in step with the reviews, so it is in the first HTML — otherwise the row
+   would appear after hydration and push the price and buttons down. */
+function ratingOf(product) {
+  const count = Math.max(0, Math.floor(Number(product?.ratings?.count) || 0));
+  return { average: count > 0 ? Number(product.ratings.average) || 0 : 0, count };
+}
+
 /* ── Star Picker ── */
 function StarPicker({ value, onChange }) {
   const [hovered, setHovered] = useState(0);
@@ -120,14 +225,14 @@ function ReviewCard({ review }) {
             <div className="flex items-center gap-2 mt-0.5">
               <Stars rating={review.rating} size="sm" />
               {review.status === 'approved' && (
-                <span className="text-[10px] text-green-600 font-semibold flex items-center gap-1">
+                <span className="text-[10px] text-green-700 font-semibold flex items-center gap-1">
                   <FiCheckCircle className="text-[10px]" /> Verified Purchase
                 </span>
               )}
             </div>
           </div>
         </div>
-        <span className="text-xs text-stone-400 flex-shrink-0">{date}</span>
+        <span className="text-xs text-stone-500 flex-shrink-0">{date}</span>
       </div>
       <p className="text-stone-500 text-sm leading-relaxed">{review.comment}</p>
     </div>
@@ -248,6 +353,11 @@ export default function ProductDetail({ initialProduct = null }) {
   const [qty, setQty] = useState(1);
   const [zoomOpen, setZoomOpen] = useState(false);
   const [zoomIndex, setZoomIndex] = useState(0);
+  /* The file the gallery is showing when the full-screen viewer opens. */
+  const [zoomShown, setZoomShown] = useState(null);
+  /* The two layouts' main <img> elements: read for the file they loaded. */
+  const mobileImgRef = useRef(null);
+  const desktopImgRef = useRef(null);
   const [buyNowOpen, setBuyNowOpen] = useState(false);
   /* The drawer component once its code has arrived (see loadBuyNowDrawer). */
   const [BuyNowDrawer, setBuyNowDrawer] = useState(() => loadedBuyNowDrawer);
@@ -291,7 +401,7 @@ export default function ProductDetail({ initialProduct = null }) {
   function setSelectedImage(next) { recordCarouselClick(); setSelectedImageRaw(next); }
 
   const [reviews, setReviews] = useState([]);
-  const [reviewStats, setReviewStats] = useState({ average: 0, count: 0 });
+  const [reviewStats, setReviewStats] = useState(() => ratingOf(initialProduct));
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [tryOnOpen, setTryOnOpen] = useState(false);
@@ -302,6 +412,9 @@ export default function ProductDetail({ initialProduct = null }) {
      once the shopper actually hovers it (never on page load, never for the
      images they haven't looked at), and only once per image per visit. */
   const [loupeHover, setLoupeHover] = useState(false);
+  /* What the loupe shows before that sharper tier arrives: the file the
+     gallery already downloaded, captured as the cursor enters. */
+  const [loupeBase, setLoupeBase] = useState(null);
   const [loupePos, setLoupePos] = useState({ x: 50, y: 50 });
   const [loupeHiResLoaded, setLoupeHiResLoaded] = useState(() => new Set());
 
@@ -422,6 +535,7 @@ export default function ProductDetail({ initialProduct = null }) {
           images={product.images}
           startIndex={zoomIndex}
           productName={product.name}
+          shown={zoomShown}
           onClose={() => setZoomOpen(false)}
         />
       )}
@@ -450,27 +564,21 @@ export default function ProductDetail({ initialProduct = null }) {
         <div className="lg:hidden bg-white">
           <div
             className="relative w-full aspect-square overflow-hidden bg-white cursor-zoom-in"
-            onClick={() => { recordZoomInteraction(); setZoomIndex(selectedImage); setZoomOpen(true); }}
+            onClick={() => { recordZoomInteraction(); setZoomShown(shownFile(mobileImgRef.current, selectedImage)); setZoomIndex(selectedImage); setZoomOpen(true); }}
             onTouchStart={onMobileSwipeStart}
             onTouchEnd={onMobileSwipeEnd}
           >
-            <Image
-              src={cldBase(product.images[selectedImage])}
-              alt={product.name}
-              fill
-              priority
-              unoptimized
-              sizes="100vw"
-              className="object-contain"
-            />
+            <MainPhoto url={product.images[selectedImage]} name={product.name} phone first={selectedImage === 0} imgRef={mobileImgRef} />
             {discount > 0 && (
               <span className="absolute top-4 left-4 badge-sale text-sm px-3 py-1.5 z-10">-{discount}% OFF</span>
             )}
             <button
+              type="button"
               onClick={(e) => { e.stopPropagation(); share(); }}
+              aria-label="Share this product"
               className="absolute top-4 right-4 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-stone-500 hover:text-wine-700 shadow-sm transition z-10"
             >
-              <FiShare2 className="text-sm" />
+              <FiShare2 className="text-sm" aria-hidden="true" />
             </button>
             <span className="absolute bottom-3 right-3 bg-black/45 text-white text-[10px] px-2.5 py-1 rounded-full pointer-events-none z-10">
               Tap to zoom
@@ -484,10 +592,13 @@ export default function ProductDetail({ initialProduct = null }) {
           {/* Dot indicators */}
           {product.images.length > 1 && (
             <div className="flex items-center gap-3 px-4 py-3 bg-white">
-              <div className="flex gap-1.5 flex-1 justify-center">
+              <div className="flex flex-1 justify-center">
                 {product.images.map((_, i) => (
-                  <button key={i} onClick={() => setSelectedImage(i)}
-                    className={`rounded-full transition-all duration-300 ${i === selectedImage ? 'w-5 h-1.5 bg-wine-700' : 'w-1.5 h-1.5 bg-stone-300'}`} />
+                  <button key={i} type="button" onClick={() => setSelectedImage(i)}
+                    aria-label={`Show photo ${i + 1}`} aria-current={i === selectedImage ? 'true' : undefined}
+                    className="flex h-6 min-w-6 items-center justify-center">
+                    <span className={`block rounded-full transition-all duration-300 ${i === selectedImage ? 'w-5 h-1.5 bg-wine-700' : 'w-1.5 h-1.5 bg-stone-300'}`} />
+                  </button>
                 ))}
               </div>
             </div>
@@ -498,7 +609,7 @@ export default function ProductDetail({ initialProduct = null }) {
               {product.images.map((img, i) => (
                 <button key={i} onClick={() => setSelectedImage(i)}
                   className={`relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${selectedImage === i ? 'border-wine-600 shadow-sm' : 'border-transparent opacity-55 hover:opacity-90'}`}>
-                  <Image src={cldThumb(img, 64)} alt={`View ${i + 1}`} fill unoptimized sizes="56px" className="object-cover" />
+                  <ThumbPhoto url={img} index={i} phone />
                 </button>
               ))}
             </div>
@@ -516,34 +627,29 @@ export default function ProductDetail({ initialProduct = null }) {
               {/* Main image with slide arrows */}
               <div
                 className="relative aspect-square rounded-2xl overflow-hidden bg-white border border-stone-100 mb-3 group cursor-zoom-in"
-                onClick={() => { if (product.images?.[selectedImage]) { recordZoomInteraction(); setZoomIndex(selectedImage); setZoomOpen(true); } }}
-                onMouseEnter={() => { recordZoomInteraction(); setLoupeHover(true); }}
+                onClick={() => { if (product.images?.[selectedImage]) { recordZoomInteraction(); setZoomShown(shownFile(desktopImgRef.current, selectedImage)); setZoomIndex(selectedImage); setZoomOpen(true); } }}
+                onMouseEnter={() => { recordZoomInteraction(); setLoupeBase(shownFile(desktopImgRef.current, selectedImage)); setLoupeHover(true); }}
                 onMouseLeave={() => setLoupeHover(false)}
                 onMouseMove={onLoupeMove}
               >
                 {product.images?.[selectedImage] ? (
-                  <Image
-                    src={cldBase(product.images[selectedImage])}
-                    alt={product.name}
-                    fill
-                    priority
-                    unoptimized
-                    sizes="50vw"
-                    className="object-contain transition-opacity duration-300"
-                  />
+                  <MainPhoto url={product.images[selectedImage]} name={product.name} first={selectedImage === 0} imgRef={desktopImgRef} />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-8xl text-stone-200">💍</div>
                 )}
 
                 {/* Hover loupe — magnified, cursor-following crop. Starts
-                   from the already-loaded base tier the instant the cursor
-                   enters (no blank flash), then sharpens to the w_4000
-                   tier once that finishes loading in the background. */}
+                   from the file the gallery already loaded (captured as the
+                   cursor entered, so no blank flash and no second download),
+                   then sharpens to the w_3000 q_90 tier once that finishes
+                   loading in the background. If the photo was changed while
+                   hovering, there is no loaded file for the new one and the
+                   w_1400 tier stands in until the sharper one arrives. */}
                 {loupeHover && product.images?.[selectedImage] && (
                   <div
                     className="absolute inset-0 pointer-events-none bg-white"
                     style={{
-                      backgroundImage: `url(${loupeHiResLoaded.has(selectedImage) ? cldZoom(product.images[selectedImage]) : cldBase(product.images[selectedImage])})`,
+                      backgroundImage: `url(${loupeHiResLoaded.has(selectedImage) ? cldZoom(product.images[selectedImage]) : (loupeBase?.index === selectedImage ? loupeBase.src : cldBase(product.images[selectedImage]))})`,
                       backgroundPosition: `${loupePos.x}% ${loupePos.y}%`,
                       backgroundSize: '220%',
                       backgroundRepeat: 'no-repeat',
@@ -561,6 +667,8 @@ export default function ProductDetail({ initialProduct = null }) {
                 {/* Slide arrows */}
                 {product.images?.length > 1 && selectedImage > 0 && (
                   <button
+                    type="button"
+                    aria-label="Previous photo"
                     onClick={(e) => { e.stopPropagation(); setSelectedImage((i) => i - 1); }}
                     className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-white/90 hover:bg-white shadow-md rounded-full flex items-center justify-center text-stone-700 text-xl transition z-10 opacity-0 group-hover:opacity-100">
                     ‹
@@ -568,6 +676,8 @@ export default function ProductDetail({ initialProduct = null }) {
                 )}
                 {product.images?.length > 1 && selectedImage < product.images.length - 1 && (
                   <button
+                    type="button"
+                    aria-label="Next photo"
                     onClick={(e) => { e.stopPropagation(); setSelectedImage((i) => i + 1); }}
                     className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-white/90 hover:bg-white shadow-md rounded-full flex items-center justify-center text-stone-700 text-xl transition z-10 opacity-0 group-hover:opacity-100">
                     ›
@@ -577,9 +687,9 @@ export default function ProductDetail({ initialProduct = null }) {
                 {discount > 0 && (
                   <span className="absolute top-3 left-3 badge-sale text-sm px-3 py-1">-{discount}% OFF</span>
                 )}
-                <button onClick={(e) => { e.stopPropagation(); share(); }}
+                <button type="button" onClick={(e) => { e.stopPropagation(); share(); }} aria-label="Share this product"
                   className="absolute top-3 right-3 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-stone-500 hover:text-wine-700 shadow-sm transition">
-                  <FiShare2 className="text-sm" />
+                  <FiShare2 className="text-sm" aria-hidden="true" />
                 </button>
                 {product.images?.[selectedImage] && (
                   <span className="absolute bottom-3 right-3 bg-black/40 text-white text-[10px] px-2 py-1 rounded-full pointer-events-none">Tap to zoom</span>
@@ -598,7 +708,7 @@ export default function ProductDetail({ initialProduct = null }) {
                   {product.images.map((img, i) => (
                     <button key={i} onClick={() => setSelectedImage(i)}
                       className={`relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${selectedImage === i ? 'border-wine-600 shadow-sm scale-105' : 'border-transparent opacity-60 hover:opacity-100 hover:border-stone-200'}`}>
-                      <Image src={cldThumb(img, 64)} alt={`View ${i + 1}`} fill unoptimized className="object-cover" />
+                      <ThumbPhoto url={img} index={i} />
                     </button>
                   ))}
                 </div>
@@ -608,7 +718,7 @@ export default function ProductDetail({ initialProduct = null }) {
             {/* ── PRODUCT INFO ── */}
             <div className="p-6 lg:p-8 flex flex-col">
 
-              <p className="text-gold-600 text-2xs uppercase tracking-widest font-semibold mb-2 capitalize">
+              <p className="text-gold-700 text-2xs uppercase tracking-widest font-semibold mb-2 capitalize">
                 {product.category?.replace(/-/g, ' ')}
               </p>
 
@@ -621,7 +731,7 @@ export default function ProductDetail({ initialProduct = null }) {
                 <div className="flex items-center gap-2 mb-4">
                   <Stars rating={reviewStats.average} />
                   <span className="text-sm font-semibold text-stone-700">{reviewStats.average}</span>
-                  <span className="text-sm text-stone-400">({reviewStats.count} review{reviewStats.count !== 1 ? 's' : ''})</span>
+                  <span className="text-sm text-stone-500">({reviewStats.count} review{reviewStats.count !== 1 ? 's' : ''})</span>
                 </div>
               )}
 
@@ -631,7 +741,7 @@ export default function ProductDetail({ initialProduct = null }) {
                   <span className="font-serif text-3xl font-bold text-wine-700">{formatPrice(displayPrice)}</span>
                   {discount > 0 && (
                     <>
-                      <span className="text-lg text-stone-300 line-through">{formatPrice(product.price)}</span>
+                      <span className="text-lg text-stone-500 line-through">{formatPrice(product.price)}</span>
                       <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
                         Save {formatPrice(product.price - displayPrice)}
                       </span>
@@ -655,7 +765,7 @@ export default function ProductDetail({ initialProduct = null }) {
                 <div className="grid grid-cols-2 gap-2 mb-5">
                   {SPECS.map(({ label, value }) => (
                     <div key={label} className="bg-stone-50 rounded-xl px-3 py-2.5">
-                      <p className="text-2xs text-stone-400 uppercase tracking-wider mb-0.5">{label}</p>
+                      <p className="text-2xs text-stone-500 uppercase tracking-wider mb-0.5">{label}</p>
                       <p className="text-sm font-semibold text-stone-700 capitalize">{value}</p>
                     </div>
                   ))}
@@ -719,7 +829,7 @@ export default function ProductDetail({ initialProduct = null }) {
                   type="button"
                   onClick={addToCart}
                   disabled={soldOut}
-                  className="min-h-[48px] px-2 sm:px-3 rounded-xl border-2 border-wine-700 bg-white text-wine-700 hover:bg-wine-50 active:bg-wine-100 font-bold text-sm whitespace-nowrap flex items-center justify-center gap-2 transition disabled:border-stone-200 disabled:bg-stone-50 disabled:text-stone-400 disabled:cursor-not-allowed"
+                  className="min-h-[48px] px-2 sm:px-3 rounded-xl border-2 border-wine-700 bg-white text-wine-700 hover:bg-wine-50 active:bg-wine-100 font-bold text-sm whitespace-nowrap flex items-center justify-center gap-2 transition disabled:border-stone-200 disabled:bg-stone-50 disabled:text-stone-500 disabled:cursor-not-allowed"
                 >
                   {/* Icon dropped on the narrowest phones (320px) so the label fits. */}
                   <FiShoppingCart className="hidden min-[360px]:block flex-shrink-0" aria-hidden="true" /> Add to Cart
@@ -732,7 +842,7 @@ export default function ProductDetail({ initialProduct = null }) {
                   onFocus={preloadBuyNowDrawer}
                   disabled={soldOut}
                   aria-haspopup="dialog"
-                  className="min-h-[48px] px-2 sm:px-3 rounded-xl bg-wine-700 hover:bg-wine-800 active:bg-wine-900 text-white font-bold text-sm whitespace-nowrap flex items-center justify-center gap-1.5 shadow-luxury ring-1 ring-inset ring-gold-400/50 transition disabled:bg-stone-200 disabled:text-stone-400 disabled:shadow-none disabled:ring-0 disabled:cursor-not-allowed"
+                  className="min-h-[48px] px-2 sm:px-3 rounded-xl bg-wine-700 hover:bg-wine-800 active:bg-wine-900 text-white font-bold text-sm whitespace-nowrap flex items-center justify-center gap-1.5 shadow-luxury ring-1 ring-inset ring-gold-400/50 transition disabled:bg-stone-200 disabled:text-stone-500 disabled:shadow-none disabled:ring-0 disabled:cursor-not-allowed"
                 >
                   <span aria-hidden="true" className="text-gold-300">⚡</span> Buy Now
                 </button>
@@ -751,7 +861,7 @@ export default function ProductDetail({ initialProduct = null }) {
                       <FiCalendar className="text-gold-600" />
                       <span className="text-sm font-semibold text-stone-700">Available to Rent</span>
                     </div>
-                    <span className="text-sm font-bold text-wine-700">{formatPrice(product.rentalPrice)}<span className="text-xs font-normal text-stone-400">/day</span></span>
+                    <span className="text-sm font-bold text-wine-700">{formatPrice(product.rentalPrice)}<span className="text-xs font-normal text-stone-500">/day</span></span>
                   </div>
                   <p className="text-xs text-stone-500 mb-3">Contact us on WhatsApp to check availability and confirm your rental dates.</p>
                   <a
@@ -803,7 +913,7 @@ export default function ProductDetail({ initialProduct = null }) {
           <div className="flex items-center justify-between mb-8">
             <h2 className="font-serif text-2xl font-bold text-stone-800">
               Customer Reviews
-              {reviewStats.count > 0 && <span className="text-stone-400 text-base font-normal ml-2">({reviewStats.count})</span>}
+              {reviewStats.count > 0 && <span className="text-stone-500 text-base font-normal ml-2">({reviewStats.count})</span>}
             </h2>
             <button
               onClick={() => setShowReviewForm(!showReviewForm)}
@@ -813,13 +923,14 @@ export default function ProductDetail({ initialProduct = null }) {
             </button>
           </div>
 
-          {/* Rating summary */}
-          {reviewStats.count > 0 && (
+          {/* Rating summary — the breakdown is counted from the reviews, so it
+             waits for them (the average above the price does not). */}
+          {reviewStats.count > 0 && reviews.length > 0 && (
             <div className="flex flex-col sm:flex-row gap-6 mb-8 p-6 bg-stone-50 rounded-2xl">
               <div className="text-center sm:w-36 flex-shrink-0">
                 <p className="font-serif text-6xl font-bold text-stone-800">{reviewStats.average}</p>
                 <Stars rating={reviewStats.average} size="base" />
-                <p className="text-stone-400 text-sm mt-1">{reviewStats.count} reviews</p>
+                <p className="text-stone-500 text-sm mt-1">{reviewStats.count} reviews</p>
               </div>
               <div className="flex-1 space-y-2">
                 {ratingBreakdown.map(({ star, count }) => (
@@ -834,7 +945,7 @@ export default function ProductDetail({ initialProduct = null }) {
                         style={{ width: reviewStats.count > 0 ? `${(count / reviewStats.count) * 100}%` : '0%' }}
                       />
                     </div>
-                    <span className="text-xs text-stone-400 w-6 flex-shrink-0">{count}</span>
+                    <span className="text-xs text-stone-500 w-6 flex-shrink-0">{count}</span>
                   </div>
                 ))}
               </div>
@@ -871,7 +982,7 @@ export default function ProductDetail({ initialProduct = null }) {
                 <FiStar className="text-stone-300 text-2xl" />
               </div>
               <p className="text-stone-500 font-medium mb-1">No reviews yet</p>
-              <p className="text-stone-400 text-sm">Be the first to review this product</p>
+              <p className="text-stone-500 text-sm">Be the first to review this product</p>
               <button onClick={() => setShowReviewForm(true)} className="mt-4 px-5 py-2 bg-wine-700 text-white text-sm font-semibold rounded-xl hover:bg-wine-800 transition">
                 Write a Review
               </button>

@@ -6,9 +6,11 @@
    Stored in settings/site.categoryShowcase (see src/lib/categoryShowcase.js);
    the storefront reads it through the public settings GET. */
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getDB } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
-import { normalizeShowcase, applyShowcasePatch, toStored, ShowcasePatch } from '@/lib/categoryShowcase';
+import { normalizeShowcase, applyShowcasePatch, toStored } from '@/lib/categoryShowcase';
+import { ShowcasePatch } from '@/lib/categoryShowcaseSchema';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +46,11 @@ export async function PATCH(request) {
       tx.set(ref, { categoryShowcase: toStored(updated), updatedAt: new Date().toISOString() }, { merge: true });
       return updated;
     });
+    /* The homepage is rendered with this showcase in its HTML: drop that copy
+       now, so the change shows on the next visit rather than within 5 minutes.
+       revalidatePath throws outside a Next request (unit tests); the 5-minute
+       refresh covers that case. */
+    try { revalidatePath('/'); } catch { /* not in a request */ }
     return NextResponse.json({ success: true, data: next });
   } catch (e) {
     console.error('[category-showcase] PATCH failed:', e);

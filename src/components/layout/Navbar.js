@@ -108,7 +108,7 @@ export default function Navbar() {
             </div>
             <div>
               <p className="font-serif text-lg font-bold tracking-[0.14em] leading-none text-gold-shimmer">TULSI</p>
-              <p className="text-[8px] tracking-[0.3em] text-gold-600 uppercase leading-none font-medium mt-0.5">Bridal Jewellery</p>
+              <p className="text-[8px] tracking-[0.3em] text-gold-700 uppercase leading-none font-medium mt-0.5">Bridal Jewellery</p>
             </div>
           </Link>
 
@@ -159,7 +159,7 @@ export default function Navbar() {
             </button>
 
             {/* Wishlist */}
-            <Link href="/wishlist" className="relative hidden sm:flex min-w-12 min-h-12 items-center justify-center text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200">
+            <Link href="/wishlist" aria-label={wishlistItems.length > 0 ? `Wishlist, ${wishlistItems.length} saved` : 'Wishlist'} className="relative hidden sm:flex min-w-12 min-h-12 items-center justify-center text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200">
               <FiHeart className="text-lg" />
               {wishlistItems.length > 0 && (
                 <span className="absolute top-1.5 right-1.5 bg-wine-700 text-white text-[9px] rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">
@@ -169,7 +169,7 @@ export default function Navbar() {
             </Link>
 
             {/* Cart */}
-            <Link href="/cart" className="relative min-w-12 min-h-12 flex items-center justify-center text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200">
+            <Link href="/cart" aria-label={itemCount > 0 ? `Cart, ${itemCount} ${itemCount === 1 ? 'item' : 'items'}` : 'Cart'} className="relative min-w-12 min-h-12 flex items-center justify-center text-stone-600 hover:text-wine-700 transition-colors rounded-xl hover:bg-ivory-200">
               <FiShoppingCart className="text-lg" />
               {itemCount > 0 && (
                 <span className="absolute top-1.5 right-1.5 bg-wine-700 text-white text-[9px] rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">
@@ -262,6 +262,7 @@ export default function Navbar() {
           height animation. */}
       <div
         aria-hidden={!menuOpen}
+        inert={!menuOpen}
         className={`lg:hidden bg-white border-t border-stone-100 overflow-hidden transition-[max-height,opacity,transform] duration-300 ease-luxury ${
           menuOpen ? 'max-h-[32rem] opacity-100 translate-y-0' : 'max-h-0 opacity-0 -translate-y-2 pointer-events-none border-t-0'
         }`}

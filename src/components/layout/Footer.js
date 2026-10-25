@@ -59,7 +59,7 @@ export default function Footer() {
                   <p className="font-serif text-lg font-bold tracking-[0.12em] text-stone-800 leading-none group-hover:text-gold-600 transition-colors">
                     {s.businessName || 'TULSI'}
                   </p>
-                  <p className="text-[8px] tracking-[0.28em] text-gold-600 uppercase leading-none mt-0.5">Bridal Jewellery</p>
+                  <p className="text-[8px] tracking-[0.28em] text-gold-700 uppercase leading-none mt-0.5">Bridal Jewellery</p>
                 </div>
               </Link>
 
@@ -67,23 +67,26 @@ export default function Footer() {
                 {s.tagline || 'Exquisite bridal jewellery crafted with love. Making your special day shine brighter.'}
               </p>
 
-              {/* Social links */}
-              <div className="flex gap-2.5">
+              {/* Social links — only the ones the admin has set. An icon with no
+                  address is a dead <a> (no role, so its label is not allowed and
+                  it has no name for a screen reader), and a dead button is no use
+                  to a shopper either. min-h-9: the row keeps its height while the
+                  settings load, so the footer doesn't jump when the icons arrive. */}
+              <div className="flex gap-2.5 min-h-9">
                 {[
                   { href: s.instagram, icon: FiInstagram, label: 'Instagram' },
                   { href: s.facebook,  icon: FiFacebook,  label: 'Facebook' },
                   { href: s.youtube,   icon: FiYoutube,   label: 'YouTube' },
-                ].map(({ href, icon: Icon, label }) => (
+                ].filter(({ href }) => !!href).map(({ href, icon: Icon, label }) => (
                   <a
                     key={label}
-                    href={href || undefined}
-                    target={href ? '_blank' : undefined}
+                    href={href}
+                    target="_blank"
                     rel="noopener noreferrer"
                     aria-label={label}
-                    onClick={!href ? (e) => e.preventDefault() : undefined}
                     className="w-9 h-9 rounded-xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-500 hover:bg-gold-600 hover:text-white hover:border-gold-600 transition-all duration-200 cursor-pointer"
                   >
-                    <Icon className="text-sm" />
+                    <Icon className="text-sm" aria-hidden="true" />
                   </a>
                 ))}
               </div>
@@ -91,7 +94,7 @@ export default function Footer() {
 
             {/* Quick links */}
             <div>
-              <h3 className="text-xs font-semibold text-gold-600 uppercase tracking-widest mb-5">Quick Links</h3>
+              <h3 className="text-xs font-semibold text-gold-700 uppercase tracking-widest mb-5">Quick Links</h3>
               <ul className="space-y-2.5">
                 {QUICK_LINKS.map((l) => (
                   <li key={l.name}>
@@ -106,7 +109,7 @@ export default function Footer() {
 
             {/* Categories */}
             <div>
-              <h3 className="text-xs font-semibold text-gold-600 uppercase tracking-widest mb-5">Categories</h3>
+              <h3 className="text-xs font-semibold text-gold-700 uppercase tracking-widest mb-5">Categories</h3>
               <ul className="space-y-2.5">
                 {CATEGORIES.map((c) => (
                   <li key={c.name}>
@@ -121,7 +124,7 @@ export default function Footer() {
 
             {/* Contact */}
             <div>
-              <h3 className="text-xs font-semibold text-gold-600 uppercase tracking-widest mb-5">Get in Touch</h3>
+              <h3 className="text-xs font-semibold text-gold-700 uppercase tracking-widest mb-5">Get in Touch</h3>
               <ul className="space-y-4">
                 <li className="flex items-start gap-3">
                   <div className="w-7 h-7 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -145,7 +148,7 @@ export default function Footer() {
 
               {/* Store hours */}
               <div className="mt-6 p-4 rounded-xl bg-stone-50 border border-stone-200">
-                <p className="text-xs font-semibold text-gold-600 uppercase tracking-wider mb-2">Store Hours</p>
+                <p className="text-xs font-semibold text-gold-700 uppercase tracking-wider mb-2">Store Hours</p>
                 <p className="text-xs text-stone-500 leading-relaxed">Mon – Sat: 10 AM – 8 PM<br />Sunday: 11 AM – 6 PM</p>
               </div>
             </div>
@@ -158,7 +161,7 @@ export default function Footer() {
 
         {/* Bottom bar */}
         <div className="section-container py-5 flex flex-col sm:flex-row justify-between items-center gap-3">
-          <p className="text-xs text-stone-400">
+          <p className="text-xs text-stone-500">
             © {new Date().getFullYear()} {s.businessName || 'Tulsi Bridal Jewellery'}. All rights reserved.
           </p>
           <div className="flex gap-5">
@@ -168,7 +171,7 @@ export default function Footer() {
               { name: 'FAQ', href: '/faq' },
               { name: 'Refunds', href: '/refunds' },
             ].map((l) => (
-              <Link key={l.name} href={l.href} className="text-xs text-stone-400 hover:text-gold-600 transition-colors">
+              <Link key={l.name} href={l.href} className="text-xs text-stone-500 hover:text-gold-700 transition-colors">
                 {l.name}
               </Link>
             ))}

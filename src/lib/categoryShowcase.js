@@ -24,9 +24,8 @@
    (categoryImages / categoryShape / categorySize) are read as the starting
    point, so the homepage looks the same until someone changes it.
 
-   Pure module (zod only): safe in the browser, the server and tests.
+   Pure module (no dependencies): safe in the browser, the server and tests.
    ───────────────────────────────────────────── */
-import { z } from 'zod';
 
 export const SHOWCASE_VERSION = 1;
 
@@ -44,7 +43,7 @@ export const SHOWCASE_CARDS = Object.freeze([
   { key: 'set', label: 'Bridal Sets', href: '/catalog?category=set', emoji: '💍', color: 'from-red-50 to-rose-50' },
   { key: 'rentals', label: 'Rentals', href: '/rentals', emoji: '🗓️', color: 'from-gold-50 to-amber-50' },
 ]);
-const CARD_KEYS = SHOWCASE_CARDS.map((c) => c.key);
+export const CARD_KEYS = SHOWCASE_CARDS.map((c) => c.key);
 
 export const LAYOUT_VARIANTS = Object.freeze([
   { value: 'circle', label: 'Circle', hint: 'Round photos, name below' },
@@ -68,7 +67,7 @@ export const GRAVITIES = Object.freeze([
   { value: 'south', label: 'Bottom' },
   { value: 'custom', label: 'Custom point' },
 ]);
-const GRAVITY_VALUES = GRAVITIES.map((g) => g.value);
+export const GRAVITY_VALUES = GRAVITIES.map((g) => g.value);
 
 /* Width : height of each shape's frame. */
 export const ASPECTS = Object.freeze({ circle: [1, 1], square: [1, 1], king_size: [4, 5], wide: [16, 9] });
@@ -156,32 +155,10 @@ export function toStored(showcase) {
 /** The cards the storefront shows, in order. */
 export const visibleItems = (showcase) => showcase.items.filter((it) => it.isActive);
 
-/* ── Changes (PATCH body) ── */
-const FocusPatch = z.object({
-  gravity: z.enum(GRAVITY_VALUES),
-  x: z.number().min(0).max(100),
-  y: z.number().min(0).max(100),
-  zoom: z.number().min(ZOOM_RANGE.min).max(ZOOM_RANGE.max),
-}).partial().strict();
-
-const ItemPatch = z.object({
-  key: z.enum(CARD_KEYS),
-  isActive: z.boolean().optional(),
-  isFeatured: z.boolean().optional(),
-  image: z.union([z.literal(''), z.string().max(600).regex(/^https:\/\/[^\s"'<>]+$/)]).optional(),
-  focus: FocusPatch.optional(),
-}).strict();
-
-export const ShowcasePatch = z.object({
-  layout: z.object({
-    layoutVariant: z.enum(Object.keys(ASPECTS)),
-    displayMode: z.enum(DISPLAY_MODES.map((m) => m.value)),
-    size: z.enum(SIZES),
-  }).partial().strict().optional(),
-  items: z.array(ItemPatch).max(CARD_KEYS.length).optional(),
-  /* The full new order, as card keys. */
-  order: z.array(z.enum(CARD_KEYS)).length(CARD_KEYS.length).refine((a) => new Set(a).size === a.length, 'order must list each card once').optional(),
-}).strict().refine((p) => p.layout || p.items?.length || p.order, 'nothing to change');
+/* ── Changes (PATCH body) ──
+   The validation schema (ShowcasePatch) lives in categoryShowcaseSchema.js:
+   it needs zod, which the storefront would otherwise download on every visit
+   for a schema only the admin API uses. */
 
 /**
  * Apply a validated patch to a normalized showcase (returns a new one).
