@@ -5,6 +5,7 @@ import Image from 'next/image';
 import toast from 'react-hot-toast';
 import CategoryShowcaseManager from '@/components/admin/showcase/CategoryShowcaseManager';
 import AnnouncementSettingsPanel from '@/components/admin/AnnouncementSettingsPanel';
+import CollapsibleSection from '@/components/admin/marketing/CollapsibleSection';
 import DeliveryMessagePanel from '@/components/admin/DeliveryMessagePanel';
 import AvatarUploadField from '@/components/admin/AvatarUploadField';
 import { useCart } from '@/context/CartContext';
@@ -615,12 +616,17 @@ export default function SettingsPage() {
     return (
       <div className="space-y-5">
         {/* Welcome offer strip at the top of every storefront page (saved with Save Settings) */}
-        <AnnouncementSettingsPanel value={settings.announcement} onChange={(a) => upd('announcement', a)} phone={settings.phone} deliveryMessage={settings.deliveryMessage} />
+        <CollapsibleSection title="Welcome Offer Bar" status={settings.announcement?.enabled === false ? 'Off' : 'On'}>
+          <AnnouncementSettingsPanel value={settings.announcement} onChange={(a) => upd('announcement', a)} phone={settings.phone} deliveryMessage={settings.deliveryMessage} />
+        </CollapsibleSection>
 
         {/* The "Free Delivery across India" line: on/off, words, font, model, colours (saved with Save Settings) */}
-        <DeliveryMessagePanel value={settings.deliveryMessage} onChange={(d) => upd('deliveryMessage', d)} />
+        <CollapsibleSection title="Delivery Message" status={settings.deliveryMessage?.enabled === false ? 'Off' : 'On'}>
+          <DeliveryMessagePanel value={settings.deliveryMessage} onChange={(d) => upd('deliveryMessage', d)} />
+        </CollapsibleSection>
 
         {/* Hero Slides */}
+        <CollapsibleSection title="Homepage Hero Photo" status={`${heroSlides.length} photo${heroSlides.length === 1 ? '' : 's'}`}>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
             <div>
@@ -660,11 +666,15 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
+        </CollapsibleSection>
 
         {/* Category Showcase — saves on its own (/api/admin/category-showcase) */}
-        <CategoryShowcaseManager />
+        <CollapsibleSection title="Category Showcase" status="Saves instantly">
+          <CategoryShowcaseManager />
+        </CollapsibleSection>
 
         {/* Testimonials */}
+        <CollapsibleSection title="Happy Customers (Testimonials)" status={`${testimonials.length} review${testimonials.length === 1 ? '' : 's'}`}>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
             <div>
@@ -696,8 +706,10 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
+        </CollapsibleSection>
 
         {/* Instagram Feed */}
+        <CollapsibleSection title="Instagram Feed" status={`${instagramFeed.length} of 6 posts`}>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
             <div>
@@ -731,6 +743,7 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
+        </CollapsibleSection>
       </div>
     );
   }
