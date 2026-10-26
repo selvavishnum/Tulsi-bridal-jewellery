@@ -15,6 +15,8 @@
    ───────────────────────────────────────────── */
 import { DEFAULT_CHARGES, normalizeCharges } from './storeCharges.js';
 import { deliveryMessageFor } from './deliveryMessage.js';
+import { normalizeFocus } from './marketing.js';
+import { DEFAULT_FOCUS } from './categoryShowcase.js';
 
 /* The owner's delivery message follows the very same rule as the slides and the showcase:
    pickDeliveryMessage is what the server seeds, nextDeliveryMessage is what the browser
@@ -31,6 +33,11 @@ export { pickDeliveryMessage, nextDeliveryMessage } from './deliveryMessage.js';
    the page has to re-render for. */
 export const HERO_SLIDE_FIELDS = Object.freeze(['id', 'imageUrl']);
 
+/* Two more things a slide can carry, only when the owner has set them: `isActive: false` (the photo
+   is switched off) and `focus` (a crop other than Auto). A slide without them is exactly what it was
+   before they existed, so the HTML of an untouched hero does not change. */
+const isDefaultFocus = (f) => f.gravity === DEFAULT_FOCUS.gravity && f.x === DEFAULT_FOCUS.x && f.y === DEFAULT_FOCUS.y && f.zoom === DEFAULT_FOCUS.zoom;
+
 /**
  * The slides in `value` (settings.heroSlides), trimmed to HERO_SLIDE_FIELDS.
  * Every field is a string ('' when missing), so the result survives the
@@ -45,7 +52,15 @@ export function pickHeroSlides(value) {
   if (!Array.isArray(value)) return [];
   return value
     .filter((slide) => slide && typeof slide === 'object')
-    .map((slide) => Object.fromEntries(HERO_SLIDE_FIELDS.map((field) => [field, typeof slide[field] === 'string' ? slide[field] : ''])));
+    .map((slide) => {
+      const picked = Object.fromEntries(HERO_SLIDE_FIELDS.map((field) => [field, typeof slide[field] === 'string' ? slide[field] : '']));
+      if (slide.isActive === false) picked.isActive = false;
+      if (slide.focus && typeof slide.focus === 'object') {
+        const focus = normalizeFocus(slide.focus);
+        if (!isDefaultFocus(focus)) picked.focus = focus;
+      }
+      return picked;
+    });
 }
 
 /** True when two slide lists would draw the same hero (extra stored fields don't count). */
@@ -89,8 +104,23 @@ export function isImageLink(value) {
  * @param {ReturnType<typeof pickHeroSlides>} slides
  */
 export function heroPhotoUrl(slides) {
-  const found = (Array.isArray(slides) ? slides : []).find((slide) => slide && isImageLink(slide.imageUrl));
+  const found = (Array.isArray(slides) ? slides : []).find((slide) => slide && slide.isActive !== false && isImageLink(slide.imageUrl));
   return found ? found.imageUrl.trim() : '';
+}
+
+/**
+ * The photos the hero draws, in order: the first usable one for "Single photo" (what the hero has always
+ * done), every usable one (up to 6) for "Slider". A photo switched off, or without a link a browser can
+ * load, is skipped. Each is `{ url, focus }` (focus null = the default crop).
+ *
+ * @param {ReturnType<typeof pickHeroSlides>} slides
+ * @param {{ displayMode?: string } | null} [layout]
+ */
+export function heroPhotos(slides, layout) {
+  const usable = (Array.isArray(slides) ? slides : [])
+    .filter((slide) => slide && slide.isActive !== false && isImageLink(slide.imageUrl))
+    .map((slide) => ({ url: slide.imageUrl.trim(), focus: slide.focus || null }));
+  return layout?.displayMode === 'slider' ? usable.slice(0, 6) : usable.slice(0, 1);
 }
 
 /**
@@ -152,7 +182,7 @@ export function shippingBadge(charges, config) {
 
 /**
  * The reviews the admin entered (settings.testimonials) that can be shown: a
- * review needs text. Nothing is invented — no reviews configured means no
+ * review needs text and must not be switched off. Nothing is invented — no reviews configured means no
  * reviews section.
  *
  * @param {unknown} value
@@ -162,12 +192,20 @@ export function pickTestimonials(value) {
   if (!Array.isArray(value)) return [];
   const text = (v) => (typeof v === 'string' ? v.trim() : '');
   return value
-    .filter((t) => t && typeof t === 'object' && (text(t.review) || text(t.text)))
-    .map((t) => ({
-      name: text(t.name),
-      location: text(t.location),
-      rating: Number.isFinite(Number(t.rating)) && Number(t.rating) >= 1 ? Math.min(5, Math.round(Number(t.rating))) : 5,
-      review: text(t.review) || text(t.text),
-      photo: text(t.photo),
-    }));
+    .filter((t) => t && typeof t === 'object' && t.isActive !== false && (text(t.review) || text(t.text)))
+    .map((t) => {
+      const picked = {
+        name: text(t.name),
+        location: text(t.location),
+        rating: Number.isFinite(Number(t.rating)) && Number(t.rating) >= 1 ? Math.min(5, Math.round(Number(t.rating))) : 5,
+        review: text(t.review) || text(t.text),
+        photo: text(t.photo),
+      };
+      /* A crop only when the owner set one: an untouched review is what it always was. */
+      if (t.focus && typeof t.focus === 'object') {
+        const focus = normalizeFocus(t.focus);
+        if (!isDefaultFocus(focus)) picked.focus = focus;
+      }
+      return picked;
+    });
 }

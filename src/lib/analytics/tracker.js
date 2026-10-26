@@ -71,7 +71,7 @@ export function isAutomated() {
 }
 
 /* Staff and seller areas, including the staff sign-in page. */
-const staffPath = (p) => /^\/(admin|vendor|admin-portal|showcase-preview)(\/|$)/.test(p || '');
+const staffPath = (p) => /^\/(admin|vendor|admin-portal|showcase-preview|marketing-preview)(\/|$)/.test(p || '');
 
 /* ── Active time ── */
 const idle = () => now() - lastInteraction >= IDLE_AFTER_MS;

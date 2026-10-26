@@ -143,6 +143,9 @@ const MIME = { avif: 'image/avif', webp: 'image/webp', jpg: 'image/jpeg', png: '
 const QUALITY = { eco: 'q_auto:eco', low: 'q_auto:low', good: 'q_auto:good', best: 'q_auto:best' };
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
+/* Where a ratio / height crop looks. Unset = Cloudinary's AI ('g_auto'), as before. */
+const GRAVITY = { auto: 'g_auto', face: 'g_auto:faces', center: 'g_center', north: 'g_north', south: 'g_south' };
+
 /**
  * One Cloudinary delivery URL. Anything that isn't a Cloudinary upload URL
  * (a local file, Unsplash, a typo) is returned untouched.
@@ -161,12 +164,13 @@ const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
  * @param {number} [o.width]   target width in px, 16–4000. Never upscales.
  * @param {number} [o.ratio]   width ÷ height to crop to (e.g. 0.75 for 3:4); smart-crops with g_auto
  * @param {number} [o.height]  explicit crop height (alternative to ratio)
+ * @param {'auto'|'face'|'center'|'north'|'south'} [o.gravity]  what a crop (ratio / height) keeps in frame; default 'auto' (the jewellery)
  * @param {boolean} [o.progressive]  jpg only: fl_progressive, so the old-browser fallback paints coarse-to-fine
  * @param {boolean} [o.whiteBg]  AI Background Removal first, then flatten onto white (what cldCard does when
  *   NEXT_PUBLIC_CLOUDINARY_BG_REMOVAL is on; needs the paid add-on, so it is opt-in per call, never a default)
  * @returns {string}
  */
-export function cldUrl(url, { format = 'auto', quality = 'good', width, ratio, height, progressive = false, whiteBg = false } = {}) {
+export function cldUrl(url, { format = 'auto', quality = 'good', width, ratio, height, progressive = false, whiteBg = false, gravity } = {}) {
   if (!isImageUpload(url)) return url;
   const parts = [FORMAT[format] || FORMAT.auto];
   parts.push(typeof quality === 'number' ? `q_${clamp(Math.round(quality), 1, 100)}` : (QUALITY[quality] || QUALITY.good));
@@ -174,7 +178,7 @@ export function cldUrl(url, { format = 'auto', quality = 'good', width, ratio, h
   if (ratio || height) {
     /* c_lfill = c_fill that never upscales a small original. g_auto keeps the
        jewellery (not the empty background) inside the crop. */
-    parts.push('c_lfill', 'g_auto');
+    parts.push('c_lfill', GRAVITY[gravity] || 'g_auto');
     if (ratio) parts.push(`ar_${Number(ratio).toFixed(4).replace(/\.?0+$/, '')}`);
     else parts.push(`h_${clamp(Math.round(height), 16, 4000)}`);
   } else {
@@ -207,10 +211,10 @@ export function cldSrcSet(url, widths, opts) {
  */
 export function pictureModel(url, {
   widths = IMAGE_WIDTHS.gallery, sizes = '100vw', formats = ['avif', 'webp'],
-  fallbackFormat = 'jpg', quality = 'good', ratio, fallbackWidth,
+  fallbackFormat = 'jpg', quality = 'good', ratio, fallbackWidth, gravity,
 } = {}) {
   if (!isImageUpload(url)) return { cloudinary: false, sources: [], img: { src: url }, preload: null };
-  const base = { quality, ratio };
+  const base = { quality, ratio, gravity };
   const sources = formats.map((f) => ({ type: MIME[f], srcSet: cldSrcSet(url, widths, { ...base, format: f }), sizes }));
   const fb = { ...base, format: fallbackFormat, progressive: true };
   const mid = fallbackWidth || widths[Math.min(widths.length - 1, 2)];

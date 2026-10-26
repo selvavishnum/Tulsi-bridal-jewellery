@@ -89,6 +89,7 @@ describe('next.config.mjs — the retired rental URLs', () => {
     const by = (source) => rules.find((r) => r.source === source)?.headers.map((h) => h.key);
     assert.deepEqual(by('/:path*'), ['Content-Security-Policy', 'X-Frame-Options', 'X-Content-Type-Options', 'Referrer-Policy', 'Strict-Transport-Security', 'Permissions-Policy']);
     assert.deepEqual(by('/showcase-preview'), ['Content-Security-Policy', 'X-Frame-Options']);
+    assert.deepEqual(by('/marketing-preview'), ['Content-Security-Policy', 'X-Frame-Options'], 'the Marketing previews are framed by the admin page too');
     assert.deepEqual(rules.find((r) => r.source === '/fonts/:file*').headers, [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }]);
     assert.deepEqual(nextConfig.images.formats, ['image/avif', 'image/webp']);
     assert.deepEqual(nextConfig.images.remotePatterns.map((p) => p.hostname), ['res.cloudinary.com', 'images.unsplash.com']);
@@ -416,7 +417,7 @@ const stripComments = (code) => code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^
 
 /* Not storefront: the admin console (rental management for bookings already made lives there), the API
    (the rental routes stay, so does the data), the seller portal and the admin-only preview frame. */
-const NOT_STOREFRONT = /^src\/app\/(admin|admin-portal|api|vendor|showcase-preview)\/|^src\/components\/(admin|vendor)\//;
+const NOT_STOREFRONT = /^src\/app\/(admin|admin-portal|api|vendor|showcase-preview|marketing-preview)\/|^src\/components\/(admin|vendor)\//;
 /* Server code that keeps serving existing rentals — it may name them (and send their e-mails / messages). */
 const RENTAL_SERVER = new Set([
   'src/lib/email.js', 'src/lib/whatsapp.js', // sendRental* — for bookings already made

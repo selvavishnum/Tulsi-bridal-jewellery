@@ -29,6 +29,7 @@ import * as lib from '../src/lib/deliveryMessage.js';
 import * as admin from '../src/components/admin/deliveryMessageAdmin.js';
 import * as style from '../src/components/ui/deliveryMessageStyle.js';
 import * as welcomeOffer from '../src/lib/welcomeOffer.js';
+import * as marketingLib from '../src/lib/marketing.js';
 import { DEFAULT_CHARGES, freeShippingLine } from '../src/lib/storeCharges.js';
 
 const {
@@ -1287,14 +1288,14 @@ describe('the settings page', { skip }, () => {
     ? load('src/app/admin/settings/page.js', {
       react: pageReact,
       'react-icons/fi': icons,
-      'next/image': esm((props) => React.createElement('img', { alt: '', ...props })),
       'react-hot-toast': esm({ success() {}, error() {} }),
       '@/components/admin/showcase/CategoryShowcaseManager': esm(stub('CategoryShowcaseManager')),
       /* The real accordion starts closed (tests/marketing-collapsible.test.mjs); here every section is open so its card can be checked. */
+      '@/components/admin/marketing/MarketingPanels': { HeroPhotosPanel: stub('HeroPhotosPanel'), TestimonialsPanel: stub('TestimonialsPanel'), InstagramPanel: stub('InstagramPanel') },
+      '@/lib/marketing': marketingLib,
       '@/components/admin/marketing/CollapsibleSection': esm(({ title, children }) => React.createElement('section', { 'data-section': title }, React.createElement('h2', null, title), children)),
       '@/components/admin/AnnouncementSettingsPanel': esm(AnnouncementSettingsPanel),
       '@/components/admin/DeliveryMessagePanel': esm(Panel),
-      '@/components/admin/AvatarUploadField': esm(stub('AvatarUploadField')),
       '@/context/CartContext': { useCart: () => ({ ...cart, refreshCharges() {} }) },
     }).default
     : null;
@@ -1333,7 +1334,8 @@ describe('the settings page', { skip }, () => {
     assert.match(src, /<DeliveryMessagePanel value=\{settings\.deliveryMessage\} onChange=\{\(d\) => upd\('deliveryMessage', d\)\} \/>/);
     const retired = src.match(/const SHOWCASE_FIELDS = \[([^\]]*)\]/)[1];
     assert.doesNotMatch(retired, /deliveryMessage/, 'withoutShowcase must not strip it from the Save');
-    assert.match(src, /JSON\.stringify\(\{ \.\.\.withoutShowcase\(settings\), heroSlides, testimonials, instagramFeed \}\)/);
+    /* The page's Save sends the whole settings state (which holds deliveryMessage) plus the Marketing lists. */
+    assert.match(src, /JSON\.stringify\(\{ \.\.\.withoutShowcase\(settings\), \.\.\.marketingDraft \}\)/);
   });
 
   test('the welcome-offer card’s own preview follows the Delivery Message card (switched off there, gone here)', () => {

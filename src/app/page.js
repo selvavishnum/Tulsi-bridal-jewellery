@@ -3,6 +3,7 @@ import { absoluteUrl } from '@/lib/seo';
 import { getDB, docToObj } from '@/lib/firebase';
 import { pickHeroSlides, pickShipping, pickDeliveryMessage } from '@/lib/heroSlides';
 import { normalizeShowcase } from '@/lib/categoryShowcase';
+import { normalizeLayout } from '@/lib/marketing';
 import { getStoreCharges } from '@/lib/storeChargesServer';
 
 /* Server wrapper so the homepage has its own canonical and description
@@ -34,6 +35,7 @@ const keepLastGoodPage = () => process.env.NODE_ENV === 'production' && process.
 /* What the homepage draws from the site settings, as plain objects for
    HomeClient:
    - heroSlides: an array (empty when none are set);
+   - heroLayout: how the hero draws them (shape, size, Single photo / Slider);
    - showcase: the normalized category showcase (cards, order, layout);
    - shipping: the shipping rule behind the hero's first badge (always a rule —
      a missing document means the defaults, which is what the checkout uses);
@@ -52,6 +54,7 @@ async function loadHomeSettings() {
     const settings = doc.exists ? docToObj(doc) : {};
     return {
       heroSlides: pickHeroSlides(settings?.heroSlides),
+      heroLayout: normalizeLayout(settings?.heroLayout, 'hero'),
       showcase: normalizeShowcase(settings),
       shipping: pickShipping(charges),
       deliveryMessage: pickDeliveryMessage(settings),
@@ -67,6 +70,7 @@ export default async function HomePage() {
   return (
     <HomeClient
       heroSlides={home?.heroSlides ?? null}
+      heroLayout={home?.heroLayout ?? null}
       showcase={home?.showcase ?? null}
       shipping={home?.shipping ?? null}
       deliveryMessage={home?.deliveryMessage ?? null}

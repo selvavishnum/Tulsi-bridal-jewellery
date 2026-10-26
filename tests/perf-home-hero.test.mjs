@@ -40,6 +40,7 @@ import * as imageLib from '../src/lib/cloudinaryImage.js';
 import * as showcaseLib from '../src/lib/categoryShowcase.js';
 import * as catalogLib from '../src/lib/catalogImages.js';
 import * as chargesLib from '../src/lib/storeCharges.js';
+import * as marketingLib from '../src/lib/marketing.js';
 import * as chargesServerLib from '../src/lib/storeChargesServer.js';
 import * as deliveryLib from '../src/lib/deliveryMessage.js';
 import * as messageStyleLib from '../src/components/ui/deliveryMessageStyle.js';
@@ -273,6 +274,7 @@ const page = sucrase ? loadJsx('src/app/page.js', {
   },
   '@/lib/heroSlides': heroLib,
   '@/lib/categoryShowcase': showcaseLib,
+  '@/lib/marketing': marketingLib,
   '@/lib/storeChargesServer': chargesServerLib,
 }) : null;
 
@@ -309,7 +311,7 @@ test('page.js: passes the configured hero photo to HomeClient — only the field
   } } });
   const el = await page.default();
   assert.equal(el.type, HomeClientStub);
-  assert.deepEqual(Object.keys(el.props), ['heroSlides', 'showcase', 'shipping', 'deliveryMessage'], 'no other setting is put into the page');
+  assert.deepEqual(Object.keys(el.props), ['heroSlides', 'heroLayout', 'showcase', 'shipping', 'deliveryMessage'], 'no other setting is put into the page');
   assert.deepEqual(el.props.heroSlides, [photo(), photo({ id: '2', imageUrl: TWO })]);
   assert.deepEqual(JSON.parse(JSON.stringify(el.props)), el.props, 'plain JSON');
   assert.doesNotMatch(JSON.stringify(el.props.heroSlides), /Rental|rentals|Bridal|Bride/, 'no rental button in the page payload');
@@ -515,6 +517,10 @@ if (sucrase) {
     '@/lib/cloudinaryImage': imageLib,
     '@/lib/categoryShowcase': showcaseLib,
     '@/lib/heroSlides': heroLib,
+    '@/lib/marketing': marketingLib,
+    '@/components/home/HeroPhotos': loadJsx('src/components/home/HeroPhotos.jsx', { 'react-icons/fi': fiIcons, '@/lib/categoryShowcase': showcaseLib }),
+    '@/components/home/FocusPhoto': loadJsx('src/components/home/FocusPhoto.jsx', { '@/lib/categoryShowcase': showcaseLib }),
+    '@/components/home/SliderRow': { __esModule: true, default: ({ children }) => React.createElement('div', { 'data-slider-row': 'true' }, children) },
   };
   const home = loadJsx('src/app/HomeClient.js', homeDeps);
   HomeClient = home.default;
@@ -963,7 +969,8 @@ test('HomeClient: nothing of the old hero is left — no rental button or route,
   assert.doesNotMatch(html.replace(/tulsi-bridal/g, ''), /\bbrides?\b|\bbridal\b/i, 'bridal wording is fashion wording now (the Cloudinary folder "tulsi-bridal" in a photo link is a storage path and stays)');
   assert.doesNotMatch(html, /Temple Bride|Jewellery Crafted for Brides|Shop Collection/, 'the old slide texts are not drawn');
   const source = read('src/app/HomeClient.js');
-  assert.doesNotMatch(source, /setInterval|setTimeout|requestAnimationFrame|matchMedia|HeroSlider|HeroParticles|HeroPhoto\b|HERO_ART|DEFAULT_SLIDES|DEFAULT_TESTIMONIALS|FiCalendar|FiChevron|transitioning/);
+  /* (The slider is opt-in now — Admin → Marketing → Display mode: Slider — and lives in components/home/HeroPhotos.jsx; the default hero draws one photo and has no timer.) */
+  assert.doesNotMatch(source, /setInterval|setTimeout|requestAnimationFrame|matchMedia|HeroParticles|HeroPhoto\b|HERO_ART|DEFAULT_SLIDES|DEFAULT_TESTIMONIALS|FiCalendar|FiChevron|transitioning/);
   assert.doesNotMatch(source, /rental|\/rentals|Book Rental/i);
   assert.doesNotMatch(source, /from 'next\/image'/, 'no photo goes through /_next/image (it would download the full master)');
   assert.doesNotMatch(source, /Playfair|next\/font/, 'no extra font on the LCP path');
@@ -1077,8 +1084,8 @@ async function hydrateAndRefresh({ heroSlides, deliveryMessage, stored = null, f
   globalThis.fetch = async () => ({ json: async () => (fetched ? { success: true, data: fetched } : { success: false }) });
   try {
     render(HomeClientRecorded, { heroSlides, deliveryMessage });
-    const settingsEffect = recorded.effects.find((e) => e.deps?.length === 3 && e.deps.every((d) => typeof d === 'boolean'));
-    assert.ok(settingsEffect, 'HomeClient has its settings effect (deps: [seeded, showcaseSeeded, messageSeeded])');
+    const settingsEffect = recorded.effects.find((e) => e.deps?.length === 4 && e.deps.every((d) => typeof d === 'boolean'));
+    assert.ok(settingsEffect, 'HomeClient has its settings effect (deps: [seeded, showcaseSeeded, messageSeeded, layoutSeeded])');
     assert.equal(settingsEffect.deps[0], Array.isArray(heroSlides), 'it knows whether the server seeded the slides');
     assert.equal(settingsEffect.deps[2], !!deliveryMessage, 'it knows whether the server seeded the delivery message');
     settingsEffect.fn();
@@ -1197,19 +1204,16 @@ test('HomeClient settings refresh: a failed fetch, or settings without a deliver
 
 /* ── Admin → Settings → Hero ── */
 
-test('admin settings: the hero form says plainly that one photo is shown and no longer asks for fields the home page ignores', () => {
-  const source = read('src/app/admin/settings/page.js');
-  assert.match(source, /Homepage Hero Photo/);
-  assert.match(source, /shows one photo: the image of <strong>Slide 1<\/strong>/);
-  assert.match(source, /Other slides are kept here but not shown/);
-  assert.match(source, /title, subtitle and button fields of the old slider are no longer used on the homepage/);
-  assert.match(source, /const BLANK_SLIDE = \{ id: '', imageUrl: '' \};/, 'a new slide is just a photo — no "Book Rental" button saved with it');
-  assert.match(source, /shown on the homepage/);
-  const row = source.slice(source.indexOf('function SlideRow'), source.indexOf('/* ─────────────────────────── Testimonial row'));
-  assert.doesNotMatch(row, /Main Title|Button 1|Button 2|Tag \/ Badge|Subtitle/, 'the unused fields are not listed');
-  assert.doesNotMatch(source, /Book Rental|\/rentals|Bridal|Brides|Premium Bridal/, 'no rental button or bridal brand string is suggested anywhere');
-  assert.match(source, /businessName: 'Tulsi Fashion Jewellery'/);
-  assert.match(source, /The &ldquo;Happy Customers&rdquo; section is hidden on the homepage until you add a real review here/);
+test('admin settings: the hero panel says plainly how photos are shown, lists no fields the home page ignores, and suggests no rental or bridal wording', () => {
+  const page = read('src/app/admin/settings/page.js');
+  const panels = read('src/components/admin/marketing/MarketingPanels.jsx');
+  assert.match(page, /title="Homepage Hero Photo"/);
+  assert.match(panels, /Single photo shows the first visible photo\. Slider shows every visible photo/);
+  assert.match(panels, /newItem\('hero', \{ id:/, 'a new slide is just a photo — no "Book Rental" button saved with it');
+  assert.doesNotMatch(panels, /Main Title|Button 1|Button 2|Tag \/ Badge|Subtitle/, 'the unused fields are not listed');
+  assert.doesNotMatch(page + panels, /Book Rental|\/rentals|Bridal|Brides|Premium Bridal/, 'no rental button or bridal brand string is suggested anywhere');
+  assert.match(page, /businessName: 'Tulsi Fashion Jewellery'/);
+  assert.match(panels, /stays hidden on the homepage until you add a real review/);
 });
 
 /* ── src/app/api/admin/settings/route.js ── */

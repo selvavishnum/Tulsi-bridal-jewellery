@@ -46,7 +46,7 @@ export default function CollapsibleSection({ title, status = '', dirty = false, 
         >
           <span className="min-w-0 flex-1">
             <span className="block truncate font-bold text-gray-800">{title}</span>
-            {status && <span className="block truncate text-xs font-normal text-gray-500">{status}</span>}
+            {status && <span className="block truncate font-sans text-xs font-normal text-gray-500">{status}</span>}
           </span>
           {dirty && (
             <span className="inline-flex flex-shrink-0 items-center gap-1 text-xs font-semibold text-amber-700">

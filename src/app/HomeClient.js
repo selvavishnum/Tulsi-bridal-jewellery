@@ -17,7 +17,12 @@ import DeliveryMessage from '@/components/ui/DeliveryMessage';
 import { normalizeShowcase } from '@/lib/categoryShowcase';
 import CatalogImage from '@/components/ui/CatalogImage';
 import { GRID_SIZES, SECTION_CONTAINER, gridSizes } from '@/lib/catalogImages';
-import { nextHeroSlides, nextShowcase, nextDeliveryMessage, heroPhotoUrl, currentShipping, shippingBadge, pickTestimonials } from '@/lib/heroSlides';
+import { nextHeroSlides, nextShowcase, nextDeliveryMessage, heroPhotos, currentShipping, shippingBadge, pickTestimonials } from '@/lib/heroSlides';
+import { normalizeLayout, nextIfChanged, visible } from '@/lib/marketing';
+import { focusStyle } from '@/lib/categoryShowcase';
+import { HeroSlider, heroShape, heroBoxClass, heroSizesFor, heroCrop } from '@/components/home/HeroPhotos';
+import FocusPhoto from '@/components/home/FocusPhoto';
+import SliderRow from '@/components/home/SliderRow';
 
 function getCookie(name) {
   if (typeof document === 'undefined') return '';
@@ -57,19 +62,6 @@ export const HERO_PHOTO = Object.freeze({
      must not describe what it shows. */
   alt: 'Tulsi Fashion Jewellery — featured styles',
 });
-
-/* The box width at each breakpoint: keep in step with HERO_PHOTO.sizes (those
-   are its widest case). On a phone that supports svh the box also shrinks on a
-   short screen — 100svh minus 33rem, the room the rest of the hero needs, as
-   wide as 4:5 allows, never under 14rem — so the headline, line and button
-   stay above the fold on a 390×844 as well as a 412×915. svh is the screen
-   with the browser bars showing, so the box never changes size as they hide. */
-const PHOTO_BOX = [
-  'w-[min(100%,18rem)] supports-[height:1svh]:w-[min(100%,18rem,max(14rem,calc((100svh-33rem)*0.8)))]',
-  'min-[400px]:w-[min(100%,20rem)] min-[400px]:supports-[height:1svh]:w-[min(100%,20rem,max(14rem,calc((100svh-33rem)*0.8)))]',
-  'md:w-[min(100%,24rem)] md:supports-[height:1svh]:w-[min(100%,24rem)]',
-  'lg:w-full lg:max-w-[30rem] lg:supports-[height:1svh]:w-full',
-].join(' ');
 
 /* Shown when no hero photo is set (or its link fails): layered delicate chains
    with a pendant and a pair of drop earrings on the cream — the brand's own
@@ -119,7 +111,7 @@ export function HeroIllustration() {
 }
 
 /* The photo, or the illustration when there is none or it cannot load. */
-export function HeroArt({ photoUrl }) {
+export function HeroArt({ photoUrl, focus = null, layout = null, priority = true, alt = HERO_PHOTO.alt }) {
   /* The link that failed, so a new photo gets its own chance. */
   const [failed, setFailed] = useState('');
   const broken = useCallback(() => setFailed(photoUrl), [photoUrl]);
@@ -129,17 +121,21 @@ export function HeroArt({ photoUrl }) {
     if (el && el.complete && el.naturalWidth === 0) broken();
   }, [broken]);
   if (!photoUrl || failed === photoUrl) return <HeroIllustration />;
+  /* The owner's crop (Admin → Marketing → Homepage Hero Photo): nothing extra is passed for the default one. */
+  const crop = heroCrop(focus);
   return (
     <CloudinaryPicture
       src={photoUrl}
-      alt={HERO_PHOTO.alt}
+      alt={alt}
       fill
-      priority
-      ratio={HERO_PHOTO.ratio}
-      sizes={HERO_PHOTO.sizes}
+      priority={priority}
+      ratio={crop.cropped ? heroShape(layout).ratio : undefined}
+      {...(crop.gravity && { gravity: crop.gravity })}
+      sizes={heroSizesFor(layout, HERO_PHOTO.sizes)}
       widths={HERO_PHOTO.widths}
       quality={HERO_PHOTO.quality}
       className="object-cover object-[50%_30%]"
+      {...(crop.style && { style: crop.style })}
       onError={broken}
       ref={checkLoaded}
     />
@@ -174,8 +170,12 @@ const FIXED_BADGES = [
    is drawn (icon, font, shape, colours). Without words another true badge takes
    its place, so the row never advertises "free above ₹N" and is never short of
    a badge. */
-export function HeroSection({ photoUrl = '', shippingLabel = '', deliveryMessage = null }) {
+export function HeroSection({ photoUrl = '', photos = null, layout = null, shippingLabel = '', deliveryMessage = null }) {
   const delivery = typeof shippingLabel === 'string' ? shippingLabel.trim() : '';
+  /* What the photo box shows: `photos` ([{ url, focus }], from heroPhotos) — or a lone `photoUrl`. */
+  const list = Array.isArray(photos) ? photos : (photoUrl ? [{ url: photoUrl, focus: null }] : []);
+  const shape = heroShape(layout);
+  const slider = layout?.displayMode === 'slider' && list.length > 1;
   return (
     <section
       aria-labelledby="hero-heading"
@@ -218,10 +218,12 @@ export function HeroSection({ photoUrl = '', shippingLabel = '', deliveryMessage
 
         {/* Photo: above the words on a phone, right of them from 1024px — the words come first in the HTML (reading order). */}
         <div className="order-first flex justify-center lg:order-last">
-          <div className={`relative ${PHOTO_BOX}`}>
-            <div aria-hidden="true" className="absolute inset-0 translate-x-3 translate-y-3 rounded-[1.75rem] border border-gold-400/60" />
-            <div className="relative aspect-[4/5] overflow-hidden rounded-[1.75rem] bg-ivory-200 shadow-[0_28px_60px_-30px_rgba(74,18,36,0.5)]">
-              <HeroArt photoUrl={photoUrl} />
+          <div className={`relative ${heroBoxClass(layout)}`}>
+            <div aria-hidden="true" className={`absolute inset-0 translate-x-3 translate-y-3 ${shape.round} border border-gold-400/60`} />
+            <div className={`relative ${shape.aspect} overflow-hidden ${shape.round} bg-ivory-200 shadow-[0_28px_60px_-30px_rgba(74,18,36,0.5)]`}>
+              {slider
+                ? <HeroSlider count={list.length} renderSlide={(i) => <HeroArt photoUrl={list[i].url} focus={list[i].focus} layout={layout} priority={i === 0} />} />
+                : <HeroArt photoUrl={list[0]?.url || ''} focus={list[0]?.focus || null} layout={layout} />}
             </div>
           </div>
         </div>
@@ -272,12 +274,62 @@ export function instagramHandle(value, fallback = 'tulsibridal') {
   return /^[A-Za-z0-9._]{1,30}$/.test(h) ? h : fallback;
 }
 
+/* Layout of the section (Admin → Marketing → Happy Customers): Large + Grid + Circle is what it has
+   always been. Density = cards per row from 768px and card width on a phone. */
+const REVIEW_COLS = { large: 'md:grid-cols-3', medium: 'md:grid-cols-4', small: 'md:grid-cols-5' };
+const REVIEW_CARD = { large: 'w-[80vw] max-w-xs', medium: 'w-[64vw] max-w-[15rem]', small: 'w-[52vw] max-w-[12rem]' };
+const REVIEW_CARD_SLIDER = { large: 'md:w-80', medium: 'md:w-64', small: 'md:w-52' };
+/* The reviewer's photo frame per shape (the circle keeps the 56px avatar). */
+const REVIEW_FRAME = {
+  circle: { box: 'h-14 w-14 rounded-full', variant: 'circle' },
+  square: { box: 'h-14 w-14 rounded-xl', variant: 'square' },
+  king_size: { box: 'h-[4.375rem] w-14 rounded-xl', variant: 'king_size' },
+  wide: { box: 'h-[3.125rem] w-[5.5rem] rounded-xl', variant: 'wide' },
+};
+
+function ReviewerPhoto({ review, shape }) {
+  /* No photo, or the untouched round avatar: the face-centred avatar / initial badge, as always. */
+  if (!review.photo || (shape === 'circle' && !review.focus)) {
+    return <CustomerAvatar name={review.name} photo={review.photo} size={56} className="border-2 border-gold-500/60 shadow-sm" />;
+  }
+  const frame = REVIEW_FRAME[shape] || REVIEW_FRAME.circle;
+  return (
+    <span className={`relative block flex-shrink-0 overflow-hidden border-2 border-gold-500/60 bg-stone-100 shadow-sm ${frame.box}`}>
+      <FocusPhoto src={review.photo} alt="" variant={frame.variant} focus={review.focus} widths={[120, 240]} sizes="90px" />
+    </span>
+  );
+}
+
 /* ── Happy Customers ──
    Only the reviews the admin entered (Admin → Settings → Happy Customers,
    already trimmed by pickTestimonials): with none, nothing is drawn — no
    sample reviews are made up to fill the space. */
-export function CustomerReviews({ reviews }) {
+export function CustomerReviews({ reviews, layout = null }) {
   if (!Array.isArray(reviews) || reviews.length === 0) return null;
+  const size = REVIEW_COLS[layout?.size] ? layout.size : 'large';
+  const shape = REVIEW_FRAME[layout?.layoutVariant] ? layout.layoutVariant : 'circle';
+  const slider = layout?.displayMode === 'slider';
+  const cards = reviews.map((t, i) => (
+    <div key={i} className={`bg-white border border-stone-100 shadow-sm rounded-2xl p-6 flex-shrink-0 ${REVIEW_CARD[size]} ${slider ? REVIEW_CARD_SLIDER[size] : 'md:w-auto md:max-w-none'} snap-start flex flex-col hover:border-gold-300 transition-colors`}>
+      {/* Customer photo + info at top */}
+      <div className="flex items-center gap-3 mb-4">
+        {/* Face-centred round Cloudinary photo; the initial badge if there's
+            no photo or it fails to load — never a broken image. */}
+        <ReviewerPhoto review={t} shape={shape} />
+        <div>
+          <p className="font-semibold text-stone-900 text-sm">{t.name}</p>
+          {t.location && <p className="text-gold-700 text-xs font-medium">{t.location}</p>}
+          <div className="flex gap-0.5 mt-1">
+            {Array.from({ length: 5 }).map((_, si) => (
+              <FiStar key={si} className={`text-xs ${si < t.rating ? 'text-gold-500 fill-current' : 'text-stone-200 fill-current'}`} />
+            ))}
+          </div>
+        </div>
+      </div>
+      {/* Review text */}
+      <p className="font-serif text-stone-600 text-sm leading-relaxed italic flex-1">&ldquo;{t.review}&rdquo;</p>
+    </div>
+  ));
   return (
     <section className="py-16 bg-white">
       <div className="section-container">
@@ -285,33 +337,88 @@ export function CustomerReviews({ reviews }) {
           <div className="luxury-label justify-center mb-3">What Our Customers Say</div>
           <h2 className="font-serif text-3xl font-bold text-stone-900">Happy Customers</h2>
         </div>
-        {/* Mobile: horizontal scroll; Desktop: 3-column grid */}
-        <div className="flex gap-5 overflow-x-auto pb-3 md:overflow-visible md:grid md:grid-cols-3 md:pb-0 snap-x snap-mandatory md:snap-none scrollbar-hide">
-          {reviews.map((t, i) => (
-            <div key={i} className="bg-white border border-stone-100 shadow-sm rounded-2xl p-6 flex-shrink-0 w-[80vw] max-w-xs md:w-auto md:max-w-none snap-start flex flex-col hover:border-gold-300 transition-colors duration-300">
-              {/* Customer photo + info at top */}
-              <div className="flex items-center gap-3 mb-4">
-                {/* Face-centred round Cloudinary photo; the initial badge if there's
-                    no photo or it fails to load — never a broken image. */}
-                <CustomerAvatar name={t.name} photo={t.photo} size={56} className="border-2 border-gold-500/60 shadow-sm" />
-                <div>
-                  <p className="font-semibold text-stone-900 text-sm">{t.name}</p>
-                  {t.location && <p className="text-gold-700 text-xs font-medium">{t.location}</p>}
-                  <div className="flex gap-0.5 mt-1">
-                    {Array.from({ length: 5 }).map((_, si) => (
-                      <FiStar key={si} className={`text-xs ${si < t.rating ? 'text-gold-500 fill-current' : 'text-stone-200 fill-current'}`} />
-                    ))}
-                  </div>
-                </div>
-              </div>
-              {/* Review text */}
-              <p className="font-serif text-stone-600 text-sm leading-relaxed italic flex-1">&ldquo;{t.review}&rdquo;</p>
-            </div>
-          ))}
-        </div>
+        {slider ? (
+          <SliderRow label="Happy customers" className="gap-5 pb-3">{cards}</SliderRow>
+        ) : (
+          /* Mobile: horizontal scroll; Desktop: grid */
+          <div className={`flex gap-5 overflow-x-auto pb-3 md:overflow-visible md:grid ${REVIEW_COLS[size]} md:pb-0 snap-x snap-mandatory md:snap-none scrollbar-hide`}>{cards}</div>
+        )}
       </div>
     </section>
   );
+}
+
+/* ── Instagram tiles ──
+   Large + Grid + Square is the strip as it has always been (3 across, 1:1). Shape = the tile's
+   frame; density = tiles per row; Slider = one swipeable row. A crop the owner set is applied
+   as the photo's position / zoom inside the tile. */
+const IG_TILE = {
+  circle: 'aspect-square rounded-full',
+  square: 'aspect-square rounded-xl',
+  king_size: 'aspect-[4/5] rounded-xl',
+  wide: 'aspect-video rounded-xl',
+};
+const IG_GRID = {
+  large: 'grid-cols-3 gap-2 md:gap-3',
+  medium: 'grid-cols-3 gap-2 md:grid-cols-4 md:gap-3',
+  small: 'grid-cols-3 gap-2 md:grid-cols-6 md:gap-3',
+};
+const IG_GRID_WIDE = {
+  large: 'grid-cols-2 gap-2 md:grid-cols-3 md:gap-3',
+  medium: 'grid-cols-2 gap-2 md:grid-cols-3 md:gap-3',
+  small: 'grid-cols-2 gap-2 md:grid-cols-4 md:gap-3',
+};
+const IG_SLIDE = {
+  large: 'w-[44vw] max-w-[260px] md:w-60',
+  medium: 'w-[36vw] max-w-[200px] md:w-48',
+  small: 'w-[28vw] max-w-[150px] md:w-36',
+};
+/* How wide a tile is drawn, so the browser fetches the right file. */
+const IG_SIZES = {
+  large: INSTAGRAM_SIZES,
+  medium: '(min-width: 1280px) 300px, (min-width: 768px) 25vw, 33vw',
+  small: '(min-width: 1280px) 200px, (min-width: 768px) 17vw, 33vw',
+};
+const IG_SIZES_WIDE = '(min-width: 1280px) 400px, (min-width: 768px) 33vw, 50vw';
+const IG_SIZES_SLIDE = '(min-width: 768px) 240px, 44vw';
+
+export function InstagramTiles({ posts, layout, igUrl }) {
+  const size = IG_GRID[layout?.size] ? layout.size : 'large';
+  const shape = IG_TILE[layout?.layoutVariant] ? layout.layoutVariant : 'square';
+  const slider = layout?.displayMode === 'slider';
+  const tiles = posts.map((post, i) => (
+    <a
+      key={i}
+      href={post.postUrl || igUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`group relative overflow-hidden bg-stone-100 block ${IG_TILE[shape]} ${slider ? `flex-none snap-start ${IG_SLIDE[size]}` : ''}`}
+    >
+      {post.imageUrl && (
+        <CatalogImage
+          src={post.imageUrl}
+          alt={post.caption || 'Instagram post'}
+          fill
+          widths={[240, 400, 640]}
+          sizes={slider ? IG_SIZES_SLIDE : shape === 'wide' ? IG_SIZES_WIDE : IG_SIZES[size]}
+          className="object-cover transition-transform duration-500 group-hover:scale-105"
+          {...(post.focus && { style: focusStyle(post.focus) })}
+        />
+      )}
+      {/* Hover overlay */}
+      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all duration-300 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+        {post.caption && (
+          <p className="text-white text-xs text-center px-3 leading-relaxed line-clamp-3">{post.caption}</p>
+        )}
+        <span className="inline-flex items-center gap-1 text-white text-xs font-semibold border border-white/60 px-3 py-1 rounded-full">
+          <FiExternalLink className="text-xs" /> View Post
+        </span>
+      </div>
+    </a>
+  ));
+  return slider
+    ? <div className="mb-8"><SliderRow label="Instagram posts" className="gap-3">{tiles}</SliderRow></div>
+    : <div className={`grid mb-8 ${shape === 'wide' ? IG_GRID_WIDE[size] : IG_GRID[size]}`}>{tiles}</div>;
 }
 
 /* ── Main Page ──
@@ -327,6 +434,7 @@ export default function HomeClient({
   showcase: serverShowcase = null,
   shipping: serverShipping = null,
   deliveryMessage: serverMessage = null,
+  heroLayout: serverHeroLayout = null,
 }) {
   const { charges: liveCharges } = useCart();
   const charges = currentShipping(liveCharges, serverShipping);
@@ -348,6 +456,11 @@ export default function HomeClient({
   const [testimonials, setTestimonials] = useState([]);
   const [instagramFeed, setInstagramFeed] = useState([]);
   const [settingsReady, setSettingsReady] = useState(false);
+  /* How the sections draw their photos (Admin → Marketing: shape, size, Single photo / Slider / Grid). The hero's is seeded (shape, size, Single photo / Slider): seeded with the slides, so the first HTML is final. */
+  const layoutSeeded = !!serverHeroLayout;
+  const [heroLayout, setHeroLayout] = useState(() => serverHeroLayout || normalizeLayout(null, 'hero'));
+  const [testimonialsLayout, setTestimonialsLayout] = useState(() => normalizeLayout(null, 'testimonials'));
+  const [instagramLayout, setInstagramLayout] = useState(() => normalizeLayout(null, 'instagram'));
 
   // Infinite scroll state
   const [browseProducts, setBrowseProducts] = useState([]);
@@ -384,6 +497,9 @@ export default function HomeClient({
          only when it differs: an identical list keeps the very same state, so
          the first photo is neither re-rendered nor re-fetched. */
       setHeroSlides((prev) => nextHeroSlides(prev, d.heroSlides, { stale: cached && seeded }));
+      setHeroLayout((prev) => nextIfChanged(prev, normalizeLayout(d.heroLayout, 'hero'), { stale: cached && layoutSeeded }));
+      setTestimonialsLayout((prev) => nextIfChanged(prev, normalizeLayout(d.testimonialsLayout, 'testimonials')));
+      setInstagramLayout((prev) => nextIfChanged(prev, normalizeLayout(d.instagramLayout, 'instagram')));
       /* Same rule as the slides: a seeded showcase is newer than the copy this
          browser stored, and an identical one keeps its state (no re-render). */
       if (!(cached && showcaseSeeded)) setShowcase((prev) => nextShowcase(prev, normalizeShowcase(d)));
@@ -406,7 +522,7 @@ export default function HomeClient({
         else setSettingsReady(true);
       })
       .catch(() => setSettingsReady(true));
-  }, [seeded, showcaseSeeded, messageSeeded]);
+  }, [seeded, showcaseSeeded, messageSeeded, layoutSeeded]);
 
   // Fetch a page of browse products
   const fetchBrowse = useCallback(async (page, cat, sort, reset = false) => {
@@ -471,13 +587,13 @@ export default function HomeClient({
   const igHandle = instagramHandle(siteSettings.instagram);
   const igUrl = `https://www.instagram.com/${igHandle}/`;
   /* Only posts that actually have a photo — no empty grey tiles. */
-  const igPosts = instagramFeed.filter((post) => post && post.imageUrl);
+  const igPosts = visible(instagramFeed, 'instagram');
 
   return (
     <div className="min-h-screen bg-white">
 
       {/* ── HERO ── */}
-      <HeroSection photoUrl={heroPhotoUrl(heroSlides)} shippingLabel={shippingBadge(charges, deliveryMessage)} deliveryMessage={deliveryMessage} />
+      <HeroSection photos={heroPhotos(heroSlides, heroLayout)} layout={heroLayout} shippingLabel={shippingBadge(charges, deliveryMessage)} deliveryMessage={deliveryMessage} />
 
       {/* ── TOP CATEGORIES (Admin → Settings → Category Showcase) ──
           Rendered once the settings are known, so a hidden category never
@@ -621,7 +737,7 @@ export default function HomeClient({
       </section>
 
       {/* ── HAPPY CUSTOMERS ── */}
-      <CustomerReviews reviews={testimonials} />
+      <CustomerReviews reviews={testimonials} layout={testimonialsLayout} />
 
       {/* ── INSTAGRAM FEED ── */}
       <section className="py-16 bg-white border-t border-stone-100">
@@ -634,37 +750,7 @@ export default function HomeClient({
           </div>
 
           {igPosts.length > 0 ? (
-            <div className="grid grid-cols-3 gap-2 md:gap-3 mb-8">
-              {igPosts.slice(0, 6).map((post, i) => (
-                <a
-                  key={i}
-                  href={post.postUrl || igUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group relative aspect-square overflow-hidden rounded-xl bg-stone-100 block"
-                >
-                  {post.imageUrl && (
-                    <CatalogImage
-                      src={post.imageUrl}
-                      alt={post.caption || 'Instagram post'}
-                      fill
-                      widths={[240, 400, 640]}
-                      sizes={INSTAGRAM_SIZES}
-                      className="object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                  )}
-                  {/* Hover overlay */}
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all duration-300 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
-                    {post.caption && (
-                      <p className="text-white text-xs text-center px-3 leading-relaxed line-clamp-3">{post.caption}</p>
-                    )}
-                    <span className="inline-flex items-center gap-1 text-white text-xs font-semibold border border-white/60 px-3 py-1 rounded-full">
-                      <FiExternalLink className="text-xs" /> View Post
-                    </span>
-                  </div>
-                </a>
-              ))}
-            </div>
+            <InstagramTiles posts={igPosts.slice(0, 6)} layout={instagramLayout} igUrl={igUrl} />
           ) : (
             <div className="flex flex-col items-center justify-center py-16 border-2 border-dashed border-stone-200 rounded-2xl mb-8">
               <FiInstagram className="text-5xl text-stone-300 mb-4" />
