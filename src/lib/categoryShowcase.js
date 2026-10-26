@@ -86,7 +86,14 @@ const clampNum = (v, lo, hi, dflt) => {
 };
 const isImageUrl = (v) => typeof v === 'string' && v.length <= 600 && /^https:\/\/[^\s"'<>]+$/.test(v);
 
-function normalizeFocus(f) {
+/**
+ * Any stored / typed crop focus → the complete, valid one (gravity from the
+ * allow-list, x / y 0–100, zoom 1–2.5). Shared with src/lib/marketing.js, so a
+ * photo in any Marketing section is cropped by the same rules as a category.
+ * @param {unknown} f
+ * @returns {{ gravity: string, x: number, y: number, zoom: number }}
+ */
+export function normalizeFocus(f) {
   const src = f && typeof f === 'object' ? f : {};
   return {
     gravity: GRAVITY_VALUES.includes(src.gravity) ? src.gravity : DEFAULT_FOCUS.gravity,

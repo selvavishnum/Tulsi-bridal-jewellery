@@ -33,6 +33,8 @@ import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import * as lib from '../src/lib/cloudinaryImage.js';
+import * as deliveryLib from '../src/lib/deliveryMessage.js';
+import { DEFAULT_CHARGES } from '../src/lib/storeCharges.js';
 
 const { IMAGE_WIDTHS, PIXEL, cldBase, cldZoom, cldDeepZoom } = lib;
 const require = createRequire(import.meta.url);
@@ -549,12 +551,27 @@ describe('PDP: loading skeleton', { skip }, () => {
 describe('PDP: the server page (page.js)', { skip }, () => {
   const productDoc = { id: 'p1', name: 'Kundan Bridal Necklace', category: 'necklace', images: IMAGES, isActive: true };
 
-  function pageWith({ reviewsGate, product = productDoc } = {}) {
-    const reads = { product: 0, reviews: 0, charges: 0 };
+  /* `site` is the settings/site document ({} = none saved, undefined = the document does not exist);
+     `settingsDown` makes reading it fail; the gates hold a read until released. */
+  function pageWith({ reviewsGate, productGate, settingsGate, product = productDoc, site = { phone: '+91 76958 68787' }, settingsDown = null } = {}) {
+    const reads = { product: 0, reviews: 0, charges: 0, settings: 0 };
+    const order = []; // which read started when
     const jsonLd = [];
     const db = {
       collection: (name) => ({
-        doc: () => ({ get: async () => { reads.product += 1; return product ? { exists: true, id: product.id, data: () => product } : { exists: false }; } }),
+        doc: () => ({
+          get: async () => {
+            if (name === 'settings') {
+              reads.settings += 1; order.push('settings');
+              await settingsGate;
+              if (settingsDown) throw settingsDown;
+              return site ? { exists: true, id: 'site', data: () => site } : { exists: false };
+            }
+            reads.product += 1; order.push('product');
+            await productGate;
+            return product ? { exists: true, id: product.id, data: () => product } : { exists: false };
+          },
+        }),
         where: () => ({ get: async () => { reads.reviews += 1; await reviewsGate; return { docs: [{ data: () => ({ rating: 5, comment: 'Lovely', reviewerName: 'Asha K', createdAt: '2026-01-02' }) }] }; } }),
       }),
     };
@@ -571,9 +588,10 @@ describe('PDP: the server page (page.js)', { skip }, () => {
       '@/lib/cloudinaryImage': lib,
       '@/lib/storeChargesServer': { getStoreCharges: async () => { reads.charges += 1; return { free_shipping_threshold: 2000 }; } },
       './ProductDetail': esm(function ProductDetail() { return null; }),
+      '@/components/ads/AdSlot': esm(function AdSlot() { return null; }),
     };
     const mod = makeLoader(stubs)('app/product/[id]/page.js');
-    return { mod, reads, jsonLd, params: Promise.resolve({ id: 'p1' }) };
+    return { mod, reads, order, jsonLd, params: Promise.resolve({ id: 'p1' }) };
   }
 
   test('generateMetadata and the page share one product read per request', async () => {
@@ -630,5 +648,206 @@ describe('PDP: the server page (page.js)', { skip }, () => {
     assert.equal(findAll(tree, (n) => n.type.name === 'ProductDetail')[0].props.initialProduct, null);
     assert.equal(findAll(tree, (n) => n.type === React.Suspense).length, 0);
     assert.equal(reads.reviews + reads.charges, 0);
+  });
+
+  const detailProps = (tree) => findAll(tree, (n) => n.type.name === 'ProductDetail')[0].props;
+
+  test('the owner\'s delivery message is handed to ProductDetail, normalized — and nothing else of the site settings goes with it', async () => {
+    const stored = {
+      enabled: true, mode: 'always', barText: '  Free   <b>delivery</b> above ₹999 ', icon: '🎁',
+      style: { model: 'outline', tone: 'gold', weight: 'bold', colors: { text: '#ABCDEF', bg: '#123456' }, junk: 1 }, leaked: 'x',
+    };
+    const { mod, params } = pageWith({ site: { phone: '+91 76958 68787', email: 'owner@tulsi.test', deliveryMessage: stored } });
+    const props = detailProps(await mod.default({ params }));
+    assert.deepEqual(Object.keys(props).sort(), ['deliveryMessage', 'initialProduct']);
+    assert.deepEqual(props.deliveryMessage, deliveryLib.normalizeDeliveryMessage(stored));
+    assert.equal(props.deliveryMessage.barText, 'Free bdelivery/b above ₹999', 'plain text: no markup survives');
+    assert.deepEqual(JSON.parse(JSON.stringify(props.deliveryMessage)), props.deliveryMessage, 'plain JSON across the server → browser boundary');
+    assert.doesNotMatch(JSON.stringify(props), /76958|owner@tulsi|"leaked"|junk/, 'not the phone, the e-mail or an unknown key');
+  });
+
+  test('nothing saved yet (no document, no field, or junk) → the default message, which is today\'s trust list; an unreadable document → null', async () => {
+    for (const site of [null, {}, { phone: '1' }, { phone: '1', deliveryMessage: 'off' }, { deliveryMessage: [1] }, { deliveryMessage: null }, { deliveryMessage: { enabled: 'no', mode: 5, style: 'bold' } }]) {
+      const { mod, params } = pageWith({ site });
+      assert.deepEqual(detailProps(await mod.default({ params })).deliveryMessage, deliveryLib.DEFAULT_DELIVERY_MESSAGE, JSON.stringify(site));
+    }
+    /* A failed read must not fail the product page: the browser gets "unknown" (the defaults), the page still renders. */
+    for (const settingsDown of [new Error('UNAVAILABLE: no connection'), new Error('FIREBASE_PROJECT_ID is missing')]) {
+      const { mod, params } = pageWith({ settingsDown });
+      const tree = await mod.default({ params });
+      assert.equal(detailProps(tree).deliveryMessage, null);
+      assert.equal(detailProps(tree).initialProduct.name, 'Kundan Bridal Necklace', 'and the product is still in the first HTML');
+    }
+    /* The product that does not exist still gets the owner's message for the client-side shell. */
+    const { mod, params } = pageWith({ product: null, site: { deliveryMessage: { enabled: false } } });
+    const props = detailProps(await mod.default({ params }));
+    assert.equal(props.initialProduct, null);
+    assert.equal(props.deliveryMessage.enabled, false);
+  });
+
+  test('one round trip, not two: the settings are read while the product is being read, not after it', async () => {
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const { mod, reads, order, params } = pageWith({ productGate: gate });
+    const rendering = mod.default({ params });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepEqual(reads, { product: 1, reviews: 0, charges: 0, settings: 1 }, 'both reads are already under way while the product is still pending');
+    assert.deepEqual(order.sort(), ['product', 'settings']);
+    release();
+    assert.equal(detailProps(await rendering).initialProduct.name, 'Kundan Bridal Necklace');
+    /* ...and it is the same the other way round: a slow settings read does not make the product read start later. */
+    const slow = new Promise((r) => { release = r; });
+    const other = pageWith({ settingsGate: slow });
+    const rendering2 = other.mod.default({ params: other.params });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(other.reads.product, 1);
+    release();
+    await rendering2;
+    /* generateMetadata still shares the page's one product read, and never reads the settings. */
+    const shared = pageWith();
+    await shared.mod.generateMetadata({ params: shared.params });
+    await shared.mod.default({ params: shared.params });
+    assert.equal(shared.reads.product, 1);
+    assert.equal(shared.reads.settings, 1, 'only the page reads the settings');
+  });
+});
+
+/* ═════════════ the trust list: the owner's delivery message ═════════════ */
+
+/* ProductDetail rendered on the server with the real DeliveryMessage; the icons draw as <svg data-icon="Fi…"> so the truck can be seen. */
+describe('PDP: the delivery message in the trust list', { skip }, () => {
+  const FREE = { ...DEFAULT_CHARGES, enable_shipping_fee: false };
+  const PAID = DEFAULT_CHARGES;
+  const ROW = 'flex items-center gap-2 text-xs text-stone-500';
+  const msg = (over = {}) => deliveryLib.normalizeDeliveryMessage(over);
+  const icons = new Proxy({}, { get: (_, key) => (key === '__esModule' ? false : (props) => React.createElement('svg', { 'data-icon': String(key), ...props })) });
+
+  function draw({ charges, deliveryMessage } = {}, { withProp = true } = {}) {
+    const stubs = { ...stubsFor(React), 'react-icons/fi': icons, '@/context/CartContext': { useCart: () => ({ dispatch: noop, charges }) } };
+    const Detail = makeLoader(stubs)(detailPath).default;
+    return ssr(React.createElement(Detail, withProp ? { initialProduct: PIECE, deliveryMessage } : { initialProduct: PIECE }));
+  }
+  /* The grid's direct children, as HTML. */
+  function cells(html) {
+    const open = '<div class="mt-5 pt-5 border-t border-stone-100 grid grid-cols-2 gap-2">';
+    const start = html.indexOf(open);
+    assert.ok(start >= 0, 'the trust list is in the first HTML');
+    const rest = html.slice(start + open.length);
+    const out = [];
+    let depth = 0;
+    let from = 0;
+    for (const m of rest.matchAll(/<div\b|<\/div>/g)) {
+      if (m[0] === '</div>') {
+        if (depth === 0) break; // the grid's own end
+        depth -= 1;
+        if (depth === 0) out.push(rest.slice(from, m.index + m[0].length));
+      } else {
+        if (depth === 0) from = m.index;
+        depth += 1;
+      }
+    }
+    return out;
+  }
+  const words = (cell) => cell.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const OTHERS = ['Anti-Tarnish Finish', '7-Day Damaged / Wrong-Item Returns', 'Secure Payment'];
+  const textsOf = (html) => cells(html).map(words);
+
+  test('the default message is today\'s trust list: the second item, in the list\'s own row and green truck — only while every order ships free', () => {
+    const html = draw({ charges: FREE });
+    assert.deepEqual(textsOf(html), ['Anti-Tarnish Finish', 'Free Delivery across India', '7-Day Damaged / Wrong-Item Returns', 'Secure Payment']);
+    const [, delivery] = cells(html);
+    /* Byte for byte the cell it was before the message was editable, `<Icon className="text-green-500 flex-shrink-0" /> <span>{label}</span>`
+       in the list's own row: the same as the other three cells, the truck included (no extra attribute, no missing span or space). */
+    assert.equal(delivery, `<div class="${ROW}"><svg data-icon="FiTruck" class="text-green-500 flex-shrink-0"></svg> <span>Free Delivery across India</span></div>`);
+    /* The other three are untouched. */
+    assert.equal(cells(html)[0], `<div class="${ROW}"><svg data-icon="FiShield" class="text-green-500 flex-shrink-0"></svg> <span>Anti-Tarnish Finish</span></div>`);
+    assert.equal(cells(html)[3], `<div class="${ROW}"><svg data-icon="FiCheckCircle" class="text-green-500 flex-shrink-0"></svg> <span>Secure Payment</span></div>`);
+    /* Not free for every order (or not known yet): the item is left out, the others keep their places. */
+    for (const charges of [PAID, null, undefined, { ...FREE, enable_shipping_fee: true }]) assert.deepEqual(textsOf(draw({ charges })), OTHERS, JSON.stringify(charges));
+    assert.doesNotMatch(draw({ charges: PAID }), /Free Delivery|FiTruck/);
+    /* Never an "above ₹N" promise from the default message. */
+    assert.doesNotMatch(draw({ charges: { ...PAID, free_shipping_threshold: 999 } }), /above ₹|Free Delivery/i);
+  });
+
+  test('not set, not read, never edited, or junk: the very same page as the default message', () => {
+    const reference = draw({ charges: FREE, deliveryMessage: deliveryLib.DEFAULT_DELIVERY_MESSAGE });
+    for (const deliveryMessage of [undefined, null, {}, msg(), 'junk', 5, [], { style: { tone: 'auto', model: 'text' } }]) {
+      assert.equal(draw({ charges: FREE, deliveryMessage }), reference, JSON.stringify(deliveryMessage));
+    }
+    assert.equal(draw({ charges: FREE }, { withProp: false }), reference, 'a caller that passes no message (the loading shell, tests) gets the default');
+  });
+
+  test('switched off: the item is nowhere, free shipping or not, whatever the mode', () => {
+    for (const mode of ['auto', 'always']) {
+      for (const charges of [FREE, PAID, null]) {
+        const html = draw({ charges, deliveryMessage: msg({ enabled: false, mode }) });
+        assert.deepEqual(textsOf(html), OTHERS, `${mode} ${JSON.stringify(charges)}`);
+        assert.doesNotMatch(html, /Free Delivery|FiTruck/);
+      }
+    }
+  });
+
+  test('"Smart" never says what the checkout does not do; "Always" shows the owner\'s own words, before the charges are even known', () => {
+    const smart = msg({ barText: 'Free delivery above ₹999' });
+    const always = msg({ mode: 'always', barText: 'Free delivery above ₹999' });
+    assert.deepEqual(textsOf(draw({ charges: PAID, deliveryMessage: smart })), OTHERS);
+    assert.deepEqual(textsOf(draw({ charges: FREE, deliveryMessage: smart })), [OTHERS[0], 'Free delivery above ₹999', OTHERS[1], OTHERS[2]]);
+    for (const charges of [PAID, FREE, null, undefined]) {
+      assert.deepEqual(textsOf(draw({ charges, deliveryMessage: always })), [OTHERS[0], 'Free delivery above ₹999', OTHERS[1], OTHERS[2]], JSON.stringify(charges));
+    }
+  });
+
+  test('the owner\'s words and icon, as text: the shop page uses the strip\'s words (barText), not the hero\'s', () => {
+    const html = draw({ charges: FREE, deliveryMessage: msg({ barText: 'Free Shipping Pan-India', badgeText: 'Hero words only' }) });
+    assert.equal(textsOf(html)[1], 'Free Shipping Pan-India');
+    assert.doesNotMatch(html, /Hero words only/);
+    /* An emoji icon replaces the truck (still hidden from a screen reader); no icon leaves just the words. */
+    const gift = cells(draw({ charges: FREE, deliveryMessage: msg({ icon: '🎁' }) }))[1];
+    assert.match(gift, new RegExp(`^<div class="${ROW}"><span aria-hidden="true" class="flex-shrink-0 leading-none">🎁</span> <span>Free Delivery across India</span></div>$`));
+    assert.doesNotMatch(gift, /<svg/);
+    assert.equal(cells(draw({ charges: FREE, deliveryMessage: msg({ icon: '' }) }))[1], `<div class="${ROW}"><span>Free Delivery across India</span></div>`);
+    /* Hostile words stored by hand or sent by a tampered cache: text only. */
+    for (const deliveryMessage of [{ barText: '<img src=x onerror=alert(1)><script>alert(2)</script>' }, msg({ barText: '<b>x</b> & "y"' })]) {
+      const out = draw({ charges: FREE, deliveryMessage });
+      assert.doesNotMatch(out, /<img src=x|<script>alert|<b>x/);
+      assert.equal(cells(out).length, 4);
+    }
+  });
+
+  test('every shape and colour the owner can pick is still one cell of the list — the trust list keeps its four places, in order', () => {
+    const MODELS = deliveryLib.DELIVERY_CHOICES.models;
+    const TONES = deliveryLib.DELIVERY_CHOICES.tones;
+    let drawn = 0;
+    for (const model of MODELS) for (const tone of TONES) for (const extra of [{}, { font: 'serif', size: 'lg', weight: 'bold', italic: true, uppercase: true, tracking: 'wider' }]) {
+      const deliveryMessage = msg({ style: { model, tone, colors: { text: '#ffffff', bg: '#8b1a4a' }, ...extra } });
+      const where = JSON.stringify({ model, tone, ...extra });
+      const html = draw({ charges: FREE, deliveryMessage });
+      const all = cells(html);
+      drawn += 1;
+      assert.equal(all.length, 4, where);
+      assert.deepEqual(all.map(words), ['Anti-Tarnish Finish', 'Free Delivery across India', '7-Day Damaged / Wrong-Item Returns', 'Secure Payment'], where);
+      assert.match(all[1], /^<div class="[^"]*\bflex\b[^"]*\bitems-center\b[^"]*"/, where);
+      /* Inline style only from a validated custom pair. */
+      const style = all[1].match(/^<div [^>]*style="([^"]*)"/)?.[1];
+      if (style) {
+        assert.equal(tone, 'custom', where);
+        for (const part of style.split(';')) assert.match(part, /^(?:color|background-color|border-color):#[0-9a-f]{6}$/, where);
+      }
+      /* The other three are never touched by the owner's choices. */
+      assert.deepEqual([all[0], all[2], all[3]], [cells(draw({ charges: FREE }))[0], cells(draw({ charges: FREE }))[2], cells(draw({ charges: FREE }))[3]], where);
+    }
+    assert.equal(drawn, 5 * 7 * 2);
+    /* A pill is a pill (fit to its words, not stretched across the grid cell). */
+    const pill = cells(draw({ charges: FREE, deliveryMessage: msg({ style: { model: 'pill', tone: 'gold' } }) }))[1];
+    assert.match(pill, /^<div class="[^"]*\bw-fit\b[^"]*\brounded-full\b/);
+  });
+
+  test('no request of its own: the message arrives with the page (server-read), so nothing is fetched, nothing pops in and nothing changes look after hydration', () => {
+    const source = readFileSync('src/app/product/[id]/ProductDetail.js', 'utf8');
+    assert.doesNotMatch(source, /admin\/settings/, 'ProductDetail does not fetch the site settings');
+    assert.doesNotMatch(source, /freeDeliveryClaim/, 'the old hard-wired claim is gone: the message is the owner\'s');
+    assert.match(source, /deliveryMessageFor\(deliveryMessage, charges, 'product'\)/);
+    /* The first render is the final one: the message is a prop, no state or effect decides it. */
+    assert.equal(draw({ charges: FREE, deliveryMessage: msg({ barText: 'Seeded words', style: { model: 'pill', tone: 'wine' } }) }).includes('Seeded words'), true);
   });
 });

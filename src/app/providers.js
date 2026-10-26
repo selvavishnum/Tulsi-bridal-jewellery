@@ -14,7 +14,7 @@ export function Providers({ children }) {
   const pathname = usePathname();
   /* No storefront header/footer: admin, seller portal, and the admin's
      category-showcase preview frame. */
-  const isAdmin = pathname?.startsWith('/admin') || pathname === '/vendor' || pathname?.startsWith('/vendor/') || pathname === '/showcase-preview';
+  const isAdmin = pathname?.startsWith('/admin') || pathname === '/vendor' || pathname?.startsWith('/vendor/') || pathname === '/showcase-preview' || pathname === '/marketing-preview';
 
   return (
     <SessionProvider refetchOnWindowFocus={false} refetchInterval={0}>

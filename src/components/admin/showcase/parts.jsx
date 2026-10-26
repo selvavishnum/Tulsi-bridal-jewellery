@@ -37,7 +37,9 @@ export function ShapeGlyph({ variant, className = 'h-4 w-4' }) {
 export function ModeGlyph({ mode, className = 'h-4 w-4' }) {
   return (
     <svg viewBox="0 0 16 16" className={className} aria-hidden="true" focusable="false" fill="currentColor">
-      {mode === 'grid'
+      {mode === 'single'
+        ? <rect x="2.5" y="1.5" width="11" height="13" rx="1.5" />
+        : mode === 'grid'
         ? <><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1" /><rect x="9" y="1.5" width="5.5" height="5.5" rx="1" /><rect x="1.5" y="9" width="5.5" height="5.5" rx="1" /><rect x="9" y="9" width="5.5" height="5.5" rx="1" /></>
         : <><rect x="0.5" y="3" width="5" height="10" rx="1" /><rect x="7" y="3" width="5" height="10" rx="1" /><rect x="13.5" y="3" width="2.5" height="10" rx="1" fillOpacity="0.45" /></>}
     </svg>
@@ -76,10 +78,23 @@ export function Segmented({ label, options, value, onChange, compact = false }) 
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Shape / Display mode / Density for the section (edits a layout draft). */
-export function LayoutControls({ layout, onChange, compact = false }) {
+const MODE_TITLE = {
+  single: 'Only the first visible photo',
+  slider: 'One swipeable row (arrows on desktop)',
+  grid: 'Rows that wrap',
+};
+
+/**
+ * Shape / Display mode / Density for the section (edits a layout draft).
+ * `shapes`, `modes` and `sizes` narrow the choices for a section that offers fewer
+ * (arrays of values; `modes` may also be [{ value, label, title? }]); omitted = the category showcase's.
+ */
+export function LayoutControls({ layout, onChange, compact = false, shapes, modes, sizes }) {
   const set = (k) => (v) => onChange({ ...layout, [k]: v });
   const hint = LAYOUT_VARIANTS.find((v) => v.value === layout.layoutVariant)?.hint;
+  const shapeList = shapes ? LAYOUT_VARIANTS.filter((v) => shapes.includes(v.value)) : LAYOUT_VARIANTS;
+  const modeList = modes ? modes.map((m) => (typeof m === 'string' ? DISPLAY_MODES.find((d) => d.value === m) || { value: m, label: cap(m) } : m)) : DISPLAY_MODES;
+  const sizeList = sizes || SIZES;
   return (
     <div className={`flex flex-wrap items-start ${compact ? 'gap-x-4 gap-y-2' : 'gap-x-6 gap-y-3'}`}>
       <div className="min-w-0">
@@ -88,7 +103,7 @@ export function LayoutControls({ layout, onChange, compact = false }) {
           compact={compact}
           value={layout.layoutVariant}
           onChange={set('layoutVariant')}
-          options={LAYOUT_VARIANTS.map((v) => ({
+          options={shapeList.map((v) => ({
             value: v.value,
             label: compact ? SHAPE_SHORT[v.value] : SHAPE_LABEL[v.value],
             title: `${SHAPE_LABEL[v.value]} — ${v.hint}`,
@@ -103,10 +118,10 @@ export function LayoutControls({ layout, onChange, compact = false }) {
         compact={compact}
         value={layout.displayMode}
         onChange={set('displayMode')}
-        options={DISPLAY_MODES.map((m) => ({
+        options={modeList.map((m) => ({
           value: m.value,
           label: m.label,
-          title: m.value === 'slider' ? 'One swipeable row (arrows on desktop)' : 'Rows that wrap',
+          title: m.title || MODE_TITLE[m.value],
           icon: <ModeGlyph mode={m.value} />,
         }))}
       />
@@ -115,7 +130,7 @@ export function LayoutControls({ layout, onChange, compact = false }) {
         compact={compact}
         value={layout.size}
         onChange={set('size')}
-        options={SIZES.map((s) => ({ value: s, label: cap(s), title: s === 'small' ? 'More cards per row' : s === 'large' ? 'Fewer, bigger cards' : undefined }))}
+        options={sizeList.map((s) => ({ value: s, label: cap(s), title: s === 'small' ? 'More cards per row' : s === 'large' ? 'Fewer, bigger cards' : undefined }))}
       />
     </div>
   );

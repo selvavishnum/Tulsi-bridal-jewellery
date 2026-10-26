@@ -10,7 +10,8 @@
    Pure helpers + guarded browser access — localStorage, the clipboard (safe
    during SSR).
    ───────────────────────────────────────────── */
-import { deliveryFreeForAll, FREE_DELIVERY_LINE, freeDeliveryClaim } from './storeCharges.js';
+import { deliveryFreeForAll, FREE_DELIVERY_LINE } from './storeCharges.js';
+import { deliveryMessageFor } from './deliveryMessage.js';
 
 export { deliveryFreeForAll, FREE_DELIVERY_LINE };
 
@@ -42,13 +43,15 @@ export function normalizeAnnouncement(settings = {}) {
 export const DISMISS_KEY = 'tj-announce-dismissed';
 export const dismissToken = (a) => `${a.code}|${a.message}`.slice(0, 200);
 
-/* The strip's delivery clause. "Free Delivery across India" is a promise, so
-   it is shown only when the shipping settings really make every order free
-   (computeCharges is the authority — the same rule the cart and the order
-   endpoint use). Otherwise there is no clause at all: "free above ₹N" is a
-   condition, not something to advertise (storeCharges.freeDeliveryClaim). */
-export function deliveryLine(charges) {
-  return freeDeliveryClaim(charges);
+/* The strip's delivery clause: the owner's delivery message (src/lib/deliveryMessage.js:
+   Admin → Settings → Marketing), or '' when it is not to be shown. `config` is
+   settings.deliveryMessage in any shape; leave it out and it is the default —
+   "Free Delivery across India" only when the shipping settings really make every
+   order free (computeCharges is the authority — the same rule the cart and the
+   order endpoint use), otherwise no clause at all: "free above ₹N" is a condition,
+   not something to advertise (storeCharges.freeDeliveryClaim). */
+export function deliveryLine(charges, config) {
+  return deliveryMessageFor(config, charges, 'bar');
 }
 
 export const PENDING_COUPON_KEY = 'tj-pending-coupon';

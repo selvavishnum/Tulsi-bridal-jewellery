@@ -1,8 +1,10 @@
 import HomeClient from './HomeClient';
 import { absoluteUrl } from '@/lib/seo';
 import { getDB, docToObj } from '@/lib/firebase';
-import { pickHeroSlides, pickShipping } from '@/lib/heroSlides';
+import { pickHeroSlides, pickShipping, pickDeliveryMessage } from '@/lib/heroSlides';
 import { normalizeShowcase } from '@/lib/categoryShowcase';
+import { normalizeLayout, adsForPlacement } from '@/lib/marketing';
+import { getAdvertisements } from '@/lib/marketingServer';
 import { getStoreCharges } from '@/lib/storeChargesServer';
 
 /* Server wrapper so the homepage has its own canonical and description
@@ -18,7 +20,9 @@ export const metadata = {
    (revalidatePath in api/admin/settings), so the 5 minutes only covers a
    change made some other way — the shipping rule (settings/store_settings)
    is one: the hero's first badge shows it from the first paint, and the live
-   charges the browser fetches take over from there. */
+   charges the browser fetches take over from there. (The owner's delivery
+   message, which says whether and how that badge reads, is part of the site
+   settings, so a save drops the copy for it too.) */
 export const revalidate = 300;
 
 /* Production after the build: a failed read must fail this render. Next keeps
@@ -32,9 +36,15 @@ const keepLastGoodPage = () => process.env.NODE_ENV === 'production' && process.
 /* What the homepage draws from the site settings, as plain objects for
    HomeClient:
    - heroSlides: an array (empty when none are set);
+   - heroLayout: how the hero draws them (shape, size, Single photo / Slider);
+   - ads: the advertisements for the home page (nothing when there are none, or they cannot be read);
    - showcase: the normalized category showcase (cards, order, layout);
    - shipping: the shipping rule behind the hero's first badge (always a rule —
      a missing document means the defaults, which is what the checkout uses);
+   - deliveryMessage: the owner's delivery message (on or off, its words, its
+     look), normalized — always a full configuration, the defaults when none
+     was ever saved — so the badge is drawn the way it will stay, not redrawn
+     once the browser has fetched the settings;
    - or null when the settings could not be read, so the browser decides from
      its own fetch.
    (Not getSiteSettings(): it turns an error into {} and so can't tell
@@ -44,7 +54,13 @@ async function loadHomeSettings() {
     const db = getDB();
     const [doc, charges] = await Promise.all([db.collection('settings').doc('site').get(), getStoreCharges(db)]);
     const settings = doc.exists ? docToObj(doc) : {};
-    return { heroSlides: pickHeroSlides(settings?.heroSlides), showcase: normalizeShowcase(settings), shipping: pickShipping(charges) };
+    return {
+      heroSlides: pickHeroSlides(settings?.heroSlides),
+      heroLayout: normalizeLayout(settings?.heroLayout, 'hero'),
+      showcase: normalizeShowcase(settings),
+      shipping: pickShipping(charges),
+      deliveryMessage: pickDeliveryMessage(settings),
+    };
   } catch (err) {
     if (keepLastGoodPage()) throw err;
     return null;
@@ -52,6 +68,15 @@ async function loadHomeSettings() {
 }
 
 export default async function HomePage() {
-  const home = await loadHomeSettings();
-  return <HomeClient heroSlides={home?.heroSlides ?? null} showcase={home?.showcase ?? null} shipping={home?.shipping ?? null} />;
+  const [home, allAds] = await Promise.all([loadHomeSettings(), getAdvertisements()]);
+  return (
+    <HomeClient
+      heroSlides={home?.heroSlides ?? null}
+      heroLayout={home?.heroLayout ?? null}
+      showcase={home?.showcase ?? null}
+      shipping={home?.shipping ?? null}
+      deliveryMessage={home?.deliveryMessage ?? null}
+      ads={adsForPlacement(allAds, 'home')}
+    />
+  );
 }

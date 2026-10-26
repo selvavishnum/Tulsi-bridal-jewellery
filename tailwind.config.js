@@ -96,6 +96,8 @@ module.exports = {
         serif:   ['"Cormorant Rupee"', '"Cormorant Garamond"', '"Cormorant Garamond Fallback"', 'Georgia', '"Times New Roman"', 'serif'],
         display: ['"Cormorant Rupee"', '"Cormorant Garamond"', '"Cormorant Garamond Fallback"', 'Georgia', 'serif'],
         sans:    ['"Inter Rupee"', 'Inter', '"Inter Fallback"', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        /* System serif (zero bytes, no webfont): the delivery message's "Classic" font choice. */
+        classic: ['"Inter Rupee"', 'Georgia', '"Times New Roman"', 'serif'],
       },
       fontSize: {
         '2xs': ['0.65rem', { lineHeight: '1rem' }],

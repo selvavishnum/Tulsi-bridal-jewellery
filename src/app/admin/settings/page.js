@@ -1,11 +1,15 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { FiSettings, FiSave, FiPlus, FiTrash2, FiImage } from 'react-icons/fi';
-import Image from 'next/image';
+import { FiSettings, FiSave } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import CategoryShowcaseManager from '@/components/admin/showcase/CategoryShowcaseManager';
 import AnnouncementSettingsPanel from '@/components/admin/AnnouncementSettingsPanel';
-import AvatarUploadField from '@/components/admin/AvatarUploadField';
+import CollapsibleSection from '@/components/admin/marketing/CollapsibleSection';
+import { HeroPhotosPanel, TestimonialsPanel, InstagramPanel } from '@/components/admin/marketing/MarketingPanels';
+import AdvertisementsManager from '@/components/admin/marketing/AdvertisementsManager';
+import { normalizeHeroSlides, normalizeTestimonialItems, normalizeInstagramItems, normalizeAdvertisements, normalizeLayout, visible } from '@/lib/marketing';
+import DeliveryMessagePanel from '@/components/admin/DeliveryMessagePanel';
+import { useCart } from '@/context/CartContext';
 
 /* ─────────────────────────── Toggle component ─────────────────────────── */
 function Toggle({ value, onChange, label, description }) {
@@ -26,125 +30,6 @@ function Toggle({ value, onChange, label, description }) {
   );
 }
 
-/* ─────────────────────────── Hero photo row ───────────────────────────
-   The homepage hero is one editorial photo: the image of the FIRST slide.
-   The old slider's tag, title, subtitle and buttons are no longer drawn on
-   the homepage, so the form no longer asks for them. A slide saved earlier
-   keeps them in the database (this form sends every field it loaded back
-   unchanged); nothing on the site shows them. */
-const BLANK_SLIDE = { id: '', imageUrl: '' };
-
-function SlideRow({ slide, index, onChange, onDelete }) {
-  return (
-    <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 space-y-3">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-          Slide {index + 1} <span className={index === 0 ? 'text-green-700' : 'text-gray-400'}>{index === 0 ? '· shown on the homepage' : '· not shown'}</span>
-        </span>
-        <button type="button" onClick={onDelete} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"><FiTrash2 className="text-sm" /></button>
-      </div>
-      <div className="flex gap-4 items-start">
-        {slide.imageUrl && (
-          <div className="relative aspect-[4/5] w-24 flex-shrink-0 rounded-lg overflow-hidden bg-gray-200">
-            <Image src={slide.imageUrl} alt="hero photo preview" fill className="object-cover object-center" />
-          </div>
-        )}
-        <div className="flex-1 min-w-0">
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Image URL <span className="text-gray-400">(portrait photo, 4:5)</span></label>
-          <div className="relative">
-            <FiImage className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
-            <input type="url" value={slide.imageUrl} onChange={(e) => onChange('imageUrl', e.target.value)} placeholder="https://… paste image link here"
-              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-          </div>
-          <p className="text-[10px] text-gray-400 mt-1">Recommended: 1200×1500px (4:5).</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─────────────────────────── Testimonial row ─────────────────────────── */
-const BLANK_TESTIMONIAL = { name: '', location: '', photo: '', rating: 5, review: '' };
-
-function TestimonialRow({ testimonial, index, onChange, onDelete }) {
-  return (
-    <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 space-y-3">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Review {index + 1}</span>
-        <button type="button" onClick={onDelete} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"><FiTrash2 className="text-sm" /></button>
-      </div>
-      <div className="grid md:grid-cols-2 gap-3">
-        <div>
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Customer Name</label>
-          <input value={testimonial.name} onChange={(e) => onChange('name', e.target.value)} placeholder="e.g. Priya Sharma"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Location</label>
-          <input value={testimonial.location} onChange={(e) => onChange('location', e.target.value)} placeholder="e.g. Chennai"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-        </div>
-        <div className="md:col-span-2">
-          <p className="text-xs text-gray-500 mb-1.5 font-medium">Customer Photo <span className="text-gray-400">(optional — shown as a round avatar)</span></p>
-          {/* Uploaded straight to Cloudinary; no hand-typed links (they broke the avatar). */}
-          <AvatarUploadField value={testimonial.photo || ''} name={testimonial.name} onChange={(url) => onChange('photo', url)} />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Star Rating</label>
-          <select value={testimonial.rating} onChange={(e) => onChange('rating', Number(e.target.value))}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400 bg-white">
-            {[5, 4, 3, 2, 1].map((r) => <option key={r} value={r}>{r} Star{r > 1 ? 's' : ''}</option>)}
-          </select>
-        </div>
-        <div className="md:col-span-2">
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Review Text</label>
-          <textarea value={testimonial.review} onChange={(e) => onChange('review', e.target.value)}
-            placeholder="What did the customer say about their experience?" rows={3}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400 resize-none" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─────────────────────────── Instagram Post row ─────────────────────────── */
-const BLANK_INSTA_POST = { imageUrl: '', caption: '', postUrl: '' };
-
-function InstaPostRow({ post, index, onChange, onDelete }) {
-  return (
-    <div className="border border-gray-200 rounded-xl p-4 bg-gray-50 space-y-3">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Post {index + 1}</span>
-        <button type="button" onClick={onDelete} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"><FiTrash2 className="text-sm" /></button>
-      </div>
-      {post.imageUrl && (
-        <div className="relative aspect-square w-24 rounded-lg overflow-hidden bg-gray-200 border border-gray-300">
-          <Image src={post.imageUrl} alt="post preview" fill className="object-cover" />
-        </div>
-      )}
-      <div className="grid md:grid-cols-2 gap-3">
-        <div className="md:col-span-2">
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Image URL</label>
-          <div className="relative">
-            <FiImage className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
-            <input type="url" value={post.imageUrl} onChange={(e) => onChange('imageUrl', e.target.value)} placeholder="https://… paste image link here"
-              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-          </div>
-        </div>
-        <div>
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Caption <span className="text-gray-400">(optional)</span></label>
-          <input value={post.caption} onChange={(e) => onChange('caption', e.target.value)} placeholder="Layered gold-tone chains…"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500 mb-1 block font-medium">Post URL <span className="text-gray-400">(instagram.com/p/…)</span></label>
-          <input type="url" value={post.postUrl} onChange={(e) => onChange('postUrl', e.target.value)} placeholder="https://instagram.com/p/…"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* ─────────────────────────── Test Email Panel ─────────────────────────── */
 function TestEmailPanel() {
@@ -208,6 +93,9 @@ function Field({ label, children }) {
    Stored in settings/store_settings; the server reads it for every order
    and open checkouts pick changes up within a minute. */
 function ChargesCard() {
+  /* The Delivery Message card (Marketing tab) checks the message against the shop's shipping rule
+     as the storefront's cart holds it: refresh that copy after a save so the card never judges by the old rule. */
+  const { refreshCharges } = useCart();
   const [c, setC] = useState(null);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
@@ -255,6 +143,7 @@ function ChargesCard() {
       const d = await res.json();
       if (!d.success) throw new Error(d.message);
       setC({ ...d.data, cod_fee_waive_above: d.data.cod_fee_waive_above ?? '' });
+      refreshCharges?.();
       toast.success('Charges saved — applies to new orders now');
     } catch (err) {
       toast.error(err.message || 'Could not save');
@@ -361,8 +250,14 @@ export default function SettingsPage() {
     loyaltyPointsPerRupee: 0.1,
   });
   const [heroSlides, setHeroSlides] = useState([]);
+  const [heroLayout, setHeroLayout] = useState(() => normalizeLayout(null, 'hero'));
   const [testimonials, setTestimonials] = useState([]);
+  const [testimonialsLayout, setTestimonialsLayout] = useState(() => normalizeLayout(null, 'testimonials'));
   const [instagramFeed, setInstagramFeed] = useState([]);
+  const [instagramLayout, setInstagramLayout] = useState(() => normalizeLayout(null, 'instagram'));
+  const [advertisements, setAdvertisements] = useState(() => normalizeAdvertisements(null));
+  /* What the server has (JSON per section), to show which sections have unsaved changes. */
+  const [saved, setSaved] = useState(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -371,9 +266,23 @@ export default function SettingsPage() {
       .then((d) => {
         if (d.success && d.data) {
           setSettings((prev) => ({ ...prev, ...d.data }));
-          if (Array.isArray(d.data.heroSlides)) setHeroSlides(d.data.heroSlides);
-          if (Array.isArray(d.data.testimonials)) setTestimonials(d.data.testimonials);
-          if (Array.isArray(d.data.instagramFeed)) setInstagramFeed(d.data.instagramFeed);
+          const loaded = {
+            heroSlides: normalizeHeroSlides(d.data.heroSlides),
+            heroLayout: normalizeLayout(d.data.heroLayout, 'hero'),
+            testimonials: normalizeTestimonialItems(d.data.testimonials),
+            testimonialsLayout: normalizeLayout(d.data.testimonialsLayout, 'testimonials'),
+            instagramFeed: normalizeInstagramItems(d.data.instagramFeed),
+            instagramLayout: normalizeLayout(d.data.instagramLayout, 'instagram'),
+            advertisements: normalizeAdvertisements(d.data.advertisements),
+          };
+          setHeroSlides(loaded.heroSlides);
+          setHeroLayout(loaded.heroLayout);
+          setTestimonials(loaded.testimonials);
+          setTestimonialsLayout(loaded.testimonialsLayout);
+          setInstagramFeed(loaded.instagramFeed);
+          setInstagramLayout(loaded.instagramLayout);
+          setAdvertisements(loaded.advertisements);
+          setSaved(Object.fromEntries(Object.entries(loaded).map(([k, v]) => [k, JSON.stringify(v)])));
         }
       })
       .catch(() => {});
@@ -381,23 +290,13 @@ export default function SettingsPage() {
 
   function upd(key, value) { setSettings((prev) => ({ ...prev, [key]: value })); }
 
-  /* Hero slides */
-  function addSlide() { setHeroSlides((p) => [...p, { ...BLANK_SLIDE, id: Date.now().toString() }]); }
-  function updateSlide(i, field, val) { setHeroSlides((p) => p.map((s, idx) => idx === i ? { ...s, [field]: val } : s)); }
-  function deleteSlide(i) { setHeroSlides((p) => p.filter((_, idx) => idx !== i)); }
+  /* The Marketing sections kept in this page's state (saved by Save Settings). */
+  const marketingDraft = { heroSlides, heroLayout, testimonials, testimonialsLayout, instagramFeed, instagramLayout, advertisements };
+  const dirty = (...keys) => !!saved && keys.some((k) => JSON.stringify(marketingDraft[k]) !== saved[k]);
+  const shownOf = (items, section) => visible(items, section).length;
 
-  /* Testimonials */
-  function addTestimonial() { setTestimonials((p) => [...p, { ...BLANK_TESTIMONIAL }]); }
-  function updateTestimonial(i, field, val) { setTestimonials((p) => p.map((t, idx) => idx === i ? { ...t, [field]: val } : t)); }
-  function deleteTestimonial(i) { setTestimonials((p) => p.filter((_, idx) => idx !== i)); }
 
-  /* Instagram */
-  function addInstaPost() {
-    if (instagramFeed.length >= 6) { toast.error('Maximum 6 Instagram posts allowed'); return; }
-    setInstagramFeed((p) => [...p, { ...BLANK_INSTA_POST }]);
-  }
-  function updateInstaPost(i, field, val) { setInstagramFeed((p) => p.map((post, idx) => idx === i ? { ...post, [field]: val } : post)); }
-  function deleteInstaPost(i) { setInstagramFeed((p) => p.filter((_, idx) => idx !== i)); }
+
 
   async function save(e) {
     e.preventDefault();
@@ -406,10 +305,13 @@ export default function SettingsPage() {
       const res = await fetch('/api/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...withoutShowcase(settings), heroSlides, testimonials, instagramFeed }),
+        body: JSON.stringify({ ...withoutShowcase(settings), ...marketingDraft }),
       });
       const data = await res.json();
-      if (data.success) toast.success('Settings saved!');
+      if (data.success) {
+        setSaved(Object.fromEntries(Object.entries(marketingDraft).map(([k, v]) => [k, JSON.stringify(v)])));
+        toast.success('Settings saved!');
+      }
       else toast.error(data.message || 'Failed to save');
     } catch { toast.error('Network error'); }
     finally { setSaving(false); }
@@ -609,119 +511,43 @@ export default function SettingsPage() {
     return (
       <div className="space-y-5">
         {/* Welcome offer strip at the top of every storefront page (saved with Save Settings) */}
-        <AnnouncementSettingsPanel value={settings.announcement} onChange={(a) => upd('announcement', a)} phone={settings.phone} />
+        <CollapsibleSection title="Welcome Offer Bar" status={settings.announcement?.enabled === false ? 'Off' : 'On'}>
+          <AnnouncementSettingsPanel value={settings.announcement} onChange={(a) => upd('announcement', a)} phone={settings.phone} deliveryMessage={settings.deliveryMessage} />
+        </CollapsibleSection>
 
-        {/* Hero Slides */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
-            <div>
-              <h2 className="font-bold text-gray-800">Homepage Hero Photo</h2>
-              <p className="text-xs text-gray-400 mt-0.5">
-                The homepage hero shows one photo: the image of <strong>Slide 1</strong>. Other slides are kept here but not shown.
-                The title, subtitle and button fields of the old slider are no longer used on the homepage, so they are not listed.
-              </p>
-              <p className="text-xs text-gray-400 mt-1">
-                Best: a portrait photo (about 1200×1500px, 4:5) of a model wearing layered chains and minimalist earrings on a soft off-white background.
-                A Cloudinary link is resized and cropped around the jewellery for you. With no photo, a gold-chains illustration is shown instead.
-              </p>
-            </div>
-            <button type="button" onClick={addSlide}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 transition">
-              <FiPlus /> Add Photo
-            </button>
-          </div>
-          {heroSlides.length === 0 ? (
-            <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
-              <FiImage className="text-3xl mx-auto mb-2 opacity-40" />
-              <p className="text-sm font-medium">No hero photo yet</p>
-              <p className="text-xs mt-1">Click &ldquo;Add Photo&rdquo; and paste the link of your hero image</p>
-              <button type="button" onClick={addSlide} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 transition">
-                <FiPlus /> Add Hero Photo
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {heroSlides.map((slide, i) => (
-                <SlideRow key={slide.id || i} slide={slide} index={i} onChange={(field, val) => updateSlide(i, field, val)} onDelete={() => deleteSlide(i)} />
-              ))}
-              <button type="button" onClick={addSlide}
-                className="w-full py-3 border-2 border-dashed border-gray-200 text-sm text-gray-500 hover:border-amber-400 hover:text-amber-600 rounded-xl flex items-center justify-center gap-2 transition">
-                <FiPlus /> Add Another Photo
-              </button>
-            </div>
-          )}
-        </div>
+        {/* The "Free Delivery across India" line: on/off, words, font, model, colours (saved with Save Settings) */}
+        <CollapsibleSection title="Delivery Message" status={settings.deliveryMessage?.enabled === false ? 'Off' : 'On'}>
+          <DeliveryMessagePanel value={settings.deliveryMessage} onChange={(d) => upd('deliveryMessage', d)} />
+        </CollapsibleSection>
+
+        {/* Hero photos (shape, slider, preview, crop — saved with Save Settings) */}
+        <CollapsibleSection title="Homepage Hero Photo" dirty={dirty('heroSlides', 'heroLayout')}
+          status={`${shownOf(heroSlides, 'hero')} of ${heroSlides.length} shown · ${heroLayout.displayMode === 'slider' ? 'Slider' : 'Single photo'}`}>
+          <HeroPhotosPanel items={heroSlides} onItemsChange={setHeroSlides} layout={heroLayout} onLayoutChange={setHeroLayout} />
+        </CollapsibleSection>
 
         {/* Category Showcase — saves on its own (/api/admin/category-showcase) */}
-        <CategoryShowcaseManager />
+        <CollapsibleSection title="Category Showcase" status="Saves instantly">
+          <CategoryShowcaseManager />
+        </CollapsibleSection>
 
-        {/* Testimonials */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
-            <div>
-              <h2 className="font-bold text-gray-800">Happy Customers (Testimonials)</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Real customer reviews shown in the &ldquo;Happy Customers&rdquo; section on the homepage (no reviews, no section)</p>
-            </div>
-            <button type="button" onClick={addTestimonial}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 transition">
-              <FiPlus /> Add Review
-            </button>
-          </div>
-          {testimonials.length === 0 ? (
-            <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
-              <p className="text-sm font-medium">No testimonials configured</p>
-              <p className="text-xs mt-1">The &ldquo;Happy Customers&rdquo; section is hidden on the homepage until you add a real review here</p>
-              <button type="button" onClick={addTestimonial} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 transition">
-                <FiPlus /> Add First Review
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {testimonials.map((t, i) => (
-                <TestimonialRow key={i} testimonial={t} index={i} onChange={(field, val) => updateTestimonial(i, field, val)} onDelete={() => deleteTestimonial(i)} />
-              ))}
-              <button type="button" onClick={addTestimonial}
-                className="w-full py-3 border-2 border-dashed border-gray-200 text-sm text-gray-500 hover:border-amber-400 hover:text-amber-600 rounded-xl flex items-center justify-center gap-2 transition">
-                <FiPlus /> Add Another Review
-              </button>
-            </div>
-          )}
-        </div>
+        {/* Testimonials (shape, grid / slider, preview, crop — saved with Save Settings) */}
+        <CollapsibleSection title="Happy Customers (Testimonials)" dirty={dirty('testimonials', 'testimonialsLayout')}
+          status={`${shownOf(testimonials, 'testimonials')} of ${testimonials.length} shown`}>
+          <TestimonialsPanel items={testimonials} onItemsChange={setTestimonials} layout={testimonialsLayout} onLayoutChange={setTestimonialsLayout} />
+        </CollapsibleSection>
 
-        {/* Instagram Feed */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
-            <div>
-              <h2 className="font-bold text-gray-800">Instagram Feed</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Up to 6 posts shown in the Instagram grid on the homepage</p>
-            </div>
-            <button type="button" onClick={addInstaPost} disabled={instagramFeed.length >= 6}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed transition">
-              <FiPlus /> Add Post
-            </button>
-          </div>
-          {instagramFeed.length === 0 ? (
-            <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
-              <FiImage className="text-3xl mx-auto mb-2 opacity-40" />
-              <p className="text-sm font-medium">No Instagram posts configured</p>
-              <button type="button" onClick={addInstaPost} className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-amber-500 text-white text-xs font-semibold rounded-lg hover:bg-amber-600 transition">
-                <FiPlus /> Add First Post
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {instagramFeed.map((post, i) => (
-                <InstaPostRow key={i} post={post} index={i} onChange={(field, val) => updateInstaPost(i, field, val)} onDelete={() => deleteInstaPost(i)} />
-              ))}
-              {instagramFeed.length < 6 && (
-                <button type="button" onClick={addInstaPost}
-                  className="w-full py-3 border-2 border-dashed border-gray-200 text-sm text-gray-500 hover:border-amber-400 hover:text-amber-600 rounded-xl flex items-center justify-center gap-2 transition">
-                  <FiPlus /> Add Another Post ({instagramFeed.length}/6)
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        {/* Instagram feed (shape, grid / slider, preview, crop — saved with Save Settings) */}
+        <CollapsibleSection title="Instagram Feed" dirty={dirty('instagramFeed', 'instagramLayout')}
+          status={`${shownOf(instagramFeed, 'instagram')} of ${instagramFeed.length} shown`}>
+          <InstagramPanel items={instagramFeed} onItemsChange={setInstagramFeed} layout={instagramLayout} onLayoutChange={setInstagramLayout} />
+        </CollapsibleSection>
+
+        {/* Website advertisements: banners on the home, shop, category, product, cart, checkout and order pages (saved with Save Settings) */}
+        <CollapsibleSection title="Website Advertisements" dirty={dirty('advertisements')}
+          status={`${shownOf(advertisements.items, 'ads')} of ${advertisements.items.length} shown`}>
+          <AdvertisementsManager value={advertisements} onChange={setAdvertisements} />
+        </CollapsibleSection>
       </div>
     );
   }

@@ -149,10 +149,28 @@ function Slider({ label, value, display, min, max, step, disabled, onChange }) {
 
 /* ── Modal ── */
 
+/**
+ * The category showcase's preview, and — with `preview` — any other photo section's
+ * (hero, testimonials, Instagram, advertisements: src/components/admin/marketing).
+ *
+ * Without `preview` it is exactly the showcase's: the frame is /showcase-preview and it is sent
+ * { type: PREVIEW_MSG, showcase }. With it the section describes itself:
+ *   src      the iframe page, e.g. '/marketing-preview?section=hero'
+ *   title    the iframe's accessible title
+ *   message  the postMessage type (the frame answers '<message>-ready' and '<message>-height')
+ *   build    ({ items, layout }) => the data the frame draws (items already carry the crop draft)
+ *   note     the line under the heading (what the frame shows)
+ *   itemLabel  what an item is called in the picker ("Photo", "Review", "Post", "Ad")
+ *   layoutProps  { shapes, modes, sizes } passed to LayoutControls
+ *   extraControls  a node shown next to the layout controls (the advertisements' "Page" picker)
+ * `showcase` is then just { items } in the showcase's item shape ({ key, label, image, focus, isActive, emoji, color }).
+ */
 export default function ShowcasePreviewModal({
   showcase, layout, onLayoutChange, layoutDirty, savingLayout, onSaveLayout,
-  initialKey, onSaveFocus, onClose,
+  initialKey, onSaveFocus, onClose, preview = null,
 }) {
+  const messageType = preview?.message || PREVIEW_MSG;
+  const itemNoun = preview?.itemLabel || 'Category';
   const uid = useId();
   const titleId = `${uid}-title`;
   const pickerHintId = `${uid}-picker-hint`;
@@ -169,6 +187,7 @@ export default function ShowcasePreviewModal({
   const stageRef = useRef(null);
   const draftRef = useRef(null);
   const requestCloseRef = useRef(null);
+  const messageForRef = useRef(null);
 
   const selected = showcase.items.find((it) => it.key === selectedKey) || showcase.items[0];
   const savedFocus = selected.focus;
@@ -178,11 +197,12 @@ export default function ShowcasePreviewModal({
   const cloudinary = isCloudinary(selected.image);
 
   /* What the frame renders: saved cards + layout draft + this crop draft. */
-  const draft = useMemo(() => toStored({
-    ...showcase,
-    layout,
-    items: showcase.items.map((it) => (it.key === selected.key ? { ...it, focus } : it)),
-  }), [showcase, layout, selected.key, focus]);
+  const draft = useMemo(() => {
+    const items = showcase.items.map((it) => (it.key === selected.key ? { ...it, focus } : it));
+    return preview ? preview.build({ items, layout }) : toStored({ ...showcase, layout, items });
+  }, [showcase, layout, selected.key, focus, preview]);
+  /* What goes over postMessage for a draft. */
+  const messageFor = (data) => (preview ? { type: messageType, data } : { type: messageType, showcase: data });
 
   const dev = DEVICES.find((d) => d.value === device);
   const scale = stageWidth > 0 ? Math.min(1, stageWidth / dev.width) : 1;
@@ -220,6 +240,7 @@ export default function ShowcasePreviewModal({
   }
 
   useEffect(() => { draftRef.current = draft; }, [draft]);
+  useEffect(() => { messageForRef.current = messageFor; });
   useEffect(() => { requestCloseRef.current = requestClose; });
 
   /* Open: lock page scroll, focus Close; on close give focus back. */
@@ -262,22 +283,22 @@ export default function ShowcasePreviewModal({
       if (!frame || e.source !== frame || e.origin !== origin) return;
       const d = e.data;
       if (!d || typeof d !== 'object') return;
-      if (d.type === `${PREVIEW_MSG}-ready`) {
-        if (draftRef.current) frame.postMessage({ type: PREVIEW_MSG, showcase: draftRef.current }, origin);
+      if (d.type === `${messageType}-ready`) {
+        if (draftRef.current) frame.postMessage(messageForRef.current(draftRef.current), origin);
         setFrameReady(true);
-      } else if (d.type === `${PREVIEW_MSG}-height`) {
+      } else if (d.type === `${messageType}-height`) {
         const h = Number(d.height);
         if (Number.isFinite(h)) setFrameHeight(Math.min(20000, Math.max(MIN_FRAME_H, Math.ceil(h))));
       }
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, []);
+  }, [messageType]);
 
   /* Every draft change goes to the frame. */
   useEffect(() => {
     if (!frameReady) return;
-    iframeRef.current?.contentWindow?.postMessage({ type: PREVIEW_MSG, showcase: draft }, window.location.origin);
+    iframeRef.current?.contentWindow?.postMessage(messageForRef.current(draft), window.location.origin);
   }, [draft, frameReady]);
 
   /* Room for the device: scale = available width / device width. */
@@ -303,7 +324,7 @@ export default function ShowcasePreviewModal({
         <div className="flex flex-shrink-0 items-center gap-3 border-b border-gray-100 px-4 py-3">
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="truncate font-bold text-gray-800">Storefront preview</h2>
-            <p className="hidden text-xs text-gray-400 sm:block">Exactly what shoppers see on the homepage — nothing is saved until you click Save.</p>
+            <p className="hidden text-xs text-gray-400 sm:block">{preview?.note || 'Exactly what shoppers see on the homepage — nothing is saved until you click Save.'}</p>
           </div>
           <div role="group" aria-label="Device" className="inline-flex flex-shrink-0 rounded-lg border border-gray-200 bg-gray-50 p-0.5">
             {DEVICES.map(({ value, label, width, Icon }) => (
@@ -326,7 +347,8 @@ export default function ShowcasePreviewModal({
         <div className="min-h-0 flex-1 overflow-y-auto lg:flex lg:flex-col lg:overflow-hidden">
           {/* Layout toolbar (same draft as the bar on the page) */}
           <div className={`flex flex-shrink-0 flex-wrap items-end justify-between gap-3 border-b px-4 py-2.5 ${layoutDirty ? 'border-amber-100 bg-amber-50/50' : 'border-gray-100 bg-stone-50'}`}>
-            <LayoutControls layout={layout} onChange={onLayoutChange} compact />
+            <LayoutControls layout={layout} onChange={onLayoutChange} compact {...(preview?.layoutProps || {})} />
+            {preview?.extraControls}
             {layoutDirty && (
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-semibold text-amber-800">Unsaved layout</span>
@@ -359,8 +381,8 @@ export default function ShowcasePreviewModal({
                   <div className="relative overflow-hidden" style={{ width: Math.round(dev.width * scale), height: Math.round(frameHeight * scale) }}>
                     <iframe
                       ref={iframeRef}
-                      src="/showcase-preview"
-                      title="Category showcase preview"
+                      src={preview?.src || '/showcase-preview'}
+                      title={preview?.title || 'Category showcase preview'}
                       className="absolute left-0 top-0 block border-0 bg-white"
                       style={{ width: dev.width, height: frameHeight, transform: `scale(${scale})`, transformOrigin: '0 0' }}
                     />
@@ -383,7 +405,7 @@ export default function ShowcasePreviewModal({
                   {cropDirty && <span className="rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Unsaved crop</span>}
                 </div>
 
-                <div role="group" aria-label="Category" className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+                <div role="group" aria-label={itemNoun} className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
                   {showcase.items.map((it) => {
                     const on = it.key === selected.key;
                     return (

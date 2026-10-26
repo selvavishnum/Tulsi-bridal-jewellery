@@ -9,13 +9,15 @@
    on a phone. No slider, no timer, no particles, no rental button.
 
    - src/lib/heroSlides.js: which fields travel to the browser; "same hero"
-     (nothing to re-render) vs "changed"; which photo; the shipping rule behind
-     the first badge; which reviews can be shown
-   - src/app/page.js: the server reads the slides and the shipping rule,
-     survives Firestore being down, and never lets a failed rebuild replace the
-     last good page
-   - src/app/HomeClient.js: the hero rendered with the real React and the real
-     CloudinaryPicture — what the browser receives in the first HTML
+     (nothing to re-render) vs "changed"; which photo; the shipping rule and the
+     owner's delivery message behind the first badge; which reviews can be shown
+   - src/app/page.js: the server reads the slides, the shipping rule and the
+     delivery message, survives Firestore being down, and never lets a failed
+     rebuild replace the last good page
+   - src/app/HomeClient.js: the hero rendered with the real React, the real
+     CloudinaryPicture and the real DeliveryMessage — what the browser receives
+     in the first HTML (the first badge in every state the owner can put it in,
+     seeded so it neither pops in nor changes look after hydration)
    - src/app/api/admin/settings/route.js: a save drops the cached homepage
 
    The two .js/.jsx pages can't be loaded by Node, so they are transpiled here
@@ -38,11 +40,17 @@ import * as imageLib from '../src/lib/cloudinaryImage.js';
 import * as showcaseLib from '../src/lib/categoryShowcase.js';
 import * as catalogLib from '../src/lib/catalogImages.js';
 import * as chargesLib from '../src/lib/storeCharges.js';
+import * as marketingLib from '../src/lib/marketing.js';
+import * as marketingServerLib from '../src/lib/marketingServer.js';
 import * as chargesServerLib from '../src/lib/storeChargesServer.js';
+import * as deliveryLib from '../src/lib/deliveryMessage.js';
+import * as messageStyleLib from '../src/components/ui/deliveryMessageStyle.js';
 import { absoluteUrl } from '../src/lib/seoSchema.js';
 
 const { HERO_SLIDE_FIELDS, pickHeroSlides, sameHeroSlides, nextHeroSlides, heroPhotoUrl, isImageLink, pickShipping, currentShipping, shippingBadge, pickTestimonials } = heroLib;
 const { DEFAULT_CHARGES, deliveryFreeForAll } = chargesLib;
+const { DEFAULT_DELIVERY_MESSAGE, DELIVERY_CHOICES, normalizeDeliveryMessage, pickDeliveryMessage, nextDeliveryMessage } = deliveryLib;
+const { WRAP_AFTER } = messageStyleLib;
 const require = createRequire(import.meta.url);
 const read = (rel) => readFileSync(path.resolve(rel), 'utf8');
 
@@ -151,6 +159,63 @@ test('pickShipping / currentShipping: the server\'s rule is plain JSON; the live
   assert.match(read('src/context/CartContext.js'), /useState\(DEFAULT_CHARGES\)/, 'CartContext still starts on DEFAULT_CHARGES — currentShipping relies on it');
 });
 
+test('shippingBadge(charges, config): the owner can switch the badge off, reword it or show it in every case — the default is unchanged', () => {
+  const PAID = DEFAULT_CHARGES;
+  assert.equal(deliveryFreeForAll(PAID), false);
+  /* No config, or one that was never edited: exactly today's rule and today's words. */
+  for (const config of [undefined, null, DEFAULT_DELIVERY_MESSAGE, {}, 'junk', { style: { tone: 'wine' } }]) {
+    assert.equal(shippingBadge(FREE, config), 'Free Nationwide Shipping', JSON.stringify(config));
+    assert.equal(shippingBadge(PAID, config), '', JSON.stringify(config));
+  }
+  /* Off: nowhere, whatever the shipping rule. */
+  assert.equal(shippingBadge(FREE, { enabled: false }), '');
+  assert.equal(shippingBadge(PAID, { enabled: false, mode: 'always' }), '');
+  /* The owner's words (the hero's own, not the strip's). */
+  assert.equal(shippingBadge(FREE, { badgeText: 'Free Shipping Pan-India', barText: 'Elsewhere' }), 'Free Shipping Pan-India');
+  assert.equal(shippingBadge(FREE, { badgeText: '   ' }), 'Free Nationwide Shipping', 'empty = the default words (switch it off to hide)');
+  /* Smart mode never claims what the checkout does not do; "always" is the owner's own responsibility. */
+  assert.equal(shippingBadge(PAID, { badgeText: 'Free Shipping Pan-India' }), '', 'smart: not free for every order, so not said');
+  assert.equal(shippingBadge(PAID, { mode: 'always', badgeText: 'Free delivery over ₹999' }), 'Free delivery over ₹999');
+  assert.equal(shippingBadge(null, { mode: 'always' }), 'Free Nationwide Shipping', 'always does not look at the charges at all');
+  assert.equal(shippingBadge(null, {}), '');
+});
+
+test('the delivery message follows the slides\' rule: the same functions as src/lib/deliveryMessage.js, re-exported through heroSlides.js', () => {
+  assert.equal(heroLib.pickDeliveryMessage, pickDeliveryMessage);
+  assert.equal(heroLib.nextDeliveryMessage, nextDeliveryMessage);
+});
+
+test('nextDeliveryMessage: an equal refresh keeps the very same state (React renders nothing), a changed one replaces it, the stored copy never beats the seeded one', () => {
+  const seeded = pickDeliveryMessage({ deliveryMessage: { badgeText: 'Free Shipping Pan-India', icon: '🎁', style: { model: 'pill', tone: 'gold' } } });
+  /* The fetch answers with the same message: stored as the admin saved it, extra keys, another key order, spelled-out defaults. */
+  const same = { updatedAt: 'later', phone: '2', deliveryMessage: { style: { tone: 'gold', model: 'pill', unknown: 1 }, icon: '🎁', badgeText: ' Free Shipping Pan-India ', enabled: true, extra: 'x' } };
+  assert.equal(nextDeliveryMessage(seeded, same), seeded, 'identical reference → setState bails out');
+  assert.equal(nextDeliveryMessage(seeded, { deliveryMessage: seeded }), seeded);
+  assert.equal(nextDeliveryMessage(seeded, { deliveryMessage: JSON.parse(JSON.stringify(seeded)) }), seeded);
+
+  const changed = nextDeliveryMessage(seeded, { deliveryMessage: { badgeText: 'Free delivery over ₹999 <b>', mode: 'always' } });
+  assert.notEqual(changed, seeded);
+  assert.deepEqual(changed, normalizeDeliveryMessage({ badgeText: 'Free delivery over ₹999 <b>', mode: 'always' }), 'the new message, normalized');
+  assert.equal(changed.badgeText, 'Free delivery over ₹999 b');
+  assert.equal(changed.mode, 'always');
+  assert.equal(nextDeliveryMessage(seeded, { deliveryMessage: { enabled: false } }).enabled, false, 'switched off by the admin');
+
+  /* The copy this browser stored up to an hour ago: never over what the server already rendered. */
+  assert.equal(nextDeliveryMessage(seeded, { deliveryMessage: { enabled: false } }, { stale: true }), seeded, 'no flash of an older badge');
+  assert.notEqual(nextDeliveryMessage(seeded, { deliveryMessage: { enabled: false } }, { stale: false }), seeded, 'the fresh fetch still can');
+
+  /* Settings that never saved a message (or hold junk) change nothing. */
+  for (const settings of [undefined, null, 'x', 5, [], {}, { phone: '1' }, { deliveryMessage: undefined }, { deliveryMessage: null }, { deliveryMessage: 'off' }, { deliveryMessage: [] }, { deliveryMessage: 7 }]) {
+    assert.equal(nextDeliveryMessage(seeded, settings), seeded, JSON.stringify(settings));
+  }
+
+  /* Nothing seeded (the server could not read the settings): null stands for the defaults. */
+  assert.equal(nextDeliveryMessage(null, { deliveryMessage: DEFAULT_DELIVERY_MESSAGE }), null, 'the defaults are what null already means');
+  assert.equal(nextDeliveryMessage(null, { deliveryMessage: {} }), null);
+  assert.equal(nextDeliveryMessage(null, {}), null);
+  assert.deepEqual(nextDeliveryMessage(null, { deliveryMessage: { enabled: false } }), normalizeDeliveryMessage({ enabled: false }));
+});
+
 test('pickTestimonials: only reviews an admin actually wrote; nothing is invented', () => {
   assert.deepEqual(pickTestimonials(undefined), []);
   assert.deepEqual(pickTestimonials('x'), []);
@@ -210,6 +275,8 @@ const page = sucrase ? loadJsx('src/app/page.js', {
   },
   '@/lib/heroSlides': heroLib,
   '@/lib/categoryShowcase': showcaseLib,
+  '@/lib/marketing': marketingLib,
+  '@/lib/marketingServer': marketingServerLib,
   '@/lib/storeChargesServer': chargesServerLib,
 }) : null;
 
@@ -246,7 +313,7 @@ test('page.js: passes the configured hero photo to HomeClient — only the field
   } } });
   const el = await page.default();
   assert.equal(el.type, HomeClientStub);
-  assert.deepEqual(Object.keys(el.props), ['heroSlides', 'showcase', 'shipping'], 'no other setting is put into the page');
+  assert.deepEqual(Object.keys(el.props), ['heroSlides', 'heroLayout', 'showcase', 'shipping', 'deliveryMessage', 'ads'], 'no other setting is put into the page');
   assert.deepEqual(el.props.heroSlides, [photo(), photo({ id: '2', imageUrl: TWO })]);
   assert.deepEqual(JSON.parse(JSON.stringify(el.props)), el.props, 'plain JSON');
   assert.doesNotMatch(JSON.stringify(el.props.heroSlides), /Rental|rentals|Bridal|Bride/, 'no rental button in the page payload');
@@ -262,6 +329,36 @@ test('page.js: the shipping rule behind the hero badge is read on the server too
   assert.deepEqual(JSON.parse(JSON.stringify(shipping)), shipping, 'no Firestore timestamp can reach a client component');
 });
 
+test('page.js: the owner\'s delivery message is read on the server too, normalized and as plain data (so the badge is final at first paint)', { skip }, async () => {
+  /* Nothing saved yet: the full default configuration — "read, nothing configured", which is not null ("could not read"). */
+  const never = (await page.default()).props.deliveryMessage;
+  assert.deepEqual(never, DEFAULT_DELIVERY_MESSAGE);
+  assert.notEqual(never, DEFAULT_DELIVERY_MESSAGE, 'a fresh object: the frozen defaults are not handed across to a client component');
+  db = fakeFirestore({});
+  assert.deepEqual((await page.default()).props.deliveryMessage, DEFAULT_DELIVERY_MESSAGE, 'no settings document at all');
+
+  const stored = {
+    enabled: false, mode: 'always', badgeText: '  Free   <b>shipping</b> over ₹999  ', barText: 'Free delivery over ₹999', icon: '🎁',
+    style: { font: 'serif', weight: 'bold', size: 'lg', tracking: 'wide', italic: true, uppercase: true, model: 'pill', tone: 'wine', colors: { text: '#ABCDEF', bg: '#123456' }, hacked: 'x' },
+    leaked: 'secret', razorpayKey: 'rzp',
+  };
+  db = fakeFirestore({ settings: { site: { phone: '+91 76958 68787', email: 'owner@tulsi.test', deliveryMessage: stored } } });
+  const el = await page.default();
+  assert.deepEqual(el.props.deliveryMessage, normalizeDeliveryMessage(stored), 'what the strip, the hero and the product page all agree on');
+  assert.equal(el.props.deliveryMessage.enabled, false);
+  assert.equal(el.props.deliveryMessage.badgeText, 'Free bshipping/b over ₹999', 'plain text: no markup survives');
+  assert.equal(el.props.deliveryMessage.style.colors.text, '#abcdef');
+  assert.deepEqual(JSON.parse(JSON.stringify(el.props.deliveryMessage)), el.props.deliveryMessage, 'plain JSON');
+  assert.doesNotMatch(JSON.stringify(el.props), /76958|owner@tulsi|secret|rzp|hacked/, 'only the delivery message travels with it — not the phone, the e-mail or an unknown key');
+
+  /* Garbage in the document: the defaults, never a crash and never half a configuration. */
+  for (const junk of ['yes', 5, true, null, [], [{ enabled: false }], { enabled: 'no', mode: 'sometimes', style: 'bold' }]) {
+    db = fakeFirestore({ settings: { site: { phone: '1', deliveryMessage: junk } } });
+    assert.deepEqual((await page.default()).props.deliveryMessage, normalizeDeliveryMessage(junk), JSON.stringify(junk));
+  }
+  assert.deepEqual(normalizeDeliveryMessage({ enabled: 'no', mode: 'sometimes', style: 'bold' }), DEFAULT_DELIVERY_MESSAGE);
+});
+
 test('page.js: the category showcase is drawn on the server too, as plain data (so it cannot pop in and push the page down)', { skip }, async () => {
   db = fakeFirestore({ settings: { site: { phone: '1', categoryShowcase: { version: 1, layout: { layoutVariant: 'circle', displayMode: 'grid', size: 'small' }, items: [{ key: 'necklace', isActive: false }] } } } });
   const el = await page.default();
@@ -272,13 +369,14 @@ test('page.js: the category showcase is drawn on the server too, as plain data (
   assert.deepEqual((await page.default()).props.showcase, showcaseLib.normalizeShowcase({}), 'no settings document: the default showcase');
 });
 
-test('page.js: when the settings cannot be read, neither the slides, the showcase nor the shipping rule are guessed', { skip }, async () => {
+test('page.js: when the settings cannot be read, neither the slides, the showcase, the shipping rule nor the delivery message are guessed', { skip }, async () => {
   dbDown = new Error('Firestore is down');
   try {
     const el = await inEnv('dev', () => page.default());
     assert.equal(el.props.heroSlides, null);
     assert.equal(el.props.showcase, null);
     assert.equal(el.props.shipping, null);
+    assert.equal(el.props.deliveryMessage, null, 'null = unknown: the browser decides from its own fetch (not "the owner switched it off", not "the defaults are final")');
   } finally { dbDown = null; }
 });
 
@@ -315,6 +413,7 @@ test('page.js: Firestore down while building (or in dev) still renders the page 
       assert.equal(el.type, HomeClientStub, `${env}/${failure}`);
       assert.equal(el.props.heroSlides, null, `${env}/${failure}: null = unknown, never a fake "no slides"`);
       assert.equal(el.props.shipping, null, `${env}/${failure}`);
+      assert.equal(el.props.deliveryMessage, null, `${env}/${failure}: unknown, not the defaults`);
     }
   }
 });
@@ -375,7 +474,11 @@ const recordingReact = {
 let storedSettings = null; // what the browser's localStorage copy holds
 const cacheStub = { cacheGet: () => storedSettings, cacheSet: () => {} };
 
+/* Every Fi… icon renders as <svg data-icon="Fi…">. */
+const fiIcons = new Proxy({}, { get: (_, name) => (typeof name === 'string' && name.startsWith('Fi') ? icon(name) : undefined) });
+
 let CloudinaryPicture = null;
+let DeliveryMessage = null;
 let HomeClient = null;
 let HomeClientRecorded = null;
 let HeroSection = null;
@@ -398,21 +501,29 @@ let pictureProps = null; // what HeroArt handed the picture on its last render
 const PictureSpy = (props) => { pictureProps = props; return React.createElement('i', { 'data-picture': props.src }); };
 if (sucrase) {
   CloudinaryPicture = loadJsx('src/components/ui/CloudinaryPicture.jsx', { 'react-dom': ReactDOM, '@/lib/cloudinaryImage': imageLib }).default;
+  /* The real component and the real style tables: the hero is checked as the owner's message is really drawn. */
+  DeliveryMessage = loadJsx('src/components/ui/DeliveryMessage.jsx', { 'react-icons/fi': fiIcons, './deliveryMessageStyle': messageStyleLib }).default;
   const homeDeps = {
     'next/link': { __esModule: true, default: Link },
     'next/image': { __esModule: true, default: (props) => React.createElement('img', { 'data-next-image': 'true', alt: props.alt }) },
-    'react-icons/fi': new Proxy({}, { get: (_, name) => (typeof name === 'string' && name.startsWith('Fi') ? icon(name) : undefined) }),
+    'react-icons/fi': fiIcons,
     '@/context/CartContext': { useCart: () => ({ charges: cart.charges }) },
     '@/lib/clientCache': { cacheGet: () => null, cacheSet: () => {} },
     '@/components/shop/ProductCard': { __esModule: true, default: Nothing },
     '@/components/home/CategoryShowcase': { __esModule: true, default: ({ showcase }) => React.createElement('i', { 'data-showcase': showcase.items.length }) },
     '@/components/ui/CustomerAvatar': { __esModule: true, default: ({ name }) => React.createElement('b', { 'data-avatar': name }) },
     '@/components/ui/CloudinaryPicture': { __esModule: true, default: CloudinaryPicture },
+    '@/components/ui/DeliveryMessage': { __esModule: true, default: DeliveryMessage },
     '@/components/ui/CatalogImage': { __esModule: true, default: Nothing },
     '@/lib/catalogImages': catalogLib,
     '@/lib/cloudinaryImage': imageLib,
     '@/lib/categoryShowcase': showcaseLib,
     '@/lib/heroSlides': heroLib,
+    '@/lib/marketing': marketingLib,
+    '@/components/home/HeroPhotos': loadJsx('src/components/home/HeroPhotos.jsx', { 'react-icons/fi': fiIcons, '@/lib/categoryShowcase': showcaseLib }),
+    '@/components/home/FocusPhoto': loadJsx('src/components/home/FocusPhoto.jsx', { '@/lib/categoryShowcase': showcaseLib }),
+    '@/components/home/SliderRow': { __esModule: true, default: ({ children }) => React.createElement('div', { 'data-slider-row': 'true' }, children) },
+    '@/components/ads/AdSlot': { __esModule: true, default: () => null },
   };
   const home = loadJsx('src/app/HomeClient.js', homeDeps);
   HomeClient = home.default;
@@ -682,6 +793,147 @@ test('HomeClient: the shipping badge says what the store really does — and is 
   assert.match(heroOf(render(HomeClient, { heroSlides: [photo()] })), /🛡️<\/span>100% Anti-Tarnish Finish<\/li>/);
 });
 
+/* ── The first badge is the owner's delivery message ── */
+
+/* The hero's trust badges as the first HTML draws them: classes, inline style, text. */
+const badgesOf = (html) => [...heroOf(html).matchAll(/<li class="([^"]*)"(?: style="([^"]*)")?>([\s\S]*?)<\/li>/g)]
+  .map((m) => ({ html: m[0], cls: m[1].split(/\s+/), style: m[2], text: textOf(m[3]) }));
+const ROW = 'inline-flex h-6 items-center gap-2 whitespace-nowrap text-[13px] font-medium text-stone-700';
+const li = (icon, words, row = ROW) => `<li class="${row}"><span aria-hidden="true" class="text-base leading-none">${icon}</span>${words}</li>`;
+const FIXED_LIS = `${li('💵', 'COD Available')}${li('🛡️', '100% Anti-Tarnish Finish')}`;
+const trustList = (html) => heroOf(html).match(/<ul role="list"[^>]*>([\s\S]*?)<\/ul>/)[1];
+const message = (over = {}) => normalizeDeliveryMessage(over);
+
+test('HomeClient: with the default delivery message the trust strip is exactly what it was before the owner could change it', { skip }, () => {
+  const reference = render(HomeClient, { heroSlides: [photo()] });
+  assert.equal(trustList(reference), `${li('🚚', 'Free Nationwide Shipping')}${FIXED_LIS}`, 'the same three items, classes and markup');
+  /* Not set, not read, never edited, or junk: all the same page, byte for byte. */
+  for (const deliveryMessage of [undefined, null, DEFAULT_DELIVERY_MESSAGE, message(), pickDeliveryMessage({}), {}, { style: { tone: 'auto', model: 'text' } }, { enabled: true, mode: 'auto' }]) {
+    assert.equal(render(HomeClient, { heroSlides: [photo()], deliveryMessage }), reference, JSON.stringify(deliveryMessage));
+  }
+  /* ...and the fallback is today's too. */
+  const paid = withCharges(DEFAULT_CHARGES, () => render(HomeClient, { heroSlides: [photo()] }));
+  assert.equal(trustList(paid), `${li('🔒', 'Secure Checkout')}${FIXED_LIS}`);
+  assert.deepEqual(badgesOf(reference).map((b) => b.cls.join(' ')), [ROW, ROW, ROW]);
+});
+
+test('HomeClient: switched off, the delivery message is nowhere — "Secure Checkout" takes its place, whatever the shipping rule or the mode', { skip }, () => {
+  for (const mode of ['auto', 'always']) {
+    for (const [charges, shipping] of [[FREE, FREE], [DEFAULT_CHARGES, pickShipping(DEFAULT_CHARGES)], [FREE, null], [DEFAULT_CHARGES, null]]) {
+      const html = withCharges(charges, () => render(HomeClient, { heroSlides: [photo()], shipping, deliveryMessage: message({ enabled: false, mode }) }));
+      const where = `${mode}/${JSON.stringify(charges)}`;
+      assert.equal(trustList(html), `${li('🔒', 'Secure Checkout')}${FIXED_LIS}`, where);
+      assert.doesNotMatch(html, /Free Nationwide Shipping|Free Delivery across India|🚚/, where);
+    }
+  }
+});
+
+test('HomeClient: "Smart" mode never says what the checkout does not do; "Always" shows the owner\'s own words even then', { skip }, () => {
+  const first = (html) => badgesOf(html)[0].text;
+  const owner = message({ mode: 'always', badgeText: 'Free delivery above ₹999' });
+  const smart = message({ mode: 'auto', badgeText: 'Free delivery above ₹999' });
+  /* Shipping is charged: Always still shows the owner's words (the admin warned them); Smart shows the true fallback. */
+  for (const [charges, shipping] of [[DEFAULT_CHARGES, pickShipping(DEFAULT_CHARGES)], [DEFAULT_CHARGES, null], [{ ...FREE, enable_shipping_fee: true }, null]]) {
+    const where = JSON.stringify([charges, shipping]);
+    assert.equal(withCharges(charges, () => first(render(HomeClient, { heroSlides: [photo()], shipping, deliveryMessage: owner }))), '🚚 Free delivery above ₹999', where);
+    assert.doesNotMatch(withCharges(charges, () => render(HomeClient, { heroSlides: [photo()], shipping, deliveryMessage: owner })), /Secure Checkout/, where);
+    assert.equal(withCharges(charges, () => first(render(HomeClient, { heroSlides: [photo()], shipping, deliveryMessage: smart }))), '🔒 Secure Checkout', where);
+    assert.doesNotMatch(withCharges(charges, () => render(HomeClient, { heroSlides: [photo()], shipping, deliveryMessage: smart })), /above ₹999/, where);
+  }
+  /* Always does not wait for the charges: it is the same words before and after they are fetched. */
+  assert.equal(withCharges(DEFAULT_CHARGES, () => first(render(HomeClient, { heroSlides: [photo()], shipping: null, deliveryMessage: owner }))),
+    withCharges(FREE, () => first(render(HomeClient, { heroSlides: [photo()], shipping: FREE, deliveryMessage: owner }))));
+  /* Free for every order: both modes show it. */
+  for (const deliveryMessage of [owner, smart]) assert.equal(first(render(HomeClient, { heroSlides: [photo()], shipping: FREE, deliveryMessage })), '🚚 Free delivery above ₹999');
+  /* The fixed words are not the owner's to change: they stay in every state. */
+  for (const deliveryMessage of [owner, smart, message({ enabled: false })]) {
+    const items = badgesOf(withCharges(DEFAULT_CHARGES, () => render(HomeClient, { heroSlides: [photo()], deliveryMessage }))).map((b) => b.text);
+    assert.equal(items.length, 3, 'always three badges');
+    assert.deepEqual(items.slice(1), ['💵 COD Available', '🛡️ 100% Anti-Tarnish Finish']);
+  }
+});
+
+test('HomeClient: the badge uses the hero\'s own words and the chosen icon — plain text, never markup', { skip }, () => {
+  const first = (deliveryMessage) => render(HomeClient, { heroSlides: [photo()], shipping: FREE, deliveryMessage });
+  /* The hero's words (badgeText), not the strip's (barText). */
+  const html = first(message({ badgeText: 'Free Shipping Pan-India', barText: 'Strip words only' }));
+  assert.equal(badgesOf(html)[0].text, '🚚 Free Shipping Pan-India');
+  assert.doesNotMatch(html, /Strip words only|Free Nationwide Shipping/);
+  /* The icon: any of the allowed emoji, or none — then there is no icon element and no stray gap. */
+  for (const value of DELIVERY_CHOICES.icons) {
+    const out = trustList(first(message({ icon: value })));
+    const expected = value ? li(value, 'Free Nationwide Shipping') : `<li class="${ROW}">Free Nationwide Shipping</li>`;
+    assert.ok(out.startsWith(expected), `${value || 'no icon'}: ${out.slice(0, 200)}`);
+  }
+  /* An icon that is not on the list is the default truck. */
+  assert.ok(trustList(first(message({ icon: '💣' }))).startsWith(li('🚚', 'Free Nationwide Shipping')));
+  /* Hostile words, stored by hand or tampered with on the way: text only. */
+  for (const deliveryMessage of [{ badgeText: '<img src=x onerror=alert(1)><script>alert(2)</script>' }, message({ badgeText: '<img src=x onerror=alert(1)>' })]) {
+    const out = first(deliveryMessage);
+    assert.doesNotMatch(out, /<img src=x|<script>alert/);
+    assert.match(heroOf(out), /<li [^>]*>/);
+  }
+  /* Not a single unwanted tag, whatever the words: the hero keeps its one list of three items. */
+  assert.equal(badgesOf(first(message({ badgeText: 'A & B "quoted" \'single\'' }))).length, 3);
+  assert.match(first(message({ badgeText: 'A & B "quoted"' })), /A &amp; B &quot;quoted&quot;/);
+});
+
+test('HomeClient: whatever shape and colours the owner picks, the first badge is the same fixed 24px, one-line row — a pill, a border or a fill cannot make the strip taller', { skip }, () => {
+  const MODELS = DELIVERY_CHOICES.models;
+  const TONES = DELIVERY_CHOICES.tones;
+  const variants = [{}, { size: 'lg', weight: 'bold', font: 'serif', tracking: 'wider', uppercase: true }, { italic: true, size: 'sm', font: 'classic', weight: 'semibold', tracking: 'wide' }];
+  let drawn = 0;
+  for (const model of MODELS) for (const tone of TONES) for (const extra of variants) {
+    const deliveryMessage = message({ style: { model, tone, colors: { text: '#ffffff', bg: '#8b1a4a' }, ...extra } });
+    const where = JSON.stringify({ model, tone, ...extra });
+    const items = badgesOf(render(HeroSection, { photoUrl: ONE, shippingLabel: 'Free Nationwide Shipping', deliveryMessage }));
+    drawn += 1;
+    assert.equal(items.length, 3, where);
+    const [shipping, ...fixed] = items;
+    for (const c of ['inline-flex', 'h-6', 'items-center', 'whitespace-nowrap']) assert.ok(shipping.cls.includes(c), `${c}: ${where}`);
+    assert.ok(!shipping.cls.some((c) => /^(?:min-h-|max-h-|h-(?!6$)|py-|p-|pt-|pb-|flex-wrap$|whitespace-(?:normal|pre))/.test(c)), `nothing that changes the height: ${shipping.cls.join(' ')} (${where})`);
+    assert.deepEqual(fixed.map((b) => b.html), [li('💵', 'COD Available'), li('🛡️', '100% Anti-Tarnish Finish')], `the other two badges are untouched: ${where}`);
+    /* Inline style: only a custom colour pair that reads, and only plain hex. */
+    if (shipping.style) {
+      assert.equal(tone, 'custom', where);
+      for (const part of shipping.style.split(';')) assert.match(part, /^(?:color|background-color|border-color):#[0-9a-f]{6}$/, where);
+    }
+    /* The words are in a text node of the same row, and the truck is hidden from a screen reader. */
+    assert.match(shipping.html, /<span aria-hidden="true" class="text-base leading-none">🚚<\/span>(?:<span [^>]*>)?Free Nationwide Shipping/, where);
+  }
+  assert.equal(drawn, 5 * 7 * 3);
+  /* A custom pair that cannot be read (under 3:1) is not applied: the badge is the automatic look. */
+  const pale = message({ style: { model: 'pill', tone: 'custom', colors: { text: '#ffffff', bg: '#fefefe' } } });
+  assert.equal(pale.style.tone, 'auto');
+  assert.doesNotMatch(trustList(render(HeroSection, { photoUrl: ONE, shippingLabel: 'Free Nationwide Shipping', deliveryMessage: pale })), /style="/);
+  /* A readable pair is, and as inline colour only. */
+  const ok = message({ style: { model: 'solid', tone: 'custom', colors: { text: '#ffffff', bg: '#8b1a4a' } } });
+  assert.match(trustList(render(HeroSection, { photoUrl: ONE, shippingLabel: 'Free Nationwide Shipping', deliveryMessage: ok })), /^<li class="[^"]*\bh-6\b[^"]*" style="color:#ffffff;background-color:#8b1a4a">/);
+});
+
+test('HomeClient: only words too long for one line on a phone let the first badge wrap — the default words and anything up to 28 characters stay on the fixed row', { skip }, () => {
+  assert.ok(DEFAULT_DELIVERY_MESSAGE.badgeText.length <= WRAP_AFTER && DEFAULT_DELIVERY_MESSAGE.barText.length <= WRAP_AFTER, 'the defaults never wrap');
+  const row = (words) => badgesOf(render(HeroSection, { photoUrl: ONE, shippingLabel: words, deliveryMessage: message({ badgeText: words }) }))[0].cls;
+  const exact = 'x'.repeat(WRAP_AFTER);
+  assert.ok(row(exact).includes('h-6') && row(exact).includes('whitespace-nowrap'));
+  const longer = `${exact}y`;
+  assert.ok(row(longer).includes('min-h-6') && row(longer).includes('max-w-full') && !row(longer).includes('h-6'), 'longer: it may wrap rather than be cut off by the hero\'s overflow-hidden');
+  assert.ok(!row(longer).includes('whitespace-nowrap'));
+});
+
+test('HeroSection: the first badge is the words it is given — nothing (or blank) gives "Secure Checkout", never an empty badge', { skip }, () => {
+  for (const shippingLabel of [undefined, '', '   ', null, 0, false, [], {}]) {
+    const html = render(HeroSection, { photoUrl: ONE, shippingLabel, deliveryMessage: message({ badgeText: 'Never shown' }) });
+    assert.deepEqual(badgesOf(html).map((b) => b.text), ['🔒 Secure Checkout', '💵 COD Available', '🛡️ 100% Anti-Tarnish Finish'], JSON.stringify(shippingLabel));
+    assert.doesNotMatch(html, /Never shown/);
+  }
+  assert.deepEqual(badgesOf(render(HeroSection, { photoUrl: ONE })).map((b) => b.text), ['🔒 Secure Checkout', '💵 COD Available', '🛡️ 100% Anti-Tarnish Finish'], 'the way HeroSection has always defaulted');
+  const given = render(HeroSection, { photoUrl: ONE, shippingLabel: '  Owner words  ', deliveryMessage: message({ icon: '✨' }) });
+  assert.deepEqual(badgesOf(given).map((b) => b.text), ['✨ Owner words', '💵 COD Available', '🛡️ 100% Anti-Tarnish Finish']);
+  /* With no configuration to style it, the words are drawn in the default look. */
+  assert.equal(badgesOf(render(HeroSection, { photoUrl: ONE, shippingLabel: 'Owner words' }))[0].html, li('🚚', 'Owner words'));
+});
+
 test('HomeClient: every colour in the hero reads at WCAG AA or better on its background (4.5:1 for text)', { skip }, () => {
   const colors = require('../tailwind.config.js').theme.extend.colors;
   const hex = (token) => {
@@ -720,7 +972,8 @@ test('HomeClient: nothing of the old hero is left — no rental button or route,
   assert.doesNotMatch(html.replace(/tulsi-bridal/g, ''), /\bbrides?\b|\bbridal\b/i, 'bridal wording is fashion wording now (the Cloudinary folder "tulsi-bridal" in a photo link is a storage path and stays)');
   assert.doesNotMatch(html, /Temple Bride|Jewellery Crafted for Brides|Shop Collection/, 'the old slide texts are not drawn');
   const source = read('src/app/HomeClient.js');
-  assert.doesNotMatch(source, /setInterval|setTimeout|requestAnimationFrame|matchMedia|HeroSlider|HeroParticles|HeroPhoto\b|HERO_ART|DEFAULT_SLIDES|DEFAULT_TESTIMONIALS|FiCalendar|FiChevron|transitioning/);
+  /* (The slider is opt-in now — Admin → Marketing → Display mode: Slider — and lives in components/home/HeroPhotos.jsx; the default hero draws one photo and has no timer.) */
+  assert.doesNotMatch(source, /setInterval|setTimeout|requestAnimationFrame|matchMedia|HeroParticles|HeroPhoto\b|HERO_ART|DEFAULT_SLIDES|DEFAULT_TESTIMONIALS|FiCalendar|FiChevron|transitioning/);
   assert.doesNotMatch(source, /rental|\/rentals|Book Rental/i);
   assert.doesNotMatch(source, /from 'next\/image'/, 'no photo goes through /_next/image (it would download the full master)');
   assert.doesNotMatch(source, /Playfair|next\/font/, 'no extra font on the LCP path');
@@ -824,28 +1077,31 @@ test('CloudinaryPicture receives the hero\'s 4:5 crop and a ratio-less call stil
   assert.ok(Object.isFrozen(HERO_PHOTO) && Object.isFrozen(HERO_PHOTO.widths));
 });
 
-/* Render HomeClient with `heroSlides`, then do what the browser does next:
-   the stored settings copy is applied at once and /api/admin/settings answers
-   afterwards. Returns the states of interest: the hero slides, and the reviews. */
-async function hydrateAndRefresh({ heroSlides, stored = null, fetched = null }) {
+/* Render HomeClient with `heroSlides` (and the server's `deliveryMessage`), then do what the browser
+   does next: the stored settings copy is applied at once and /api/admin/settings answers afterwards.
+   Returns the states of interest: the hero slides (with `.reviews` and `.message` alongside). */
+async function hydrateAndRefresh({ heroSlides, deliveryMessage, stored = null, fetched = null }) {
   recorded = { states: [], effects: [] };
   storedSettings = stored;
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => ({ json: async () => (fetched ? { success: true, data: fetched } : { success: false }) });
   try {
-    render(HomeClientRecorded, { heroSlides });
-    const settingsEffect = recorded.effects.find((e) => e.deps?.length === 2 && e.deps.every((d) => typeof d === 'boolean'));
-    assert.ok(settingsEffect, 'HomeClient has its settings effect (deps: [seeded, showcaseSeeded])');
+    render(HomeClientRecorded, { heroSlides, deliveryMessage });
+    const settingsEffect = recorded.effects.find((e) => e.deps?.length === 4 && e.deps.every((d) => typeof d === 'boolean'));
+    assert.ok(settingsEffect, 'HomeClient has its settings effect (deps: [seeded, showcaseSeeded, messageSeeded, layoutSeeded])');
     assert.equal(settingsEffect.deps[0], Array.isArray(heroSlides), 'it knows whether the server seeded the slides');
+    assert.equal(settingsEffect.deps[2], !!deliveryMessage, 'it knows whether the server seeded the delivery message');
     settingsEffect.fn();
     await new Promise((resolve) => setTimeout(resolve, 0)); // the fetch answers
   } finally { globalThis.fetch = realFetch; storedSettings = null; }
-  /* HomeClient's useState order: siteSettings, hero slides, showcase, reviews, … */
+  /* HomeClient's useState order: siteSettings, hero slides, showcase, delivery message, reviews, … */
   const hero = recorded.states[1];
   assert.deepEqual(hero.initial, Array.isArray(heroSlides) ? heroSlides : [], 'states[1] is the hero slides');
-  const reviews = recorded.states[3];
-  assert.deepEqual(reviews.initial, [], 'states[3] is the reviews, which start empty — no sample reviews');
-  return Object.assign(hero, { reviews });
+  const message = recorded.states[3];
+  assert.equal(message.initial, deliveryMessage ?? null, 'states[3] is the delivery message: the very object the server seeded (null = unknown)');
+  const reviews = recorded.states[4];
+  assert.deepEqual(reviews.initial, [], 'states[4] is the reviews, which start empty — no sample reviews');
+  return Object.assign(hero, { reviews, message });
 }
 const OLD = [slide({ imageUrl: TWO })];
 const NEW = [slide({ imageUrl: ONE })];
@@ -892,21 +1148,75 @@ test('HomeClient settings refresh: only the admin\'s own reviews are shown — t
   assert.deepEqual(none.reviews.value, []);
 });
 
+/* The delivery message goes through the same refresh as the slides: seeded = already final. */
+const SEEDED_MESSAGE = message({ badgeText: 'Free Shipping Pan-India', icon: '🎁', style: { model: 'pill', tone: 'wine', weight: 'bold' } });
+const SEEDED_SLIDES = pickHeroSlides([slide()]);
+const firstBadge = (deliveryMessage, shipping = FREE) => badgesOf(render(HomeClient, { heroSlides: SEEDED_SLIDES, shipping, deliveryMessage }))[0];
+
+test('HomeClient: a server-seeded delivery message is in the first HTML, final — the badge is drawn in the owner\'s words and look before any script runs', { skip }, () => {
+  const badge = firstBadge(SEEDED_MESSAGE);
+  assert.equal(badge.text, '🎁 Free Shipping Pan-India');
+  for (const c of ['rounded-full', 'font-bold', 'h-6', 'whitespace-nowrap']) assert.ok(badge.cls.includes(c), c);
+  assert.ok(badge.cls.some((c) => /^bg-wine-\d+$/.test(c)) && badge.cls.some((c) => /^text-/.test(c) && c !== 'text-[13px]'), 'the wine tone');
+  /* Not seeded (the server could not read the settings): the default look, then whatever the browser learns. */
+  assert.equal(firstBadge(null).html, li('🚚', 'Free Nationwide Shipping'));
+});
+
+test('HomeClient settings refresh: a seeded delivery message + an equal fetch → the same state, never replaced (no re-render, no flash, no change of look)', { skip }, async () => {
+  const sameButSpelledOtherwise = { ...JSON.parse(JSON.stringify(SEEDED_MESSAGE)), updatedBy: 'admin', style: { ...SEEDED_MESSAGE.style, unknownKey: 1 } };
+  const settings = { phone: '2', heroSlides: SEEDED_SLIDES, deliveryMessage: sameButSpelledOtherwise };
+  const state = await hydrateAndRefresh({ heroSlides: SEEDED_SLIDES, deliveryMessage: SEEDED_MESSAGE, stored: settings, fetched: settings });
+  assert.equal(state.message.value, SEEDED_MESSAGE, 'still the very same object');
+  assert.ok(state.message.history.length > 0 && state.message.history.every((h) => h === SEEDED_MESSAGE), 'every setState was a no-op for React');
+  /* So what the browser draws after hydration is, byte for byte, what the server sent. */
+  assert.equal(render(HomeClient, { heroSlides: SEEDED_SLIDES, shipping: FREE, deliveryMessage: state.message.value }), render(HomeClient, { heroSlides: SEEDED_SLIDES, shipping: FREE, deliveryMessage: SEEDED_MESSAGE }));
+});
+
+test('HomeClient settings refresh: the stored copy from an hour ago never flashes over a seeded delivery message; the fresh fetch still wins', { skip }, async () => {
+  const hourOld = { deliveryMessage: { enabled: false } };
+  const fresh = { deliveryMessage: { badgeText: 'Fresh words', icon: '' } };
+  const state = await hydrateAndRefresh({ heroSlides: SEEDED_SLIDES, deliveryMessage: SEEDED_MESSAGE, stored: hourOld, fetched: fresh });
+  assert.ok(state.message.history.every((h) => h === SEEDED_MESSAGE || h.badgeText === 'Fresh words'), 'the older "switched off" badge was never shown');
+  assert.equal(state.message.history[0], SEEDED_MESSAGE, 'the stored copy changed nothing');
+  assert.deepEqual(state.message.value, normalizeDeliveryMessage(fresh.deliveryMessage));
+  assert.equal(firstBadge(state.message.value).text, 'Fresh words');
+  /* The admin switched it off since the page was built: the fetch takes it down, the fallback badge takes its place. */
+  const off = await hydrateAndRefresh({ heroSlides: SEEDED_SLIDES, deliveryMessage: SEEDED_MESSAGE, fetched: { deliveryMessage: { enabled: false } } });
+  assert.equal(off.message.value.enabled, false);
+  assert.equal(firstBadge(off.message.value).text, '🔒 Secure Checkout');
+});
+
+test('HomeClient settings refresh: when the server could not read the delivery message, the stored copy fills in at once and the fetch corrects it', { skip }, async () => {
+  const state = await hydrateAndRefresh({ heroSlides: [], deliveryMessage: null, stored: { deliveryMessage: { enabled: false } }, fetched: { deliveryMessage: { badgeText: 'Fresh words' } } });
+  assert.deepEqual(state.message.history.map((h) => (h.enabled === false ? 'stored' : h.badgeText)), ['stored', 'Fresh words']);
+  assert.deepEqual(state.message.value, normalizeDeliveryMessage({ badgeText: 'Fresh words' }));
+  /* Settings that never saved a message leave "unknown" alone: the defaults are drawn. */
+  const unknown = await hydrateAndRefresh({ heroSlides: [], deliveryMessage: null, stored: { phone: '1' }, fetched: { phone: '2', deliveryMessage: 'junk' } });
+  assert.equal(unknown.message.value, null);
+  assert.equal(firstBadge(unknown.message.value).html, li('🚚', 'Free Nationwide Shipping'));
+});
+
+test('HomeClient settings refresh: a failed fetch, or settings without a delivery message, leave the seeded one on screen', { skip }, async () => {
+  const failed = await hydrateAndRefresh({ heroSlides: SEEDED_SLIDES, deliveryMessage: SEEDED_MESSAGE, fetched: null });
+  assert.equal(failed.message.value, SEEDED_MESSAGE);
+  assert.deepEqual(failed.message.history, []);
+  const without = await hydrateAndRefresh({ heroSlides: SEEDED_SLIDES, deliveryMessage: SEEDED_MESSAGE, stored: { phone: '1' }, fetched: { phone: '2', heroSlides: SEEDED_SLIDES } });
+  assert.equal(without.message.value, SEEDED_MESSAGE);
+  assert.ok(without.message.history.every((h) => h === SEEDED_MESSAGE));
+});
+
 /* ── Admin → Settings → Hero ── */
 
-test('admin settings: the hero form says plainly that one photo is shown and no longer asks for fields the home page ignores', () => {
-  const source = read('src/app/admin/settings/page.js');
-  assert.match(source, /Homepage Hero Photo/);
-  assert.match(source, /shows one photo: the image of <strong>Slide 1<\/strong>/);
-  assert.match(source, /Other slides are kept here but not shown/);
-  assert.match(source, /title, subtitle and button fields of the old slider are no longer used on the homepage/);
-  assert.match(source, /const BLANK_SLIDE = \{ id: '', imageUrl: '' \};/, 'a new slide is just a photo — no "Book Rental" button saved with it');
-  assert.match(source, /shown on the homepage/);
-  const row = source.slice(source.indexOf('function SlideRow'), source.indexOf('/* ─────────────────────────── Testimonial row'));
-  assert.doesNotMatch(row, /Main Title|Button 1|Button 2|Tag \/ Badge|Subtitle/, 'the unused fields are not listed');
-  assert.doesNotMatch(source, /Book Rental|\/rentals|Bridal|Brides|Premium Bridal/, 'no rental button or bridal brand string is suggested anywhere');
-  assert.match(source, /businessName: 'Tulsi Fashion Jewellery'/);
-  assert.match(source, /The &ldquo;Happy Customers&rdquo; section is hidden on the homepage until you add a real review here/);
+test('admin settings: the hero panel says plainly how photos are shown, lists no fields the home page ignores, and suggests no rental or bridal wording', () => {
+  const page = read('src/app/admin/settings/page.js');
+  const panels = read('src/components/admin/marketing/MarketingPanels.jsx');
+  assert.match(page, /title="Homepage Hero Photo"/);
+  assert.match(panels, /Single photo shows the first visible photo\. Slider shows every visible photo/);
+  assert.match(panels, /newItem\('hero', \{ id:/, 'a new slide is just a photo — no "Book Rental" button saved with it');
+  assert.doesNotMatch(panels, /Main Title|Button 1|Button 2|Tag \/ Badge|Subtitle/, 'the unused fields are not listed');
+  assert.doesNotMatch(page + panels, /Book Rental|\/rentals|Bridal|Brides|Premium Bridal/, 'no rental button or bridal brand string is suggested anywhere');
+  assert.match(page, /businessName: 'Tulsi Fashion Jewellery'/);
+  assert.match(panels, /stays hidden on the homepage until you add a real review/);
 });
 
 /* ── src/app/api/admin/settings/route.js ── */
@@ -931,7 +1241,7 @@ mock.module(src('lib/firebase.js'), {
 mock.module('next/cache', {
   namedExports: {
     revalidatePath: (...args) => {
-      revalidated.push({ args, stored: structuredClone(db.store.get('settings')?.get('site')?.heroSlides) });
+      revalidated.push({ args, stored: structuredClone(db.store.get('settings')?.get('site')?.heroSlides), site: structuredClone(db.store.get('settings')?.get('site')) });
       return revalidateImpl(...args);
     },
   },
@@ -960,6 +1270,19 @@ test('settings save: the cached homepage is dropped once, after the settings are
 test('settings save: a slide saved with its old fields is stored untouched (the form hides them, the data is not rewritten)', async () => {
   await post({ heroSlides: SAVED });
   assert.deepEqual(db.store.get('settings').get('site').heroSlides, SAVED);
+});
+
+test('settings save: a changed delivery message (it is in the homepage\'s HTML) is stored normalized, and the cached homepage is dropped after the write', async () => {
+  const res = await post({ deliveryMessage: { enabled: false, mode: 'always', badgeText: '<b>Free</b> shipping', style: { tone: 'nope', model: 'pill' } } });
+  assert.equal(res.status, 200);
+  assert.deepEqual(revalidated.map((r) => r.args), [['/']], 'dropped once');
+  const expected = normalizeDeliveryMessage({ enabled: false, mode: 'always', badgeText: 'bFree/b shipping', style: { model: 'pill' } });
+  assert.deepEqual(revalidated[0].site.deliveryMessage, expected, 'already stored when the page was dropped — the rebuild reads the new message');
+  assert.deepEqual(db.store.get('settings').get('site').deliveryMessage, expected);
+  assert.equal(expected.badgeText, 'bFree/b shipping', 'plain text only');
+  assert.equal(expected.style.tone, 'auto', 'a tone that is not on the list is the automatic one');
+  /* What the next rebuild of the page seeds is exactly that. */
+  assert.deepEqual(pickDeliveryMessage(db.store.get('settings').get('site')), expected);
 });
 
 test('settings save: when revalidatePath throws (no Next request around it) the save still succeeds', async () => {

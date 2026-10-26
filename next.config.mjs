@@ -43,6 +43,14 @@ const nextConfig = {
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
         ],
       },
+      /* Same for the other Marketing previews (hero photo, happy customers, Instagram, advertisements). */
+      {
+        source: '/marketing-preview',
+        headers: [
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'" },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+        ],
+      },
       /* The ₹ glyph fonts (public/fonts, see globals.css) never change under
          the same name — if one is ever re-cut, give it a new file name. Next
          serves public/ files with max-age=0 otherwise, i.e. a re-check on every

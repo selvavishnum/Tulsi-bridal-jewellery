@@ -26,6 +26,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import * as welcomeOffer from '../src/lib/welcomeOffer.js';
+import * as deliveryMessageLib from '../src/lib/deliveryMessage.js';
 import * as navLinks from '../src/components/layout/navLinks.js';
 import { DEFAULT_CHARGES } from '../src/lib/storeCharges.js';
 
@@ -57,6 +58,16 @@ const icon = (name) => { const Icon = (props) => React.createElement('svg', { 'd
 const icons = new Proxy({}, { get: (_, name) => (typeof name === 'string' && name.startsWith('Fi') ? icon(name) : undefined) });
 const Link = ({ href, children, prefetch: _p, ...rest }) => React.createElement('a', { href, ...rest }, children);
 const esm = (value) => ({ __esModule: true, default: value });
+
+/* The strip draws its delivery clause with the shared <DeliveryMessage/> (no hooks, so one copy serves
+   every loader below): the real component on the real style tables, only the icon library stubbed. */
+const deliveryMessageStyle = sucrase ? load('src/components/ui/deliveryMessageStyle.js', { '@/lib/deliveryMessage': deliveryMessageLib }) : null;
+const DeliveryMessageUi = sucrase ? load('src/components/ui/DeliveryMessage.jsx', { 'react-icons/fi': icons, './deliveryMessageStyle': deliveryMessageStyle }) : null;
+const deliveryMessageDeps = () => ({
+  '@/lib/deliveryMessage': deliveryMessageLib,
+  '@/components/ui/deliveryMessageStyle': deliveryMessageStyle,
+  '@/components/ui/DeliveryMessage': DeliveryMessageUi,
+});
 
 /* ── A tiny hook runner: state / refs / effects, re-rendering synchronously ── */
 let current = null;
@@ -474,6 +485,7 @@ describe('WelcomeBar', { skip }, () => {
     'react-hot-toast': esm(toast),
     'react-icons/fi': icons,
     '@/lib/welcomeOffer': welcomeOffer,
+    ...deliveryMessageDeps(),
   }) : null;
 
   async function open(charges = DEFAULT_CHARGES, settings = null) {
@@ -611,6 +623,256 @@ describe('WelcomeBar', { skip }, () => {
     assert.equal(line(1280), '✨ Diwali Special: Flat 20% OFF on all necklaces | Use Code: DIWALI20 | Free Delivery across India 🚚');
     assert.equal(line(390), '✨ 20% OFF | Code: DIWALI20');
   });
+
+  /* ── The owner's delivery message (Admin → Settings → Marketing → Delivery message) ── */
+  describe('the delivery message', () => {
+    const CACHE_KEY = 'tj-welcome-bar';
+    const OFFER = '✨ Welcome Offer: Flat ₹100 OFF on your first order | Use Code: TULSI100';
+    const CLAUSE = 'Free Delivery across India';
+    const strip = () => renderToStaticMarkup(bar.result);
+    const pipes = () => (strip().match(/>\|<\/span>/g) || []).length;
+    /* The delivery clause's own element: what <DeliveryMessage/> was given, and the wrapper it draws. */
+    const clause = () => find(bar.result, (el) => el.type === DeliveryMessageUi.default);
+    const wrapper = () => { const el = clause(); return el.type(el.props); };
+    const taglineState = () => { announced = { ...announced, active: false }; };
+    const fresh = (deliveryMessage) => ({ phone: '+91 99999 11111', deliveryMessage });
+    /* The clause is a span, or two when the underline model puts its accent on the words alone. */
+    const TAG_CLAUSE = /(?:<span[^>]*>)+Free Delivery across India(?:<\/span>)+[\s ]*·[\s ]*<a href="tel:/;
+
+    test('untouched: the clause is exactly the markup it always was, in both states (and junk settings change nothing)', async () => {
+      await open(FREE_FOR_ALL);
+      const offer = strip();
+      assert.ok(offer.includes(`<span aria-hidden="true" class="flex-shrink-0 text-gold-400/70 hidden min-[820px]:block">|</span><span class="hidden min-[820px]:block flex-shrink-0 text-gold-200/80">${CLAUSE} <span aria-hidden="true">🚚</span></span></p>`));
+      const withPhone = (deliveryMessage) => ({ phone: '+91 76958 68787', deliveryMessage });
+      for (const settings of [{}, { phone: '+91 76958 68787' }, withPhone(null), withPhone('Free!'), withPhone([1, 2]), withPhone({ enabled: 'no', style: 5, mode: 'x' })]) {
+        bar.unmount();
+        await open(FREE_FOR_ALL, settings);
+        assert.equal(strip(), offer, JSON.stringify(settings));
+      }
+      bar.unmount();
+      taglineState();
+      await open(FREE_FOR_ALL);
+      /* Byte for byte what the line was before the message was editable: `{shippingLine} &nbsp;·&nbsp;` — the words, no element around them. */
+      assert.match(strip(), new RegExp(`text-gold-300/70">${CLAUSE}[\\s\\u00a0]*·[\\s\\u00a0]*<a href="tel:\\+917695868787"`), 'the bare words, then " · " and the phone');
+      assert.doesNotMatch(strip(), new RegExp(`<span[^>]*>${CLAUSE}`), 'no wrapper element at the stock look');
+    });
+
+    test('switched off: no clause and no stray separator in either state, however the setting arrives', async () => {
+      const off = fresh({ enabled: false });
+      await open(FREE_FOR_ALL, off);
+      assert.equal(line(1280), OFFER);
+      assert.equal(pipes(), 1, 'only the pipe before "Use Code" is left');
+      assert.equal(clause(), null);
+      bar.unmount();
+      browser.store.clear();
+      await open(FREE_FOR_ALL, null);
+      assert.match(line(1280), /\| Free Delivery across India 🚚$/, 'a browser that never saw the setting gets the default');
+      bar.unmount();
+      browser.store.set(CACHE_KEY, JSON.stringify({ phone: null, deliveryMessage: { enabled: false } }));
+      await open(FREE_FOR_ALL, null);
+      assert.equal(line(1280), OFFER);
+      bar.unmount();
+      taglineState();
+      await open(FREE_FOR_ALL, off);
+      const text = squash(visibleText(bar.result, 1280));
+      assert.doesNotMatch(text, /Free Delivery|·/);
+      assert.match(text, /Made for Every Day ✦ .*\+91 99999 11111$/, 'the tagline and the phone stay');
+      assert.equal(find(bar.result, (el) => el.type === DeliveryMessageUi.default), null);
+    });
+
+    test('Smart (the default) never says "free" while shipping is charged — whatever words the owner wrote', async () => {
+      await open(DEFAULT_CHARGES, fresh({ barText: 'Free delivery above ₹999', icon: '✨' }));
+      assert.equal(line(1280), OFFER);
+      bar.unmount();
+      await open(DEFAULT_CHARGES, fresh({ mode: 'auto', barText: 'Free delivery above ₹999' }));
+      assert.equal(line(1280), OFFER);
+    });
+
+    test('"Always": the owner’s own words show even while shipping is charged — on the strip, from 820px, and in the tagline', async () => {
+      const always = fresh({ mode: 'always', barText: 'Free delivery above ₹999' });
+      await open(DEFAULT_CHARGES, always);
+      assert.equal(line(1280), `${OFFER} | Free delivery above ₹999 🚚`);
+      assert.equal(line(820), `${OFFER} | Free delivery above ₹999 🚚`);
+      assert.equal(line(819), OFFER, 'still hidden below 820px');
+      assert.equal(line(390), '✨ ₹100 OFF first order | Code: TULSI100');
+      assert.equal(pipes(), 2);
+      bar.unmount();
+      taglineState();
+      await open(DEFAULT_CHARGES, always);
+      assert.match(squash(visibleText(bar.result, 390)), /Free delivery above ₹999 · .*\+91 99999 11111$/);
+    });
+
+    test('the owner’s words and icon: any of the five icons or none; text without markup; the icon is decoration', async () => {
+      await open(FREE_FOR_ALL, fresh({ barText: '  Free   delivery\n on all orders ', icon: '🎁' }));
+      assert.equal(line(1280), `${OFFER} | Free delivery on all orders 🎁`);
+      assert.ok(strip().includes('Free delivery on all orders <span aria-hidden="true">🎁</span></span>'));
+      bar.unmount();
+      await open(FREE_FOR_ALL, fresh({ barText: 'Free delivery on all orders', icon: '' }));
+      assert.equal(line(1280), `${OFFER} | Free delivery on all orders`, 'no icon, no trailing space');
+      assert.doesNotMatch(strip(), /Free delivery on all orders <\/span>|Free delivery on all orders <span aria-hidden/);
+      bar.unmount();
+      await open(FREE_FOR_ALL, fresh({ barText: '<img src=x onerror=alert(1)> Free <b>delivery</b>', icon: '<b>' }));
+      assert.doesNotMatch(strip(), /<img|<b>|onerror=alert\(1\)>/);
+      assert.match(line(1280), /\| img src=x onerror=alert\(1\) Free bdelivery\/b 🚚$/, 'angle brackets are removed, the rest is plain text; an unknown icon is the default one');
+      bar.unmount();
+      taglineState();
+      await open(FREE_FOR_ALL, fresh({ barText: 'Free delivery on all orders', icon: '🎁' }));
+      assert.match(squash(visibleText(bar.result, 1280)), /Free delivery on all orders · .*\+91 99999 11111$/, 'the tagline state never carries the icon (as before)');
+    });
+
+    const MODELS = ['text', 'pill', 'outline', 'solid', 'underline'];
+    const LOOKS = {
+      'a plain look': (model) => ({ model, tone: 'gold' }),
+      'the loudest look': (model) => ({ model, tone: 'wine', size: 'lg', weight: 'bold', tracking: 'wider', font: 'serif', italic: true, uppercase: true }),
+      'custom colours': (model) => ({ model, tone: 'custom', colors: { text: '#ffffff', bg: '#0f766e' } }),
+    };
+    for (const model of MODELS) {
+      test(`${model}: the strip is still one fixed 32px row, the clause fits inside it and stays hidden below 820px`, async () => {
+        for (const [look, style] of Object.entries(LOOKS)) {
+          for (const state of ['offer', 'tagline']) {
+            if (state === 'tagline') taglineState(); else announced = { ...announced, active: true };
+            await open(FREE_FOR_ALL, fresh({ style: style(model) }));
+            const where = `${model} / ${look} / ${state}`;
+            /* The row: untouched. */
+            assert.equal(bar.result.props.className, `relative h-8 overflow-hidden ${WelcomeBar.BAR_BG}`, where);
+            assert.equal(find(bar.result, (el) => /\bsection-container\b/.test(el.props?.className || '')).props.className, 'section-container h-full flex items-center gap-2', where);
+            /* The clause: never taller than 24px (h-6) and never able to grow its row. */
+            const w = wrapper();
+            const tokens = String(w.props.className || '').split(/\s+/).filter(Boolean);
+            const heights = tokens.filter((t) => /^(min-|max-)?h-|^(p|py|pt|pb|m|my|mt|mb)-|^leading-|^border-(t|b)/.test(t));
+            assert.ok(heights.every((t) => ['h-6', 'leading-6', 'leading-[22px]'].includes(t) || (['py-1', 'pb-1'].includes(t) && model === 'underline')), `${where}: ${heights.join(' ')}`);
+            assert.ok(!heights.some((t) => /^(min-h|pt|my|mt|mb)/.test(t) || (/^p[yb]-/.test(t) && !['py-1', 'pb-1'].includes(t))), where);
+            if (['pill', 'outline', 'solid'].includes(model)) assert.ok(tokens.includes('h-6'), `${where}: a box is exactly 24px`);
+            assert.deepEqual(Object.keys(w.props.style || {}).filter((k) => !['color', 'backgroundColor', 'borderColor'].includes(k)), [], `${where}: inline style only paints colours`);
+            if (state === 'offer') {
+              const cls = clause().props.className;
+              assert.equal(shownAt(cls, 819), false, where);
+              assert.equal(shownAt(cls, 820), true, where);
+              assert.equal(cls.split(' ').slice(0, 2).join(' '), 'hidden min-[820px]:block', `${where}: the visibility classes come first`);
+              assert.equal(line(819), OFFER, where);
+              assert.match(line(1280), /\| Free Delivery across India( 🚚)?$/, where);
+            } else {
+              assert.match(squash(visibleText(bar.result, 360)), /Free Delivery across India · .*\+91 99999 11111$/, where);
+              assert.match(strip(), TAG_CLAUSE, where);
+            }
+            bar.unmount();
+          }
+        }
+      });
+    }
+
+    test('only a clause that is more than the plain stock look gets a ceiling, so it can never push out the phone or squeeze the offer', async () => {
+      const ceilings = async (deliveryMessage, state) => {
+        if (state === 'tagline') taglineState(); else announced = { ...announced, active: true };
+        await open(FREE_FOR_ALL, fresh(deliveryMessage));
+        const cls = state === 'offer' ? clause().props.className : String(clause().props.className || '');
+        bar.unmount();
+        return cls;
+      };
+      /* Stock: nothing added. (The same words in a shorter sentence, or another icon, are still the stock look.) */
+      for (const dm of [undefined, { icon: '✨' }, { icon: '' }, { barText: 'Free delivery above ₹999' }, { style: { model: 'text', tone: 'auto', weight: 'normal' } }]) {
+        assert.equal(await ceilings(dm, 'offer'), 'hidden min-[820px]:block', JSON.stringify(dm));
+        assert.equal(await ceilings(dm, 'tagline'), '', JSON.stringify(dm));
+      }
+      /* Anything more: the ceiling. */
+      const OFFER_CEILING = 'hidden min-[820px]:block max-w-[45%] truncate';
+      const TAGLINE_CEILING = 'inline-block max-w-[calc(100%-9.5rem)] truncate align-middle';
+      for (const dm of [{ style: { model: 'pill' } }, { style: { model: 'outline' } }, { style: { model: 'solid' } }, { style: { size: 'lg' } }, { style: { weight: 'bold' } }, { style: { uppercase: true } },
+        { style: { tone: 'gold' } }, { style: { tone: 'custom', colors: { text: '#ffffff', bg: '#000000' } } }, { barText: 'Free delivery on every order across the whole of India' }]) {
+        assert.equal(await ceilings(dm, 'offer'), OFFER_CEILING, JSON.stringify(dm));
+        assert.equal(await ceilings(dm, 'tagline'), TAGLINE_CEILING, JSON.stringify(dm));
+      }
+      /* The underline needs a little room under the words: truncate would clip it. */
+      assert.equal(await ceilings({ style: { model: 'underline' } }, 'offer'), `${OFFER_CEILING} py-1`);
+      assert.equal(await ceilings({ style: { model: 'underline' } }, 'tagline'), `${TAGLINE_CEILING} pb-1`);
+    });
+
+    test('the classes the strip adds are real Tailwind classes, found in WelcomeBar.jsx by the build', async () => {
+      const postcss = require('postcss');
+      const tailwind = require('tailwindcss');
+      const config = { ...require(path.resolve('tailwind.config.js')), content: [path.resolve('src/components/layout/WelcomeBar.jsx')] };
+      const { css } = await postcss([tailwind(config)]).process('@tailwind utilities;', { from: undefined });
+      for (const cls of ['max-w-[45%]', 'max-w-[calc(100%-9.5rem)]', 'truncate', 'inline-block', 'align-middle', 'py-1', 'pb-1', 'hidden', 'min-[820px]:block']) {
+        const escaped = cls.replace(/([[\]%():.])/g, '\\$1');
+        assert.ok(css.includes(`.${escaped}`), `${cls} is generated`);
+      }
+      assert.match(css, /max-width: calc\(100% - 9\.5rem\)/);
+    });
+
+    test('hydration: the server render and the first client render ignore this browser’s stored copy', async () => {
+      const real = load('src/components/layout/WelcomeBar.jsx', {
+        react: React, 'react-hot-toast': esm(toast), 'react-icons/fi': icons, '@/lib/welcomeOffer': welcomeOffer, ...deliveryMessageDeps(),
+      });
+      const reads = [];
+      const storage = globalThis.window.localStorage;
+      const getItem = storage.getItem;
+      storage.getItem = (k) => { reads.push(k); return getItem(k); };
+      const render = () => renderToString(React.createElement(real.default, { settings: null, charges: FREE_FOR_ALL }));
+      const empty = render();
+      browser.store.set(CACHE_KEY, JSON.stringify({ phone: '+91 11111 22222', deliveryMessage: { enabled: false } }));
+      browser.store.set(DISMISS_KEY, 'whatever');
+      const remembered = render();
+      assert.equal(remembered, empty, 'the stored copy never reaches the server render or the hydrating render');
+      assert.deepEqual(reads, [], 'not even read: React uses the server snapshot');
+      assert.match(empty, /text-gold-300\/70">Free Delivery across India(?:<!-- -->)?[\s\u00a0]*·[\s\u00a0]*<a href="tel:/, 'the clause is bare words in the line, as before');
+      assert.match(empty, /\+91 76958 68787/);
+      assert.doesNotMatch(empty, /11111 22222/);
+      /* …and once hydrated, the same component reads it. */
+      await open(FREE_FOR_ALL, null);
+      assert.match(squash(visibleText(bar.result, 1280)), /11111 22222/);
+      assert.equal(clause(), null);
+    });
+
+    test('a returning visitor: this browser’s last copy shows at once, and the fresh settings replace it (and are remembered, cleaned)', async () => {
+      browser.store.set(CACHE_KEY, JSON.stringify({ phone: '+91 11111 22222', deliveryMessage: { mode: 'always', barText: 'Free delivery above ₹999', icon: '✨', style: { model: 'pill', tone: 'gold' } } }));
+      await open(DEFAULT_CHARGES, null);
+      assert.equal(line(1280), `${OFFER} | Free delivery above ₹999 ✨`);
+      assert.match(strip(), /class="hidden min-\[820px\]:block flex-shrink-0 rounded-full|class="hidden min-\[820px\]:block max-w-\[45%\] truncate flex-shrink-0 h-6 rounded-full/);
+      assert.equal(JSON.parse(browser.store.get(CACHE_KEY)).deliveryMessage.barText, 'Free delivery above ₹999', 'nothing fresh: the copy is left alone');
+      bar.unmount();
+      /* Fresh settings win — even over a stored copy, and even when they hold no delivery message at all. */
+      await open(DEFAULT_CHARGES, { phone: '+91 99999 11111' });
+      assert.equal(line(1280), OFFER);
+      assert.deepEqual(JSON.parse(browser.store.get(CACHE_KEY)), { phone: '+91 99999 11111', deliveryMessage: deliveryMessageLib.normalizeDeliveryMessage(undefined) });
+      bar.unmount();
+      await open(FREE_FOR_ALL, fresh({ barText: 'We ship free', style: { model: 'outline' } }));
+      assert.equal(line(1280), `${OFFER} | We ship free 🚚`);
+      assert.deepEqual(JSON.parse(browser.store.get(CACHE_KEY)).deliveryMessage, deliveryMessageLib.normalizeDeliveryMessage({ barText: 'We ship free', style: { model: 'outline' } }));
+    });
+
+    test('what is remembered is the cleaned copy: no markup, no unknown keys, only valid choices and colours', async () => {
+      const hostile = {
+        enabled: true, mode: 'always', barText: '<script>alert(1)</script>Free', badgeText: 'x'.repeat(200), icon: '💣', evil: '<b>', __proto__: { polluted: true },
+        style: { font: 'comic', weight: 'heavy', model: 'pill', tone: 'custom', colors: { text: 'red; background:url(//x)', bg: '#ABCDEF' }, extra: 1 },
+      };
+      await open(FREE_FOR_ALL, fresh(JSON.parse(JSON.stringify(hostile))));
+      const stored = JSON.parse(browser.store.get(CACHE_KEY));
+      assert.deepEqual(stored.deliveryMessage, deliveryMessageLib.normalizeDeliveryMessage(hostile));
+      const text = JSON.stringify(stored);
+      assert.doesNotMatch(text, /<|>|evil|extra|polluted|comic|heavy|url\(|💣/);
+      assert.equal(stored.deliveryMessage.style.colors.bg, '#abcdef');
+      assert.equal(stored.deliveryMessage.barText.length <= 60, true);
+    });
+
+    test('a damaged stored copy is the default, never an error', async () => {
+      const damaged = ['{', 'null', '[]', '"x"', '7', JSON.stringify({ deliveryMessage: 'x' }), JSON.stringify({ deliveryMessage: [1] }),
+        JSON.stringify({ phone: '+91 11111 22222' }), JSON.stringify({ deliveryMessage: { enabled: 'no', mode: {}, style: { model: ['pill'], colors: 5 } } }),
+        JSON.stringify({ deliveryMessage: JSON.parse('{"__proto__": {"enabled": false}}') })];
+      for (const raw of damaged) {
+        browser.store.set(CACHE_KEY, raw);
+        await open(FREE_FOR_ALL, null);
+        assert.equal(line(1280), `${OFFER} | ${CLAUSE} 🚚`, raw);
+        bar.unmount();
+      }
+    });
+
+    test('a browser that cannot store anything (private mode) still draws the owner’s message', async () => {
+      globalThis.window.localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+      globalThis.window.localStorage.getItem = () => { throw new Error('SecurityError'); };
+      await open(FREE_FOR_ALL, fresh({ barText: 'We ship free', icon: '✅' }));
+      assert.equal(line(1280), `${OFFER} | We ship free ✅`);
+    });
+  });
 });
 
 /* ═════════════ AnnouncementSettingsPanel.jsx (the admin's card + preview) ═════════════ */
@@ -619,7 +881,7 @@ describe('AnnouncementSettingsPanel', { skip }, () => {
   const panelCart = { charges: DEFAULT_CHARGES };
   const loadPanel = () => {
     const WelcomeBarModule = load('src/components/layout/WelcomeBar.jsx', {
-      react: React, 'react-hot-toast': esm(() => {}), 'react-icons/fi': icons, '@/lib/welcomeOffer': welcomeOffer,
+      react: React, 'react-hot-toast': esm(() => {}), 'react-icons/fi': icons, '@/lib/welcomeOffer': welcomeOffer, ...deliveryMessageDeps(),
     });
     return load('src/components/admin/AnnouncementSettingsPanel.jsx', {
       react: React,
@@ -628,6 +890,7 @@ describe('AnnouncementSettingsPanel', { skip }, () => {
       '@/context/CartContext': { useCart: () => panelCart },
       '@/lib/welcomeOffer': welcomeOffer,
       '@/components/layout/WelcomeBar': WelcomeBarModule,
+      ...deliveryMessageDeps(),
     }).default;
   };
   const Panel = sucrase ? loadPanel() : null;
@@ -651,6 +914,21 @@ describe('AnnouncementSettingsPanel', { skip }, () => {
     assert.equal(phone, '✨ ₹100 OFF first order | Code: TULSI100');
     panelCart.charges = DEFAULT_CHARGES;
     assert.equal(previews(render({ value: undefined }))[0], '✨ Welcome Offer: Flat ₹100 OFF on your first order | Use Code: TULSI100', 'no "free above ₹N" clause');
+  });
+
+  test('the previews draw the delivery clause the way the Delivery Message card is set (icon, words, switch), in both states', () => {
+    panelCart.charges = { ...DEFAULT_CHARGES, enable_shipping_fee: false };
+    const gift = { icon: '🎁', barText: 'Free delivery on every order' };
+    const [desktop, phone] = previews(render({ value: undefined, deliveryMessage: gift }));
+    assert.equal(desktop, '✨ Welcome Offer: Flat ₹100 OFF on your first order | Use Code: TULSI100 | Free delivery on every order 🎁');
+    assert.equal(phone, '✨ ₹100 OFF first order | Code: TULSI100');
+    const [tagline] = previews(render({ value: { enabled: false, message: 'x', code: 'TULSI100' }, phone: '+91 99999 11111', deliveryMessage: gift }));
+    assert.match(tagline, /Free delivery on every order · .*\+91 99999 11111$/);
+    const html = render({ value: undefined, deliveryMessage: { style: { model: 'pill', tone: 'wine' } } });
+    assert.match(html, /rounded-full[^"]*bg-wine-800/, 'the pill model is drawn in the preview too');
+    const [off] = previews(render({ value: undefined, deliveryMessage: { enabled: false } }));
+    assert.equal(off, '✨ Welcome Offer: Flat ₹100 OFF on your first order | Use Code: TULSI100', 'switched off in the Delivery Message card: no clause here either');
+    panelCart.charges = DEFAULT_CHARGES;
   });
 
   test('switched off: the previews show the fashion tagline and the phone (and the delivery line only when delivery is free for everyone)', () => {
