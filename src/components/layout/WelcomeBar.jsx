@@ -5,13 +5,16 @@
 
    "✨ {message} | Use Code: [TULSI100] | {delivery line} 🚚" from the
    public site settings (settings/site.announcement) and the store's real
-   shipping rule (never a hard-coded "free shipping" claim: the delivery line
-   says "Free Delivery across India" only when the shipping settings make
-   every order free, else the real rule — see deliveryLine). One click
-   anywhere on the offer (the code chip's hit area is stretched over the
-   strip) remembers the code for checkout (cart, checkout and the Buy Now
-   drawer apply it; the server decides whether it's valid), copies it, and
-   says so in a toast.
+   shipping rule (never a hard-coded "free shipping" claim: by default the
+   delivery line says "Free Delivery across India" only when the shipping
+   settings make every order free, else nothing — see deliveryLine). The
+   owner can switch that clause off, reword it or restyle it
+   (settings/site.deliveryMessage, drawn by <DeliveryMessage/>, the component
+   the admin previews with); whatever they pick, it stays inside the same
+   one-line, fixed-height row. One click anywhere on the offer (the code
+   chip's hit area is stretched over the strip) remembers the code for
+   checkout (cart, checkout and the Buy Now drawer apply it; the server
+   decides whether it's valid), copies it, and says so in a toast.
 
    Dismissed (per message+code), switched off, or empty: the strip shows
    its usual tagline + delivery line + phone instead. Always one line at a
@@ -32,6 +35,9 @@ import { FiPhone, FiX } from 'react-icons/fi';
 import {
   normalizeAnnouncement, DISMISS_KEY, dismissToken, setPendingCoupon, deliveryLine, copyToClipboard, codeTapToast,
 } from '@/lib/welcomeOffer';
+import { DEFAULT_BAR_TEXT, pickDeliveryMessage } from '@/lib/deliveryMessage';
+import { resolveMessageStyle } from '@/components/ui/deliveryMessageStyle';
+import DeliveryMessage from '@/components/ui/DeliveryMessage';
 
 export const DEFAULT_SITE_PHONE = '+91 76958 68787';
 export const TAGLINE = '✦ Modern Fashion Jewellery — Made for Every Day ✦';
@@ -57,11 +63,12 @@ export function shortOffer(message) {
   return (colon > 0 && m.slice(colon + 1).trim()) || m;
 }
 
-/* Last phone number this browser saw, so a returning visitor gets it at
-   once; the fresh copy from the Navbar's settings fetch always wins and
-   replaces it. (The offer itself is never taken from here — only from a
-   fresh /api/announcement.) Read with useSyncExternalStore: hydration uses
-   the server value (null) and swaps after — no mismatch. */
+/* Last phone number and delivery message this browser saw, so a returning
+   visitor gets them at once; the fresh copy from the Navbar's settings fetch
+   always wins and replaces it. (The offer itself is never taken from here —
+   only from a fresh /api/announcement.) Read with useSyncExternalStore:
+   hydration uses the server value (null: the default message) and swaps
+   after — no mismatch. */
 const CACHE_KEY = 'tj-welcome-bar';
 const CHANGE_EVENT = 'tj-welcome-bar-change';
 
@@ -88,6 +95,24 @@ function parseCache(raw) {
     const v = raw ? JSON.parse(raw) : null;
     return v && typeof v === 'object' ? v : null;
   } catch { return null; }
+}
+
+/* The delivery clause is the strip's least important words. Left as it always was while it is the
+   plain stock look (no pill, border, bigger font… and no longer than "Free Delivery across India");
+   anything more than that gets a ceiling and shortens itself with "…" instead of pushing the phone
+   out of the tagline or squeezing the offer to nothing. (The underline sits just below the words,
+   so that look keeps a little room under them — `truncate` would clip the line. In the offer row
+   the same room goes above too, so the words stay level with their neighbours; in the tagline
+   the inline-block is centred on the line already, and the room below is all it needs.) */
+const CLAUSE_CEILING = {
+  offer: 'max-w-[45%] truncate',
+  tagline: 'inline-block max-w-[calc(100%-9.5rem)] truncate align-middle',
+};
+const UNDERLINE_ROOM = { offer: 'py-1', tagline: 'pb-1' };
+function clauseCeiling(config, text, state) {
+  const look = resolveMessageStyle(config, 'tagline');
+  if (!look.wrapperClass && !look.textClass && !Object.keys(look.wrapperStyle).length && text.length <= DEFAULT_BAR_TEXT.length) return '';
+  return look.textClass ? `${CLAUSE_CEILING[state]} ${UNDERLINE_ROOM[state]}` : CLAUSE_CEILING[state];
 }
 
 /* The "|" between the clauses — decoration, so a screen reader doesn't read it. */
@@ -118,18 +143,20 @@ export default function WelcomeBar({ settings, charges }) {
   }, []);
 
   const source = settings || cached || {};
+  /* The owner's delivery message: fresh settings, else this browser's last copy, else the default. */
+  const delivery = pickDeliveryMessage(source);
   /* Exactly what the server vouched for (never a default code). */
   const a = offer
     ? normalizeAnnouncement({ announcement: { enabled: offer.enabled === true, message: String(offer.message ?? ''), code: String(offer.code ?? '') } })
     : null;
   const phone = (typeof source.phone === 'string' && source.phone.trim()) || DEFAULT_SITE_PHONE;
   const tel = `tel:${phone.replace(/[^\d+]/g, '')}`;
-  const shippingLine = deliveryLine(charges);
+  const shippingLine = deliveryLine(charges, delivery);
 
-  /* Remember the fresh phone number, for the next page load. */
+  /* Remember the fresh phone number and delivery message, for the next page load. */
   useEffect(() => {
     if (!settings) return;
-    writeKey(CACHE_KEY, JSON.stringify({ phone: settings.phone || null }));
+    writeKey(CACHE_KEY, JSON.stringify({ phone: settings.phone || null, deliveryMessage: pickDeliveryMessage(settings) }));
   }, [settings]);
 
   const token = a ? dismissToken(a) : null;
@@ -199,7 +226,7 @@ export default function WelcomeBar({ settings, charges }) {
               {shippingLine && (
                 <>
                   <Pipe className="hidden min-[820px]:block" />
-                  <span className="hidden min-[820px]:block flex-shrink-0 text-gold-200/80">{shippingLine} <span aria-hidden="true">🚚</span></span>
+                  <DeliveryMessage surface="bar" text={shippingLine} config={delivery} className={`hidden min-[820px]:block ${clauseCeiling(delivery, shippingLine, 'offer')}`.trim()} />
                 </>
               )}
             </p>
@@ -219,7 +246,7 @@ export default function WelcomeBar({ settings, charges }) {
           <Fragment key="tagline">
             <p className="hidden md:block flex-shrink-0 whitespace-nowrap text-xs tracking-wider text-gold-300/80">{TAGLINE}</p>
             <p className="flex-1 min-w-0 truncate whitespace-nowrap text-center md:text-right text-xs tracking-wide text-gold-300/70">
-              {shippingLine && <>{shippingLine} &nbsp;·&nbsp;</>}
+              {shippingLine && <><DeliveryMessage surface="tagline" text={shippingLine} config={delivery} className={clauseCeiling(delivery, shippingLine, 'tagline')} /> &nbsp;·&nbsp;</>}
               <a href={tel} className="inline-flex items-center gap-1 min-h-6 font-medium hover:text-gold-300 transition-colors text-gold-300/90">
                 <FiPhone aria-hidden="true" className="text-[10px]" /> {phone}
               </a>

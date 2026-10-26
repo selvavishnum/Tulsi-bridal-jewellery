@@ -13,10 +13,11 @@ import ProductCard from '@/components/shop/ProductCard';
 import CategoryShowcase from '@/components/home/CategoryShowcase';
 import CustomerAvatar from '@/components/ui/CustomerAvatar';
 import CloudinaryPicture from '@/components/ui/CloudinaryPicture';
+import DeliveryMessage from '@/components/ui/DeliveryMessage';
 import { normalizeShowcase } from '@/lib/categoryShowcase';
 import CatalogImage from '@/components/ui/CatalogImage';
 import { GRID_SIZES, SECTION_CONTAINER, gridSizes } from '@/lib/catalogImages';
-import { nextHeroSlides, nextShowcase, heroPhotoUrl, currentShipping, shippingBadge, pickTestimonials } from '@/lib/heroSlides';
+import { nextHeroSlides, nextShowcase, nextDeliveryMessage, heroPhotoUrl, currentShipping, shippingBadge, pickTestimonials } from '@/lib/heroSlides';
 
 function getCookie(name) {
   if (typeof document === 'undefined') return '';
@@ -145,20 +146,36 @@ export function HeroArt({ photoUrl }) {
   );
 }
 
+/* A trust badge of the hero: one line, 24px tall. <DeliveryMessage surface="badge"/> draws the
+   first badge in this very row, whatever shape the owner picks. (The one exception is words longer
+   than WRAP_AFTER characters in deliveryMessageStyle.js: a phone cannot hold them on one line and
+   the hero's overflow-hidden would cut them off, so that badge may wrap. The server-seeded HTML is
+   already final, so even then nothing moves after the first paint.) */
+const BADGE_ROW = 'inline-flex h-6 items-center gap-2 whitespace-nowrap text-[13px] font-medium text-stone-700';
+
+/* The two badges that are fixed words: "COD Available" and the anti-tarnish line (there is
+   no store setting that switches COD off for the whole shop, and "100% Anti-Tarnish Finish"
+   is the owner's product claim). */
+const FIXED_BADGES = [
+  ['💵', 'COD Available'],
+  ['🛡️', '100% Anti-Tarnish Finish'],
+];
+
 /* ── Hero: split screen ──
    Content left, photo right from 1024px; on a phone the photo comes first
    (centred), then the pill, headline, line and button, then the trust badges.
    Static: no timer, no animation, nothing that moves after the first paint.
-   Exactly one <h1>. */
-export function HeroSection({ photoUrl = '', shippingLabel = shippingBadge(null) }) {
-  /* The first badge is the shipping claim — only when delivery really is free on
-     every order (shippingBadge); otherwise another true badge takes its place,
-     so the row never advertises "free above ₹N". */
-  const badges = [
-    shippingLabel ? ['🚚', shippingLabel] : ['🔒', 'Secure Checkout'],
-    ['💵', 'COD Available'],
-    ['🛡️', '100% Anti-Tarnish Finish'],
-  ];
+   Exactly one <h1>.
+
+   The first badge is the delivery message the owner manages (Admin → Settings →
+   Marketing → Delivery message): `shippingLabel` is its words — '' when it must
+   not be shown (switched off, or, in the default "smart" mode, shipping is not
+   free on every order: shippingBadge decides) — and `deliveryMessage` is how it
+   is drawn (icon, font, shape, colours). Without words another true badge takes
+   its place, so the row never advertises "free above ₹N" and is never short of
+   a badge. */
+export function HeroSection({ photoUrl = '', shippingLabel = '', deliveryMessage = null }) {
+  const delivery = typeof shippingLabel === 'string' ? shippingLabel.trim() : '';
   return (
     <section
       aria-labelledby="hero-heading"
@@ -184,8 +201,15 @@ export function HeroSection({ photoUrl = '', shippingLabel = shippingBadge(null)
             <FiArrowRight aria-hidden="true" className="transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none" />
           </Link>
           <ul role="list" className="mt-6 max-sm:[@media(max-height:720px)]:mt-3 flex flex-wrap justify-center gap-x-5 gap-y-2 lg:mt-8 lg:justify-start">
-            {badges.map(([icon, label]) => (
-              <li key={icon} className="inline-flex h-6 items-center gap-2 whitespace-nowrap text-[13px] font-medium text-stone-700">
+            {delivery ? (
+              <DeliveryMessage as="li" surface="badge" text={delivery} config={deliveryMessage} />
+            ) : (
+              <li className={BADGE_ROW}>
+                <span aria-hidden="true" className="text-base leading-none">🔒</span>Secure Checkout
+              </li>
+            )}
+            {FIXED_BADGES.map(([icon, label]) => (
+              <li key={icon} className={BADGE_ROW}>
                 <span aria-hidden="true" className="text-base leading-none">{icon}</span>{label}
               </li>
             ))}
@@ -295,8 +319,15 @@ export function CustomerReviews({ reviews }) {
    an array (empty = none configured) when it could read the settings, null
    when it could not. `shipping` is the shipping rule it read at the same time
    (null = it could not), so the hero's first badge is true from the first
-   paint instead of after the browser has fetched the charges. */
-export default function HomeClient({ heroSlides: serverSlides = null, showcase: serverShowcase = null, shipping: serverShipping = null }) {
+   paint instead of after the browser has fetched the charges. `deliveryMessage`
+   is the owner's delivery message from the same read (null = it could not):
+   whether the first badge is shown at all, its words and its look. */
+export default function HomeClient({
+  heroSlides: serverSlides = null,
+  showcase: serverShowcase = null,
+  shipping: serverShipping = null,
+  deliveryMessage: serverMessage = null,
+}) {
   const { charges: liveCharges } = useCart();
   const charges = currentShipping(liveCharges, serverShipping);
   const [siteSettings, setSiteSettings] = useState({});
@@ -307,6 +338,11 @@ export default function HomeClient({ heroSlides: serverSlides = null, showcase: 
      push the page down; unseeded, it waits for the settings as before. */
   const showcaseSeeded = !!serverShowcase;
   const [showcase, setShowcase] = useState(serverShowcase);
+  /* The delivery message the server drew (null = it couldn't read the settings:
+     the defaults until the browser knows better). Seeded, the badge is in the
+     first HTML exactly as it will stay. */
+  const messageSeeded = !!serverMessage;
+  const [deliveryMessage, setDeliveryMessage] = useState(serverMessage);
   /* Only reviews the admin entered (Admin → Settings → Happy Customers): with
      none, the section is not drawn — no sample reviews are made up. */
   const [testimonials, setTestimonials] = useState([]);
@@ -351,6 +387,9 @@ export default function HomeClient({ heroSlides: serverSlides = null, showcase: 
       /* Same rule as the slides: a seeded showcase is newer than the copy this
          browser stored, and an identical one keeps its state (no re-render). */
       if (!(cached && showcaseSeeded)) setShowcase((prev) => nextShowcase(prev, normalizeShowcase(d)));
+      /* And again for the delivery message: the seeded one beats this browser's
+         stored copy, the fresh fetch may change it, an identical one is a no-op. */
+      setDeliveryMessage((prev) => nextDeliveryMessage(prev, d, { stale: cached && messageSeeded }));
       if (Array.isArray(d.testimonials)) setTestimonials(pickTestimonials(d.testimonials));
       if (Array.isArray(d.instagramFeed)) setInstagramFeed(d.instagramFeed);
       setSettingsReady(true);
@@ -367,7 +406,7 @@ export default function HomeClient({ heroSlides: serverSlides = null, showcase: 
         else setSettingsReady(true);
       })
       .catch(() => setSettingsReady(true));
-  }, [seeded, showcaseSeeded]);
+  }, [seeded, showcaseSeeded, messageSeeded]);
 
   // Fetch a page of browse products
   const fetchBrowse = useCallback(async (page, cat, sort, reset = false) => {
@@ -438,7 +477,7 @@ export default function HomeClient({ heroSlides: serverSlides = null, showcase: 
     <div className="min-h-screen bg-white">
 
       {/* ── HERO ── */}
-      <HeroSection photoUrl={heroPhotoUrl(heroSlides)} shippingLabel={shippingBadge(charges)} />
+      <HeroSection photoUrl={heroPhotoUrl(heroSlides)} shippingLabel={shippingBadge(charges, deliveryMessage)} deliveryMessage={deliveryMessage} />
 
       {/* ── TOP CATEGORIES (Admin → Settings → Category Showcase) ──
           Rendered once the settings are known, so a hidden category never

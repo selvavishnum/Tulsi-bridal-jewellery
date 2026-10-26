@@ -1,7 +1,7 @@
 /* ─────────────────────────────────────────────
    What the homepage reads from the site settings, as plain JSON-safe objects:
-   the hero photo, the shipping rule behind the hero's first badge, and the
-   customer reviews.
+   the hero photo, the shipping rule and the owner's delivery message behind the
+   hero's first badge, and the customer reviews.
 
    The homepage is rendered on the server (src/app/page.js) so the hero photo
    is in the HTML the browser receives first, and the same settings are fetched
@@ -13,7 +13,15 @@
 
    Pure module: safe on the server, in the browser and in tests.
    ───────────────────────────────────────────── */
-import { DEFAULT_CHARGES, deliveryFreeForAll, normalizeCharges } from './storeCharges.js';
+import { DEFAULT_CHARGES, normalizeCharges } from './storeCharges.js';
+import { deliveryMessageFor } from './deliveryMessage.js';
+
+/* The owner's delivery message follows the very same rule as the slides and the showcase:
+   pickDeliveryMessage is what the server seeds, nextDeliveryMessage is what the browser
+   keeps once its own fetch answers (the same object when nothing changed). They live in
+   src/lib/deliveryMessage.js, next to the strip's and the product page's use of it, and are
+   re-exported here so the homepage reads everything from the settings through this one file. */
+export { pickDeliveryMessage, nextDeliveryMessage } from './deliveryMessage.js';
 
 /* Exactly what the hero reads. The home hero is one editorial photo — the
    first slide that has one (Admin → Settings → Hero). A stored slide also has
@@ -102,9 +110,10 @@ export function nextShowcase(prev, incoming) {
    The badge makes a claim ("Free Nationwide Shipping"), so it follows the
    store's real shipping settings — the same three fields and the same branches
    as freeShippingLine() in storeCharges.js, which the announcement bar uses.
-   The server puts the rule in the first HTML (src/app/page.js) so the badge
-   does not say one thing at first paint and another once the browser has
-   fetched the charges. */
+   The server puts the rule (and the owner's delivery message, which says
+   whether and how the badge is shown) in the first HTML (src/app/page.js) so
+   the badge does not say one thing at first paint and another once the browser
+   has fetched the charges and the settings. */
 
 /** The part of the shipping settings the badge needs, as plain JSON (no Firestore timestamp). */
 export function pickShipping(charges) {
@@ -124,13 +133,21 @@ export function currentShipping(live, seeded) {
 }
 
 /**
- * "Free Nationwide Shipping" exactly when every order ships free (the same rule
- * as the announcement bar and the product page: storeCharges.deliveryFreeForAll),
- * otherwise '' — a "free above ₹N" condition is not advertised, and the hero
- * shows another true badge in its place.
+ * The words of the hero's first badge, or '' — the hero then shows another true
+ * badge ("Secure Checkout") in its place.
+ *
+ * By default (no `config`, or one never edited) that is "Free Nationwide Shipping"
+ * exactly when every order ships free (the same rule as the announcement bar and
+ * the product page: storeCharges.deliveryFreeForAll); a "free above ₹N" condition
+ * is not advertised. The owner (Admin → Settings → Marketing → Delivery message) can
+ * switch the badge off, reword it, or show their own words in every case ('always'):
+ * deliveryMessageFor decides, with the same rule behind it.
+ *
+ * @param {object|null} charges  the shipping settings in force
+ * @param {unknown} [config]     settings.deliveryMessage (any shape; undefined = the defaults)
  */
-export function shippingBadge(charges) {
-  return deliveryFreeForAll(charges) ? 'Free Nationwide Shipping' : '';
+export function shippingBadge(charges, config) {
+  return deliveryMessageFor(config, charges, 'badge');
 }
 
 /**

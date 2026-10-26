@@ -3,6 +3,7 @@ import { getDB, docToObj, toPublicProduct } from '@/lib/firebase';
 import { absoluteUrl, JsonLd, buildProductJsonLd, buildBreadcrumbJsonLd, describeProduct, productKeywords } from '@/lib/seo';
 import { getStoreCharges } from '@/lib/storeChargesServer';
 import { cldUrl } from '@/lib/cloudinaryImage';
+import { pickDeliveryMessage } from '@/lib/deliveryMessage';
 
 /* Real, published reviews for the Review markup (never invented). */
 async function getReviews(id) {
@@ -32,6 +33,22 @@ const getProduct = cache(async (id) => {
     return null;
   }
 });
+
+/* The owner's delivery message (Admin → Settings → Marketing → Delivery message): whether the
+   trust list shows "Free Delivery across India", in which words and look. Read together with
+   the product (see ProductPage), so the line is in the first HTML exactly as it will stay: the
+   browser would otherwise draw the default look first and the owner's a moment later. Only the
+   normalized message goes to the browser, never the rest of the site settings. A failed read
+   is `null` — the defaults, which still only claim free delivery while the shop's shipping
+   rule says every order ships free — and never fails the product page. */
+async function getDeliveryMessage() {
+  try {
+    const doc = await getDB().collection('settings').doc('site').get();
+    return pickDeliveryMessage(doc.exists ? docToObj(doc) : {});
+  } catch {
+    return null;
+  }
+}
 
 function titleCase(slug) {
   return slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -91,7 +108,8 @@ async function ProductStructuredData({ id, product }) {
 
 export default async function ProductPage({ params }) {
   const { id } = await params;
-  const product = await getProduct(id);
+  /* One round trip, not two: the settings document is read alongside the product. */
+  const [product, deliveryMessage] = await Promise.all([getProduct(id), getDeliveryMessage()]);
 
   return (
     <>
@@ -110,7 +128,7 @@ export default async function ProductPage({ params }) {
           />
         </>
       )}
-      <ProductDetail initialProduct={product} />
+      <ProductDetail initialProduct={product} deliveryMessage={deliveryMessage} />
     </>
   );
 }

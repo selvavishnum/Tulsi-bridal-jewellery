@@ -5,7 +5,9 @@ import Image from 'next/image';
 import toast from 'react-hot-toast';
 import CategoryShowcaseManager from '@/components/admin/showcase/CategoryShowcaseManager';
 import AnnouncementSettingsPanel from '@/components/admin/AnnouncementSettingsPanel';
+import DeliveryMessagePanel from '@/components/admin/DeliveryMessagePanel';
 import AvatarUploadField from '@/components/admin/AvatarUploadField';
+import { useCart } from '@/context/CartContext';
 
 /* ─────────────────────────── Toggle component ─────────────────────────── */
 function Toggle({ value, onChange, label, description }) {
@@ -208,6 +210,9 @@ function Field({ label, children }) {
    Stored in settings/store_settings; the server reads it for every order
    and open checkouts pick changes up within a minute. */
 function ChargesCard() {
+  /* The Delivery Message card (Marketing tab) checks the message against the shop's shipping rule
+     as the storefront's cart holds it: refresh that copy after a save so the card never judges by the old rule. */
+  const { refreshCharges } = useCart();
   const [c, setC] = useState(null);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
@@ -255,6 +260,7 @@ function ChargesCard() {
       const d = await res.json();
       if (!d.success) throw new Error(d.message);
       setC({ ...d.data, cod_fee_waive_above: d.data.cod_fee_waive_above ?? '' });
+      refreshCharges?.();
       toast.success('Charges saved — applies to new orders now');
     } catch (err) {
       toast.error(err.message || 'Could not save');
@@ -609,7 +615,10 @@ export default function SettingsPage() {
     return (
       <div className="space-y-5">
         {/* Welcome offer strip at the top of every storefront page (saved with Save Settings) */}
-        <AnnouncementSettingsPanel value={settings.announcement} onChange={(a) => upd('announcement', a)} phone={settings.phone} />
+        <AnnouncementSettingsPanel value={settings.announcement} onChange={(a) => upd('announcement', a)} phone={settings.phone} deliveryMessage={settings.deliveryMessage} />
+
+        {/* The "Free Delivery across India" line: on/off, words, font, model, colours (saved with Save Settings) */}
+        <DeliveryMessagePanel value={settings.deliveryMessage} onChange={(d) => upd('deliveryMessage', d)} />
 
         {/* Hero Slides */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">

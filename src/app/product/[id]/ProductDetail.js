@@ -6,11 +6,12 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import {
   FiShoppingCart, FiHeart, FiShare2, FiStar,
-  FiShield, FiCheckCircle, FiTruck, FiRefreshCw,
+  FiShield, FiCheckCircle, FiRefreshCw,
   FiUser, FiSend, FiCamera,
 } from 'react-icons/fi';
 import { useCart } from '@/context/CartContext';
-import { freeDeliveryClaim } from '@/lib/storeCharges';
+import { deliveryMessageFor } from '@/lib/deliveryMessage';
+import DeliveryMessage from '@/components/ui/DeliveryMessage';
 import { useWishlist } from '@/context/WishlistContext';
 import { formatPrice, getDiscountPercentage } from '@/lib/utils';
 import { IMAGE_WIDTHS, cldBase, cldZoom } from '@/lib/cloudinaryImage';
@@ -60,9 +61,14 @@ function BuyNowLoading() {
   );
 }
 
+/* The second place in the trust list is the owner's delivery message (Admin → Settings →
+   Marketing → Delivery message), drawn by <DeliveryMessage/>, which brings its own row and
+   truck. By default it says "Free Delivery across India" only when shipping really is free for
+   every order, and otherwise the place is left out (deliveryMessageFor decides). */
+const DELIVERY_PLACE = 'delivery';
 const TRUST_ITEMS = [
   { icon: FiShield,      label: 'Anti-Tarnish Finish' },
-  { icon: FiTruck,       label: 'FREE_DELIVERY' }, // "Free Delivery across India" only when shipping really is free for every order; otherwise left out
+  DELIVERY_PLACE,
   { icon: FiRefreshCw,   label: '7-Day Damaged / Wrong-Item Returns' },
   { icon: FiCheckCircle, label: 'Secure Payment' },
 ];
@@ -336,8 +342,12 @@ function ReviewForm({ productId, onSubmitted }) {
 /* ── Main Page ── */
 /* `initialProduct` comes from the server page, so the product renders in
    the first HTML response — search engines and AI crawlers that don't run
-   JavaScript see the full listing. It's refreshed client-side after. */
-export default function ProductDetail({ initialProduct = null }) {
+   JavaScript see the full listing. It's refreshed client-side after.
+   `deliveryMessage` is the owner's delivery message (normalized), read by the
+   same server page: the trust list draws it from the first HTML, so it
+   neither pops in nor changes look once the browser is running. null = the
+   server couldn't read it: the defaults. */
+export default function ProductDetail({ initialProduct = null, deliveryMessage = null }) {
   const { id } = useParams();
   const router = useRouter();
   const { dispatch, charges } = useCart();
@@ -849,11 +859,13 @@ export default function ProductDetail({ initialProduct = null }) {
 
               {/* Trust */}
               <div className="mt-5 pt-5 border-t border-stone-100 grid grid-cols-2 gap-2">
-                {TRUST_ITEMS.map(({ icon: Icon, label: rawLabel }) => ({ Icon, label: rawLabel === 'FREE_DELIVERY' ? freeDeliveryClaim(charges) : rawLabel })).filter(({ label }) => label).map(({ Icon, label }) => (
-                  <div key={label} className="flex items-center gap-2 text-xs text-stone-500">
-                    <Icon className="text-green-500 flex-shrink-0" /> <span>{label}</span>
+                {TRUST_ITEMS.map((item) => (item === DELIVERY_PLACE ? (
+                  <DeliveryMessage key={DELIVERY_PLACE} surface="product" text={deliveryMessageFor(deliveryMessage, charges, 'product')} config={deliveryMessage} />
+                ) : (
+                  <div key={item.label} className="flex items-center gap-2 text-xs text-stone-500">
+                    <item.icon className="text-green-500 flex-shrink-0" /> <span>{item.label}</span>
                   </div>
-                ))}
+                )))}
               </div>
             </div>
           </div>

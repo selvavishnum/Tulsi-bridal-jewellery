@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { getDB, docToObj } from '@/lib/firebase';
 import { requireAdmin } from '@/lib/adminCollection';
 import { isUsableImageUrl } from '@/lib/avatar';
+import { normalizeDeliveryMessage } from '@/lib/deliveryMessage';
 
 export async function GET() {
   try {
@@ -56,6 +57,11 @@ export async function POST(request) {
         t && typeof t === 'object' ? { ...t, photo: isUsableImageUrl(t.photo) ? t.photo : '' } : t
       ));
     }
+    /* The delivery message ("Free Delivery across India"…) is shown on the storefront, so only its
+       known, validated fields are ever stored — whatever the form (or a hand-made request) sent:
+       text without markup, choices from the allow-lists, colours as #rrggbb. Anything that isn't an
+       object is stored as the defaults. */
+    if (Object.prototype.hasOwnProperty.call(rest, 'deliveryMessage')) rest.deliveryMessage = normalizeDeliveryMessage(rest.deliveryMessage);
     await db.collection('settings').doc('site').set({ ...rest, updatedAt: new Date().toISOString() }, { merge: true });
     refreshHomepage();
     return NextResponse.json({ success: true, message: 'Settings saved' });
