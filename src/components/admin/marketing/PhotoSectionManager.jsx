@@ -273,6 +273,7 @@ export default function PhotoSectionManager({
     note: previewConfig.note,
     itemLabel: previewConfig.itemLabel,
     layoutProps,
+    extraControls: previewConfig.extraControls,
     build: ({ items: mi, layout: l }) => ({
       section,
       items: items.map((it, i) => ({ ...it, focus: mi[i]?.focus || normalizeFocus(it.focus) })),

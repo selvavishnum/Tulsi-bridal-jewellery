@@ -3,7 +3,8 @@ import { absoluteUrl } from '@/lib/seo';
 import { getDB, docToObj } from '@/lib/firebase';
 import { pickHeroSlides, pickShipping, pickDeliveryMessage } from '@/lib/heroSlides';
 import { normalizeShowcase } from '@/lib/categoryShowcase';
-import { normalizeLayout } from '@/lib/marketing';
+import { normalizeLayout, adsForPlacement } from '@/lib/marketing';
+import { getAdvertisements } from '@/lib/marketingServer';
 import { getStoreCharges } from '@/lib/storeChargesServer';
 
 /* Server wrapper so the homepage has its own canonical and description
@@ -36,6 +37,7 @@ const keepLastGoodPage = () => process.env.NODE_ENV === 'production' && process.
    HomeClient:
    - heroSlides: an array (empty when none are set);
    - heroLayout: how the hero draws them (shape, size, Single photo / Slider);
+   - ads: the advertisements for the home page (nothing when there are none, or they cannot be read);
    - showcase: the normalized category showcase (cards, order, layout);
    - shipping: the shipping rule behind the hero's first badge (always a rule —
      a missing document means the defaults, which is what the checkout uses);
@@ -66,7 +68,7 @@ async function loadHomeSettings() {
 }
 
 export default async function HomePage() {
-  const home = await loadHomeSettings();
+  const [home, allAds] = await Promise.all([loadHomeSettings(), getAdvertisements()]);
   return (
     <HomeClient
       heroSlides={home?.heroSlides ?? null}
@@ -74,6 +76,7 @@ export default async function HomePage() {
       showcase={home?.showcase ?? null}
       shipping={home?.shipping ?? null}
       deliveryMessage={home?.deliveryMessage ?? null}
+      ads={adsForPlacement(allAds, 'home')}
     />
   );
 }

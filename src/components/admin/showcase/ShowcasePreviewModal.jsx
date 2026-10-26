@@ -162,6 +162,7 @@ function Slider({ label, value, display, min, max, step, disabled, onChange }) {
  *   note     the line under the heading (what the frame shows)
  *   itemLabel  what an item is called in the picker ("Photo", "Review", "Post", "Ad")
  *   layoutProps  { shapes, modes, sizes } passed to LayoutControls
+ *   extraControls  a node shown next to the layout controls (the advertisements' "Page" picker)
  * `showcase` is then just { items } in the showcase's item shape ({ key, label, image, focus, isActive, emoji, color }).
  */
 export default function ShowcasePreviewModal({
@@ -347,6 +348,7 @@ export default function ShowcasePreviewModal({
           {/* Layout toolbar (same draft as the bar on the page) */}
           <div className={`flex flex-shrink-0 flex-wrap items-end justify-between gap-3 border-b px-4 py-2.5 ${layoutDirty ? 'border-amber-100 bg-amber-50/50' : 'border-gray-100 bg-stone-50'}`}>
             <LayoutControls layout={layout} onChange={onLayoutChange} compact {...(preview?.layoutProps || {})} />
+            {preview?.extraControls}
             {layoutDirty && (
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-semibold text-amber-800">Unsaved layout</span>

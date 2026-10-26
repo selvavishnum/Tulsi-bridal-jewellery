@@ -22,6 +22,7 @@ import { normalizeLayout, nextIfChanged, visible } from '@/lib/marketing';
 import { focusStyle } from '@/lib/categoryShowcase';
 import { HeroSlider, heroShape, heroBoxClass, heroSizesFor, heroCrop } from '@/components/home/HeroPhotos';
 import FocusPhoto from '@/components/home/FocusPhoto';
+import AdSlot from '@/components/ads/AdSlot';
 import SliderRow from '@/components/home/SliderRow';
 
 function getCookie(name) {
@@ -435,6 +436,7 @@ export default function HomeClient({
   shipping: serverShipping = null,
   deliveryMessage: serverMessage = null,
   heroLayout: serverHeroLayout = null,
+  ads: homeAds = null,
 }) {
   const { charges: liveCharges } = useCart();
   const charges = currentShipping(liveCharges, serverShipping);
@@ -599,6 +601,9 @@ export default function HomeClient({
           Rendered once the settings are known, so a hidden category never
           flashes up first. */}
       {showcase && <CategoryShowcase showcase={showcase} />}
+
+      {/* ── ADVERTISEMENTS (Admin → Settings → Marketing → Website Advertisements) — in the server's HTML, nothing when there are none ── */}
+      <AdSlot placement="home" ads={homeAds} className="py-8" />
 
       {/* ── BROWSE ALL PRODUCTS (Infinite Scroll) ── */}
       <section className="py-12 bg-white" id="shop">

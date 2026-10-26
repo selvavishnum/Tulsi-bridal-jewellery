@@ -6,7 +6,8 @@ import CategoryShowcaseManager from '@/components/admin/showcase/CategoryShowcas
 import AnnouncementSettingsPanel from '@/components/admin/AnnouncementSettingsPanel';
 import CollapsibleSection from '@/components/admin/marketing/CollapsibleSection';
 import { HeroPhotosPanel, TestimonialsPanel, InstagramPanel } from '@/components/admin/marketing/MarketingPanels';
-import { normalizeHeroSlides, normalizeTestimonialItems, normalizeInstagramItems, normalizeLayout, visible } from '@/lib/marketing';
+import AdvertisementsManager from '@/components/admin/marketing/AdvertisementsManager';
+import { normalizeHeroSlides, normalizeTestimonialItems, normalizeInstagramItems, normalizeAdvertisements, normalizeLayout, visible } from '@/lib/marketing';
 import DeliveryMessagePanel from '@/components/admin/DeliveryMessagePanel';
 import { useCart } from '@/context/CartContext';
 
@@ -254,6 +255,7 @@ export default function SettingsPage() {
   const [testimonialsLayout, setTestimonialsLayout] = useState(() => normalizeLayout(null, 'testimonials'));
   const [instagramFeed, setInstagramFeed] = useState([]);
   const [instagramLayout, setInstagramLayout] = useState(() => normalizeLayout(null, 'instagram'));
+  const [advertisements, setAdvertisements] = useState(() => normalizeAdvertisements(null));
   /* What the server has (JSON per section), to show which sections have unsaved changes. */
   const [saved, setSaved] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -271,6 +273,7 @@ export default function SettingsPage() {
             testimonialsLayout: normalizeLayout(d.data.testimonialsLayout, 'testimonials'),
             instagramFeed: normalizeInstagramItems(d.data.instagramFeed),
             instagramLayout: normalizeLayout(d.data.instagramLayout, 'instagram'),
+            advertisements: normalizeAdvertisements(d.data.advertisements),
           };
           setHeroSlides(loaded.heroSlides);
           setHeroLayout(loaded.heroLayout);
@@ -278,6 +281,7 @@ export default function SettingsPage() {
           setTestimonialsLayout(loaded.testimonialsLayout);
           setInstagramFeed(loaded.instagramFeed);
           setInstagramLayout(loaded.instagramLayout);
+          setAdvertisements(loaded.advertisements);
           setSaved(Object.fromEntries(Object.entries(loaded).map(([k, v]) => [k, JSON.stringify(v)])));
         }
       })
@@ -287,7 +291,7 @@ export default function SettingsPage() {
   function upd(key, value) { setSettings((prev) => ({ ...prev, [key]: value })); }
 
   /* The Marketing sections kept in this page's state (saved by Save Settings). */
-  const marketingDraft = { heroSlides, heroLayout, testimonials, testimonialsLayout, instagramFeed, instagramLayout };
+  const marketingDraft = { heroSlides, heroLayout, testimonials, testimonialsLayout, instagramFeed, instagramLayout, advertisements };
   const dirty = (...keys) => !!saved && keys.some((k) => JSON.stringify(marketingDraft[k]) !== saved[k]);
   const shownOf = (items, section) => visible(items, section).length;
 
@@ -537,6 +541,12 @@ export default function SettingsPage() {
         <CollapsibleSection title="Instagram Feed" dirty={dirty('instagramFeed', 'instagramLayout')}
           status={`${shownOf(instagramFeed, 'instagram')} of ${instagramFeed.length} shown`}>
           <InstagramPanel items={instagramFeed} onItemsChange={setInstagramFeed} layout={instagramLayout} onLayoutChange={setInstagramLayout} />
+        </CollapsibleSection>
+
+        {/* Website advertisements: banners on the home, shop, category, product, cart, checkout and order pages (saved with Save Settings) */}
+        <CollapsibleSection title="Website Advertisements" dirty={dirty('advertisements')}
+          status={`${shownOf(advertisements.items, 'ads')} of ${advertisements.items.length} shown`}>
+          <AdvertisementsManager value={advertisements} onChange={setAdvertisements} />
         </CollapsibleSection>
       </div>
     );

@@ -8,7 +8,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { HeroSection, CustomerReviews, InstagramTiles } from '@/app/HomeClient';
 import { pickHeroSlides, pickTestimonials, heroPhotos } from '@/lib/heroSlides';
-import { normalizeLayout, visible } from '@/lib/marketing';
+import { normalizeLayout, adsForPlacement, visible, PLACEMENT_VALUES } from '@/lib/marketing';
+import AdSlot from '@/components/ads/AdSlot';
 
 const TYPE = 'tj-marketing-preview';
 
@@ -36,6 +37,14 @@ function Preview({ section, data }) {
         </section>
       )
       : <Empty>Every post is hidden (or has no photo) — the homepage shows the Follow button only.</Empty>;
+  }
+  if (section === 'ads') {
+    /* The banners of one page, drawn by the same slot the page uses. */
+    const placement = PLACEMENT_VALUES.includes(data.placement) ? data.placement : 'shop';
+    const ads = adsForPlacement({ layout: data.layout, items }, placement);
+    return ads.items.length
+      ? <div className="bg-white py-8"><AdSlot placement={placement} ads={ads} /></div>
+      : <Empty>No banner is shown on this page: add one with a photo and tick the page, and make sure it is switched on.</Empty>;
   }
   return <Empty>Nothing to preview for “{section}”.</Empty>;
 }

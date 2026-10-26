@@ -41,6 +41,7 @@ import * as showcaseLib from '../src/lib/categoryShowcase.js';
 import * as catalogLib from '../src/lib/catalogImages.js';
 import * as chargesLib from '../src/lib/storeCharges.js';
 import * as marketingLib from '../src/lib/marketing.js';
+import * as marketingServerLib from '../src/lib/marketingServer.js';
 import * as chargesServerLib from '../src/lib/storeChargesServer.js';
 import * as deliveryLib from '../src/lib/deliveryMessage.js';
 import * as messageStyleLib from '../src/components/ui/deliveryMessageStyle.js';
@@ -275,6 +276,7 @@ const page = sucrase ? loadJsx('src/app/page.js', {
   '@/lib/heroSlides': heroLib,
   '@/lib/categoryShowcase': showcaseLib,
   '@/lib/marketing': marketingLib,
+  '@/lib/marketingServer': marketingServerLib,
   '@/lib/storeChargesServer': chargesServerLib,
 }) : null;
 
@@ -311,7 +313,7 @@ test('page.js: passes the configured hero photo to HomeClient — only the field
   } } });
   const el = await page.default();
   assert.equal(el.type, HomeClientStub);
-  assert.deepEqual(Object.keys(el.props), ['heroSlides', 'heroLayout', 'showcase', 'shipping', 'deliveryMessage'], 'no other setting is put into the page');
+  assert.deepEqual(Object.keys(el.props), ['heroSlides', 'heroLayout', 'showcase', 'shipping', 'deliveryMessage', 'ads'], 'no other setting is put into the page');
   assert.deepEqual(el.props.heroSlides, [photo(), photo({ id: '2', imageUrl: TWO })]);
   assert.deepEqual(JSON.parse(JSON.stringify(el.props)), el.props, 'plain JSON');
   assert.doesNotMatch(JSON.stringify(el.props.heroSlides), /Rental|rentals|Bridal|Bride/, 'no rental button in the page payload');
@@ -521,6 +523,7 @@ if (sucrase) {
     '@/components/home/HeroPhotos': loadJsx('src/components/home/HeroPhotos.jsx', { 'react-icons/fi': fiIcons, '@/lib/categoryShowcase': showcaseLib }),
     '@/components/home/FocusPhoto': loadJsx('src/components/home/FocusPhoto.jsx', { '@/lib/categoryShowcase': showcaseLib }),
     '@/components/home/SliderRow': { __esModule: true, default: ({ children }) => React.createElement('div', { 'data-slider-row': 'true' }, children) },
+    '@/components/ads/AdSlot': { __esModule: true, default: () => null },
   };
   const home = loadJsx('src/app/HomeClient.js', homeDeps);
   HomeClient = home.default;

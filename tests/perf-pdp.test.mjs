@@ -588,6 +588,7 @@ describe('PDP: the server page (page.js)', { skip }, () => {
       '@/lib/cloudinaryImage': lib,
       '@/lib/storeChargesServer': { getStoreCharges: async () => { reads.charges += 1; return { free_shipping_threshold: 2000 }; } },
       './ProductDetail': esm(function ProductDetail() { return null; }),
+      '@/components/ads/AdSlot': esm(function AdSlot() { return null; }),
     };
     const mod = makeLoader(stubs)('app/product/[id]/page.js');
     return { mod, reads, order, jsonLd, params: Promise.resolve({ id: 'p1' }) };

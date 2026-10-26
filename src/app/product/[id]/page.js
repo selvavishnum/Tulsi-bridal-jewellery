@@ -4,6 +4,8 @@ import { absoluteUrl, JsonLd, buildProductJsonLd, buildBreadcrumbJsonLd, describ
 import { getStoreCharges } from '@/lib/storeChargesServer';
 import { cldUrl } from '@/lib/cloudinaryImage';
 import { pickDeliveryMessage } from '@/lib/deliveryMessage';
+import AdSlot from '@/components/ads/AdSlot';
+import { adsForPlacement } from '@/lib/marketing';
 
 /* Real, published reviews for the Review markup (never invented). */
 async function getReviews(id) {
@@ -40,13 +42,18 @@ const getProduct = cache(async (id) => {
    browser would otherwise draw the default look first and the owner's a moment later. Only the
    normalized message goes to the browser, never the rest of the site settings. A failed read
    is `null` — the defaults, which still only claim free delivery while the shop's shipping
-   rule says every order ships free — and never fails the product page. */
-async function getDeliveryMessage() {
+   rule says every order ships free — and never fails the product page.
+
+   The same read gives the banners the owner placed on product pages (Admin → Settings →
+   Marketing → Website Advertisements): `ads` is what adsForPlacement keeps for this page, or
+   null when the settings cannot be read (no banner, never an error). */
+async function getSiteExtras() {
   try {
     const doc = await getDB().collection('settings').doc('site').get();
-    return pickDeliveryMessage(doc.exists ? docToObj(doc) : {});
+    const site = doc.exists ? docToObj(doc) : {};
+    return { deliveryMessage: pickDeliveryMessage(site), ads: adsForPlacement(site.advertisements, 'product') };
   } catch {
-    return null;
+    return { deliveryMessage: null, ads: null };
   }
 }
 
@@ -109,7 +116,7 @@ async function ProductStructuredData({ id, product }) {
 export default async function ProductPage({ params }) {
   const { id } = await params;
   /* One round trip, not two: the settings document is read alongside the product. */
-  const [product, deliveryMessage] = await Promise.all([getProduct(id), getDeliveryMessage()]);
+  const [product, { deliveryMessage, ads }] = await Promise.all([getProduct(id), getSiteExtras()]);
 
   return (
     <>
@@ -129,6 +136,7 @@ export default async function ProductPage({ params }) {
         </>
       )}
       <ProductDetail initialProduct={product} deliveryMessage={deliveryMessage} />
+      {product && <AdSlot placement="product" ads={ads} className="pb-10" />}
     </>
   );
 }

@@ -1292,6 +1292,7 @@ describe('the settings page', { skip }, () => {
       '@/components/admin/showcase/CategoryShowcaseManager': esm(stub('CategoryShowcaseManager')),
       /* The real accordion starts closed (tests/marketing-collapsible.test.mjs); here every section is open so its card can be checked. */
       '@/components/admin/marketing/MarketingPanels': { HeroPhotosPanel: stub('HeroPhotosPanel'), TestimonialsPanel: stub('TestimonialsPanel'), InstagramPanel: stub('InstagramPanel') },
+      '@/components/admin/marketing/AdvertisementsManager': esm(stub('AdvertisementsManager')),
       '@/lib/marketing': marketingLib,
       '@/components/admin/marketing/CollapsibleSection': esm(({ title, children }) => React.createElement('section', { 'data-section': title }, React.createElement('h2', null, title), children)),
       '@/components/admin/AnnouncementSettingsPanel': esm(AnnouncementSettingsPanel),

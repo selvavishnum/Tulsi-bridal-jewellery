@@ -74,7 +74,7 @@ describe('the Marketing tab', () => {
   test('every Marketing card is an accordion section', () => {
     const marketing = page.slice(page.indexOf('function renderMarketing()'), page.indexOf('function renderSocialEmail()'));
     const titles = [...marketing.matchAll(/<CollapsibleSection title="([^"]+)"/g)].map((m) => m[1]);
-    assert.deepEqual(titles, ['Welcome Offer Bar', 'Delivery Message', 'Homepage Hero Photo', 'Category Showcase', 'Happy Customers (Testimonials)', 'Instagram Feed']);
+    assert.deepEqual(titles, ['Welcome Offer Bar', 'Delivery Message', 'Homepage Hero Photo', 'Category Showcase', 'Happy Customers (Testimonials)', 'Instagram Feed', 'Website Advertisements']);
     assert.equal((marketing.match(/<\/CollapsibleSection>/g) || []).length, titles.length);
     assert.doesNotMatch(marketing, /defaultOpen/, 'all closed on load');
   });
